@@ -22,6 +22,14 @@ Which tests run depends on the event:
 | push to `develop` | none: the pull request already tested it |
 | push to `main`, manual run | the full suite |
 
+Browser tests run in the `test` step with no extra setup. The CI image carries
+FFmpeg and Chromium's system libraries. The `install` step runs
+`bunx playwright install chromium` with the repository's own `playwright`
+(skipped while no workspace depends on it), so the browser always matches the
+pin in `packages/engine`. `PLAYWRIGHT_BROWSERS_PATH` is `/ci-cache/playwright`
+in every step that mounts the caches; the host directory is
+`/home/archi/ci-cache/demoflow/playwright`.
+
 The CI PostgreSQL is throwaway: tmpfs, with `fsync`, `synchronous_commit` and
 `full_page_writes` off.
 
