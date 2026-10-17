@@ -33,6 +33,37 @@ in every step that mounts the caches; the host directory is
 The CI PostgreSQL is throwaway: tmpfs, with `fsync`, `synchronous_commit` and
 `full_page_writes` off.
 
+## CI — the execution plane on three OS (GitHub Actions)
+
+Woodpecker only has Linux agents, and the runner must work on Linux, macOS and
+Windows. `.github/workflows/execution-plane.yml` is a second CI that proves it;
+it does not replace the Woodpecker pipeline.
+
+- **When:** pull requests and pushes to `develop` that touch `packages/core`,
+  `packages/engine`, `packages/renderer`, `apps/cli`, `apps/fixture`,
+  `package.json`, `bun.lock` or the workflow itself, and manual runs
+  (*Actions → execution-plane → Run workflow*). A change that only touches
+  `apps/web/**` does not start it. A newer run of the same ref cancels the
+  older one.
+- **What, on `ubuntu-latest`, `macos-latest` and `windows-latest`:** installs
+  with `bun install --frozen-lockfile` (Node 24, Bun 1.4.0), installs
+  Chromium, builds the CLI and the fixture, runs the tests of
+  `@demoflow/core`, `@demoflow/engine`, `@demoflow/renderer` and `demoflow`,
+  starts the fixture preview, then runs `demoflow run` on the `customers`,
+  `login` and `failing` scenarios. Exit codes must be 0, 0 and 1.
+- **Permissions:** read-only token, no secrets. `FIXTURE_PASSWORD` is
+  generated per run.
+
+### Downloading the demos
+
+Each job uploads `demos-<os>` (`demos-ubuntu-latest`, `demos-macos-latest`,
+`demos-windows-latest`), kept 14 days, even when a job fails. Each holds, per
+scenario, `runs/<runId>/render/ffmpeg.mp4` and `runs/<runId>/result.json`.
+
+- Web: open the workflow run, then *Artifacts* at the bottom of the summary.
+- CLI: `gh run download <run-id> -n demos-windows-latest`; omit `-n` to get
+  all three. Find the run with `gh run list --workflow execution-plane.yml`.
+
 ## Staging — https://demoflow-app.luna-realm.com
 
 Every push to `develop` runs the pipeline. Once `check` and `build` pass,
