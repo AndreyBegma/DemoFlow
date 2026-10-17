@@ -1,61 +1,68 @@
-# Prompt: bring DemoFlow staging online
+# Prompt: create the Cloudflare tunnel for DemoFlow staging
 
-Hand this to an agent running on the Woodpecker agent host (the machine that
-already serves AgentDock staging).
+Hand this to an agent (or a person) with access to the Cloudflare Zero Trust
+dashboard of the `luna-realm.com` account. Everything else — Woodpecker, the
+pipeline, the stack on the host — is already done or is done afterwards by the
+agent working in the DemoFlow repository.
 
 ---
 
-Bring the DemoFlow staging site online at **https://staging-demoflow.luna-realm.com**
-so that every push to `develop` of `AndreyBegma/DemoFlow` deploys it.
+Create a Cloudflare tunnel for **DemoFlow staging** and leave its token on the
+staging host. Do only what is listed here.
 
-Everything on the repository side already exists and was verified locally
-(images build, the stack answers `/` and `/api/health` through Caddy). Read
-`deploy/README.md` and `.woodpecker/pipeline.yml` in `~/dev/DemoFlow` first:
-they are the source of truth. The setup copies AgentDock's
-(`~/dev/AgentDock/deploy/README.md`) one-to-one, so use that as the reference
-for anything unclear.
+## Context
 
-Do, in order, and stop to report at the first failure:
+- Staging host: the machine that runs the Woodpecker agents and the existing
+  stacks in `/home/archi/stacks/` (`agentdock-staging`, `denitsa-staging`).
+- The stack `/home/archi/stacks/demoflow-staging` runs a `cloudflared`
+  container on its own compose network; it reaches Caddy at `http://proxy:80`.
+  Its compose file reads `TUNNEL_TOKEN` from `env/cloudflared.env`.
+- The setup mirrors AgentDock's staging exactly. If anything is unclear, look
+  at how the `agentdock-staging` tunnel is configured in the dashboard and do
+  the same — but **do not touch it**.
 
-1. **Cloudflare tunnel.** In Cloudflare Zero Trust, create a new
-   remote-managed tunnel `demoflow-staging` (its own tunnel, not a connector on
-   `agentdock-staging` or `denitsa`). Add the public hostname
-   `staging-demoflow.luna-realm.com` → service `HTTP` → `proxy:80`. Save the
-   token as `~/.demoflow/cloudflared-staging.env`, mode 600, one line:
-   `TUNNEL_TOKEN=...`. If you cannot reach the Cloudflare dashboard or API,
-   stop and tell me exactly which clicks I have to do, then continue from
-   step 2 once I give you the token file.
-2. **Woodpecker.** Activate `AndreyBegma/DemoFlow` (Woodpecker MCP:
-   `activate_repository`, then `update_repository`) with:
-   trusted → volumes **on**, require approval → **forks** (the repository is
-   public — an unapproved fork must never reach the Docker socket), cancel
-   previous pipelines on push and pull_request, timeout 60 min. Confirm the
-   repository's GitHub webhook exists afterwards.
-3. **Host directories.** Make sure `/home/archi/ci-cache/demoflow/{bun,turbo}`
-   exist and belong to uid 1000.
-4. **First run.** Trigger the pipeline manually on `develop`. `deploy-staging`
-   runs `deploy/staging/refresh.sh`, which creates
-   `/home/archi/stacks/demoflow-staging`, generates `POSTGRES_PASSWORD` and
-   stops because the tunnel token is missing. That stop is expected.
-5. **Start the stack.**
+## Do
+
+1. In Zero Trust → Networks → Tunnels, create a new tunnel:
+   - type **Cloudflared** (remote-managed, token-based),
+   - name **`demoflow-staging`** — a tunnel of its own, not a connector on
+     `agentdock-staging` or `denitsa`.
+   - Skip the connector install step: the connector runs in Docker on the host.
+2. Add the public hostname:
+   - subdomain `staging-demoflow`, domain `luna-realm.com`, no path,
+   - service type **HTTP**, URL **`proxy:80`**.
+   - Confirm a proxied CNAME `staging-demoflow` → `<tunnel-id>.cfargotunnel.com`
+     exists in the DNS of `luna-realm.com` afterwards.
+3. Copy the tunnel token (the long string after `--token` in the install
+   command) and write it on the staging host:
    ```sh
-   cp ~/.demoflow/cloudflared-staging.env /home/archi/stacks/demoflow-staging/env/cloudflared.env
-   chmod 600 /home/archi/stacks/demoflow-staging/env/cloudflared.env
-   /home/archi/stacks/demoflow-staging/up.sh
+   mkdir -p ~/.demoflow && chmod 700 ~/.demoflow
+   ( umask 177; printf 'TUNNEL_TOKEN=%s\n' '<token>' > ~/.demoflow/cloudflared-staging.env )
+   ls -l ~/.demoflow/cloudflared-staging.env   # must be -rw-------
    ```
-6. **Verify.** `/home/archi/stacks/demoflow-staging/status.sh` must show all
-   containers healthy, and `/` → 200 and `/api/health` → 200 from the public
-   URL. Then prove the loop: push a trivial docs-free change to a branch, open
-   a PR into `develop`, merge it, and confirm the new commit SHA appears in
-   `deployed.env` and the site still answers.
 
-Rules:
+## Never
 
-- Never print or commit `TUNNEL_TOKEN` or `POSTGRES_PASSWORD`.
-- Do not touch the other stacks in `/home/archi/stacks` or other repositories'
-  Woodpecker settings. Never `docker compose down -v` or prune volumes.
-- If a repository file has to change (a bug in `refresh.sh`, the pipeline,
-  the Dockerfiles), make it on a branch with a pull request into `develop` —
-  never push to `main` or `develop` directly.
-- Report at the end: the tunnel ID, the Woodpecker repository settings as
-  applied, the first green pipeline URL, and the `status.sh` output.
+- Print, paste, log or commit the token anywhere except that one file — not in
+  chat, not in your report, not in a shell history line you leave behind
+  (clear it if you typed it).
+- Change or delete any other tunnel, public hostname, DNS record or Access
+  policy.
+- Put a Cloudflare Access policy in front of the hostname (the site has its own
+  sign-in; the runner must reach `/api/runner` without an Access login).
+
+## Report back — exactly this, nothing secret
+
+```
+tunnel name:      demoflow-staging
+tunnel id:        <uuid>
+public hostname:  staging-demoflow.luna-realm.com → HTTP proxy:80
+dns record:       CNAME staging-demoflow → <uuid>.cfargotunnel.com (proxied: yes/no)
+token file:       ~/.demoflow/cloudflared-staging.env  <output of ls -l>
+token check:      <output of: grep -c '^TUNNEL_TOKEN=.\{100,\}$' ~/.demoflow/cloudflared-staging.env>   (must be 1)
+anything unusual: <none | what and why>
+```
+
+If a step cannot be done (no dashboard access, the name is taken, the domain
+is not on this account), stop and report which step and the exact message —
+do not improvise an alternative.
