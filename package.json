@@ -25,6 +25,9 @@
     "turbo": "2.9.5",
     "typescript": "6.0.2"
   },
+  "trustedDependencies": [
+    "ffmpeg-static"
+  ],
   "workspaces": [
     "apps/*",
     "packages/*"
