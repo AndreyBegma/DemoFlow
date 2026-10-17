@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@import "@andrewbehma/glass-ui/tokens.css";
+@import "@andrewbehma/glass-ui/material.css";
+@import "@andrewbehma/glass-ui/base.css";
+@import "@andrewbehma/glass-ui/motion.css";
+@import "@fontsource-variable/inter";
+
+/* Glass UI ships no font files: point its sans stack at the bundled face. */
+:root {
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+}
