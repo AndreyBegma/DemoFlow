@@ -7,8 +7,7 @@ import { startFixtureServer } from '../../../engine/test/execute/fixture-server.
 import { resolveFfmpeg } from '../../src/plan/ffmpeg.ts';
 
 /**
- * Real runs for the renderer tests — shared with the Remotion and FFmpeg
- * slots, read-only. Needs Playwright's Chromium (as the engine's tests do)
+ * Real runs for the renderer tests — shared, read-only. Needs Playwright's Chromium (as the engine's tests do)
  * and the built fixture, which turbo builds before `test`.
  */
 

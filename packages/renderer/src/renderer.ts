@@ -16,7 +16,7 @@ import type { RenderPlan } from './plan/types.ts';
  * through `recordRender`, which keeps `result.json` in step.
  */
 export interface Renderer {
-  /** `remotion`, `ffmpeg`; names the file `render/<name>.mp4` and the `renders[]` entry. */
+  /** `ffmpeg`; names the file `render/<name>.mp4` and the `renders[]` entry. */
   readonly name: string;
   /**
    * Renders `plan` — built by `buildRenderPlan(runDir)` — to `out`, which
@@ -36,7 +36,7 @@ export function renderPath(runDir: string, renderer: string): string {
  * `result.json`: the `rendering` stage goes `running` → `passed` (or `failed`
  * with the error, which is rethrown), the MP4 is probed, its `renders[]` entry
  * replaces any earlier one of the same renderer, and the run status is
- * derived again (ADR-0004 §3). Shared by both renderers.
+ * derived again (ADR-0004 §3).
  */
 export async function recordRender(
   runDir: string,
