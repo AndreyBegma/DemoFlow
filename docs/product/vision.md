@@ -479,8 +479,8 @@ playback must use an explicitly supported mechanism, such as a custom URL
 scheme, a local companion interface, or an authenticated Runner endpoint.
 
 > **Finding at project setup (2026-10-17):** `AndreyBegma/luna-player` is a
-> React 19 DOM package (`luna-player` 0.1.1, consumed as a GitHub pin, not
-> published to npm). Its player component is not implemented yet on `main` or
+> React 19 DOM package, published to npm as `luna-player` (0.1.2 on
+> 2026-10-17). Its player component is not implemented yet on `main` or
 > `develop` — only logic and platform modules exist. It exposes no URL scheme,
 > IPC or desktop-app interface.
 

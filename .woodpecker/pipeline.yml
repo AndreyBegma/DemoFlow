@@ -14,7 +14,7 @@
 #
 # A push to develop then builds the staging images on the agent host's Docker
 # daemon and replaces the containers of /home/archi/stacks/demoflow-staging
-# (https://staging-demoflow.luna-realm.com). No registry, no ssh: the agents
+# (https://demoflow-app.luna-realm.com). No registry, no ssh: the agents
 # run on the staging host, and the steps that need it get the Docker socket.
 #
 # The CI Postgres holds throwaway data. It runs on tmpfs, with fsync,
@@ -45,8 +45,10 @@ variables:
   - &caches
     - /home/archi/ci-cache/demoflow/bun:/ci-cache/bun
     - /home/archi/ci-cache/demoflow/turbo:/ci-cache/turbo
+    - /home/archi/ci-cache/demoflow/playwright:/ci-cache/playwright
   - &cache_env
     BUN_INSTALL_CACHE_DIR: /ci-cache/bun
+    PLAYWRIGHT_BROWSERS_PATH: /ci-cache/playwright
     TURBO_CACHE_DIR: /ci-cache/turbo
     TURBO_TELEMETRY_DISABLED: '1'
   # A pull request that touches only these skips `build` and `test`.
@@ -75,18 +77,24 @@ steps:
     commands:
       - docker build -t demoflow-ci:node-bun deploy/ci-image
 
-  # prisma.config.ts requires DATABASE_URL to load; `generate` never connects.
   - name: install
     image: *ci_image
     depends_on: [ci-image]
     volumes: *caches
-    environment:
-      <<: *cache_env
-      DATABASE_URL: postgresql://postgres:ci@postgres:5432/demoflow?schema=public
+    environment: *cache_env
     commands:
       - bun --version
       - bun install --frozen-lockfile
       - bun run db:generate
+      # The Chromium build for the repository's own `playwright`, cached under
+      # /ci-cache. System libraries are already in the CI image. Skipped while
+      # no workspace depends on playwright.
+      - |
+        if [ -x node_modules/.bin/playwright ]; then
+          bunx playwright install chromium
+        else
+          echo "playwright not installed: skipping the Chromium install"
+        fi
 
   - name: check
     image: *ci_image

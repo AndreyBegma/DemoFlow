@@ -22,10 +22,49 @@ Which tests run depends on the event:
 | push to `develop` | none: the pull request already tested it |
 | push to `main`, manual run | the full suite |
 
+Browser tests run in the `test` step with no extra setup. The CI image carries
+FFmpeg and Chromium's system libraries. The `install` step runs
+`bunx playwright install chromium` with the repository's own `playwright`
+(skipped while no workspace depends on it), so the browser always matches the
+pin in `packages/engine`. `PLAYWRIGHT_BROWSERS_PATH` is `/ci-cache/playwright`
+in every step that mounts the caches; the host directory is
+`/home/archi/ci-cache/demoflow/playwright`.
+
 The CI PostgreSQL is throwaway: tmpfs, with `fsync`, `synchronous_commit` and
 `full_page_writes` off.
 
-## Staging — https://staging-demoflow.luna-realm.com
+## CI — the execution plane on three OS (GitHub Actions)
+
+Woodpecker only has Linux agents, and the runner must work on Linux, macOS and
+Windows. `.github/workflows/execution-plane.yml` is a second CI that proves it;
+it does not replace the Woodpecker pipeline.
+
+- **When:** pull requests and pushes to `develop` that touch `packages/core`,
+  `packages/engine`, `packages/renderer`, `apps/cli`, `apps/fixture`,
+  `package.json`, `bun.lock` or the workflow itself, and manual runs
+  (*Actions → execution-plane → Run workflow*). A change that only touches
+  `apps/web/**` does not start it. A newer run of the same ref cancels the
+  older one.
+- **What, on `ubuntu-latest`, `macos-latest` and `windows-latest`:** installs
+  with `bun install --frozen-lockfile` (Node 24, Bun 1.4.0), installs
+  Chromium, builds the CLI and the fixture, runs the tests of
+  `@demoflow/core`, `@demoflow/engine`, `@demoflow/renderer` and `demoflow`,
+  starts the fixture preview, then runs `demoflow run` on the `customers`,
+  `login` and `failing` scenarios. Exit codes must be 0, 0 and 1.
+- **Permissions:** read-only token, no secrets. `FIXTURE_PASSWORD` is
+  generated per run.
+
+### Downloading the demos
+
+Each job uploads `demos-<os>` (`demos-ubuntu-latest`, `demos-macos-latest`,
+`demos-windows-latest`), kept 14 days, even when a job fails. Each holds, per
+scenario, `runs/<runId>/render/ffmpeg.mp4` and `runs/<runId>/result.json`.
+
+- Web: open the workflow run, then *Artifacts* at the bottom of the summary.
+- CLI: `gh run download <run-id> -n demos-windows-latest`; omit `-n` to get
+  all three. Find the run with `gh run list --workflow execution-plane.yml`.
+
+## Staging — https://demoflow-app.luna-realm.com
 
 Every push to `develop` runs the pipeline. Once `check` and `build` pass,
 `build-staging` builds `demoflow-api:staging` and `demoflow-web:staging` on the
@@ -42,9 +81,9 @@ Nothing is published on the host. The stack runs on its own compose network
 
 ### One-time setup
 
-1. **Cloudflare.** Create the tunnel `demoflow-staging` in Zero Trust. Give it
-   the public hostname `staging-demoflow.luna-realm.com` → `HTTP` `proxy:80`.
-   Save the token as `~/.demoflow/cloudflared-staging.env`, mode 600, with one
+1. **Cloudflare.** Create the tunnel `demoflow-app` in Zero Trust. Give it
+   the public hostname `demoflow-app.luna-realm.com` → `HTTP` `proxy:80`.
+   Save the token as `~/.demoflow/cloudflared.env`, mode 600, with one
    line: `TUNNEL_TOKEN=...`.
 2. **Woodpecker.** Activate `AndreyBegma/DemoFlow` and apply these settings:
    - *Trusted → volumes*: on. The steps mount the Docker socket, the stack
@@ -58,7 +97,7 @@ Nothing is published on the host. The stack runs on its own compose network
    is missing.
 4. **Add the token and start the stack:**
    ```sh
-   cp ~/.demoflow/cloudflared-staging.env /home/archi/stacks/demoflow-staging/env/cloudflared.env
+   cp ~/.demoflow/cloudflared.env /home/archi/stacks/demoflow-staging/env/cloudflared.env
    /home/archi/stacks/demoflow-staging/up.sh
    ```
 

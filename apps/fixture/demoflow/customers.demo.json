@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "name": "Create a customer",
+  "description": "Search the list, create a customer through the dialog and check the new row.",
+  "viewport": { "width": 1280, "height": 720 },
+  "steps": [
+    { "action": "navigate", "path": "/customers" },
+    { "action": "marker", "title": "Customers", "kind": "scene" },
+    {
+      "action": "fill",
+      "target": { "label": "Search customers" },
+      "value": "Ada",
+      "caption": "Search the list"
+    },
+    {
+      "action": "fill",
+      "target": { "label": "Search customers" },
+      "value": ""
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "New customer" },
+      "caption": "Open the dialog"
+    },
+    {
+      "action": "fill",
+      "target": { "label": "Name" },
+      "value": "Ada Lovelace"
+    },
+    {
+      "action": "fill",
+      "target": { "label": "Email" },
+      "value": "ada@example.com"
+    },
+    { "action": "select", "target": { "label": "Plan" }, "option": "Pro" },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Create", "exact": true },
+      "caption": "Create the customer"
+    },
+    {
+      "action": "assertText",
+      "target": { "css": "tbody" },
+      "text": "Ada Lovelace"
+    },
+    { "action": "assertVisible", "target": { "text": "ada@example.com" } }
+  ]
+}

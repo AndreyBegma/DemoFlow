@@ -1,0 +1,127 @@
+name: execution-plane
+
+# Second CI (spec 6, ADR-0002): Woodpecker only has Linux agents, so this
+# workflow proves the runner on Linux, macOS and Windows and uploads the demo
+# videos each OS rendered.
+
+on:
+  pull_request:
+    paths: &paths
+      - packages/core/**
+      - packages/engine/**
+      - packages/renderer/**
+      - apps/cli/**
+      - apps/fixture/**
+      - package.json
+      - bun.lock
+      - .github/workflows/execution-plane.yml
+  push:
+    branches: [develop]
+    paths: *paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: execution-plane-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  execution-plane:
+    name: execution-plane (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEMO_OUT: demo-out
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Install Chromium (Linux, with system libraries)
+        if: runner.os == 'Linux'
+        run: bunx playwright install --with-deps chromium
+
+      - name: Install Chromium
+        if: runner.os != 'Linux'
+        run: bunx playwright install chromium
+
+      # Named explicitly: the CLI does not depend on the fixture, and the
+      # execution plane must build without apps/api, apps/web or Prisma.
+      - name: Build the execution plane and the fixture
+        run: bun run build --filter=demoflow --filter=@demoflow/fixture
+
+      - name: Test
+        run: >-
+          bun run test
+          --filter=@demoflow/core
+          --filter=@demoflow/engine
+          --filter=@demoflow/renderer
+          --filter=demoflow
+
+      - name: Start the fixture preview
+        run: node .github/scripts/serve-fixture.mjs start
+
+      - name: Generate the fixture password
+        run: |
+          password="$(node -e "console.log(require('node:crypto').randomBytes(18).toString('hex'))")"
+          echo "::add-mask::$password"
+          echo "FIXTURE_PASSWORD=$password" >> "$GITHUB_ENV"
+
+      - name: Run customers
+        run: |
+          set +e
+          node apps/cli/dist/main.js run apps/fixture/demoflow/customers.demo.json --out "$DEMO_OUT" --json
+          code=$?
+          echo "demoflow run exited $code"
+          test "$code" -eq 0
+
+      - name: Run login
+        run: |
+          set +e
+          node apps/cli/dist/main.js run apps/fixture/demoflow/login.demo.json --out "$DEMO_OUT" --json
+          code=$?
+          echo "demoflow run exited $code"
+          test "$code" -eq 0
+
+      # The fixture's failing scenario must fail verification: exit 1 exactly.
+      # Exit 0 (it passed) and 2 or 3 (input or another stage) are all wrong.
+      - name: Run failing (expects exit 1)
+        run: |
+          set +e
+          node apps/cli/dist/main.js run apps/fixture/demoflow/failing.demo.json --out "$DEMO_OUT" --json
+          code=$?
+          echo "demoflow run exited $code"
+          test "$code" -eq 1
+
+      - name: Stop the fixture preview
+        if: always()
+        run: node .github/scripts/serve-fixture.mjs stop
+
+      - name: Upload the demos
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: demos-${{ matrix.os }}
+          path: |
+            ${{ env.DEMO_OUT }}/runs/*/render/*.mp4
+            ${{ env.DEMO_OUT }}/runs/*/result.json
+          if-no-files-found: error
+          retention-days: 14

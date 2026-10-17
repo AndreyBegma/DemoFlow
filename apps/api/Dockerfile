@@ -34,9 +34,7 @@ COPY tsconfig.json turbo.json ./
 COPY packages/shared/ packages/shared/
 COPY apps/api/ apps/api/
 
-# prisma.config.ts requires DATABASE_URL to load; `generate` never connects,
-# so any well-formed URL will do.
-RUN cd apps/api && DATABASE_URL=postgresql://build@localhost:5432/build bunx prisma generate
+RUN cd apps/api && bunx prisma generate
 RUN bunx turbo run build --filter=@demoflow/api...
 
 # ─── runtime ─────────────────────────────────────────────────────────────────

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DemoFlow project config",
+  "description": "demoflow.config.json at the project root.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "baseUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^[hH][tT][tT][pP][sS]?://"
+    },
+    "allowedOrigins": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri",
+        "pattern": "^[hH][tT][tT][pP][sS]?://"
+      }
+    },
+    "devCommand": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "readyUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^[hH][tT][tT][pP][sS]?://"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": ["command", "readyUrl"],
+      "additionalProperties": false
+    },
+    "artifactsDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "render": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "width": {
+          "default": 1920,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "height": {
+          "default": 1080,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "fps": {
+          "default": 30,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "idle": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "thresholdMs": {
+              "default": 1000,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "compressToMs": {
+              "default": 400,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["baseUrl"],
+  "additionalProperties": false
+}
