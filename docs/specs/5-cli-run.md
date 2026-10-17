@@ -47,8 +47,9 @@ later published as `demoflow`.
   `%APPDATA%\demoflow\config.json`. The run directory is
   `<home>/runs/<runId>/`.
 - **`run` options**: `--base-url <url>` (overrides the config, still checked
-  against `allowedOrigins`), `--renderer remotion|ffmpeg|both` (default
-  `both` while ADR-0005 is proposed), `--out <dir>`, `--headed`, `--json`.
+  against `allowedOrigins`), `--out <dir>`, `--headed`, `--json`. There is no
+  `--renderer` option: the FFmpeg compositor is the only renderer (ADR-0005,
+  accepted 2026-10-17).
 - **Output**: by default a short human summary (stage statuses, video paths);
   with `--json`, exactly one JSON object on stdout — the final `result.json`
   plus `runDir` — and nothing else on stdout; progress goes to stderr.
@@ -69,7 +70,8 @@ later published as `demoflow`.
 - [ ] With the fixture previewing on 3680, `demoflow run
       apps/fixture/demoflow/customers.demo.json --json` exits 0, prints one
       parsable JSON object whose `status` is `completed` and whose `renders`
-      lists two existing MP4 files, and writes nothing else to stdout.
+      lists one existing MP4 file (`render/ffmpeg.mp4`), and writes nothing else
+      to stdout.
 - [ ] The same for `failing.demo.json` exits 1 with `status: failed`.
 - [ ] `login.demo.json` without `FIXTURE_PASSWORD` exits 2 before a browser
       starts.

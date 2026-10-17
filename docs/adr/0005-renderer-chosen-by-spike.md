@@ -1,6 +1,6 @@
-# ADR-0005: Renderer — Remotion or an FFmpeg compositor, chosen by a spike
+# ADR-0005: Renderer — the FFmpeg compositor, chosen by a spike
 
-Status: proposed · Date: 2026-10-17
+Status: accepted · Date: 2026-10-17
 
 ## Context
 
@@ -20,16 +20,24 @@ after watching the results.
 
 ## Decision
 
-Pending. The renderer spike produces both videos of the same fixture
-scenario, a comparison (render time, output size, install footprint and
-friction on Linux, macOS and Windows, licence terms read from the source,
-visual quality), and a recommendation. **The owner chooses**; this record is
-then amended to `accepted` with the choice and its reasons.
+**The FFmpeg compositor** (`packages/renderer/src/ffmpeg/`). The owner chose it
+on 2026-10-17 after watching both renderers' videos of the four fixture runs
+side by side ([#4](https://github.com/AndreyBegma/DemoFlow/issues/4)), for the
+reasons of the spike's recommendation below: the licence, the install
+footprint, and equal render time. Remotion is removed from
+`@demoflow/renderer` ([#24](https://github.com/AndreyBegma/DemoFlow/issues/24)).
+
+The compositor's text is the accepted weakness: an ASCII-only stroke font,
+and sizes 1.4× too large. The sizes are fixed in #24; real font rendering
+([#25](https://github.com/AndreyBegma/DemoFlow/issues/25)) lands before Phase 4.
 
 ## Consequences
 
-Until it is accepted, `@demoflow/renderer` exposes both behind one interface,
-and nothing outside the package may depend on either implementation.
+- `@demoflow/renderer` ships one renderer. The `Renderer` interface stays, so
+  a second implementation can return behind it if Phase 4 needs browser layout.
+- `demoflow` installs no Remotion packages, downloads no browser to render and
+  carries one FFmpeg (`ffmpeg-static`).
+- We own the compositor (about 1 190 lines) and its text rendering.
 
 ## Recommendation (spike, 2026-10-17)
 
