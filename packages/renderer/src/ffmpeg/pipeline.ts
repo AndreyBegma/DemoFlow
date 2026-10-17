@@ -168,7 +168,7 @@ function startEncoder(plan: RenderPlan, out: string): Encoder {
       String(output.fps),
       '-i',
       'pipe:0',
-      // BT.709, limited range, as the Remotion renderer writes: FFmpeg's
+      // BT.709, limited range, tagged in the stream: FFmpeg's
       // default RGB → YUV conversion is BT.601 and leaves the file untagged.
       '-vf',
       `scale=in_range=pc:out_range=tv:out_color_matrix=bt709,format=${output.pixelFormat}`,
