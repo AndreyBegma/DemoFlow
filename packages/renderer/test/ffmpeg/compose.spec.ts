@@ -4,12 +4,16 @@ import {
   capHeight,
   lineHeight,
   measureText,
+  type TextStyle,
+  textGlyphs,
   wrapText,
 } from '../../src/ffmpeg/font.ts';
 import { sourceFrameIndex } from '../../src/ffmpeg/pipeline.ts';
 import {
   createPicture,
   drawScaled,
+  type Mask,
+  mergeMasks,
   type Picture,
 } from '../../src/ffmpeg/raster.ts';
 import type { FrameState, OutputSpec } from '../../src/index.ts';
@@ -266,6 +270,24 @@ describe('text size', () => {
     );
   });
 
+  it('anti-aliases the edges of an "H"', () => {
+    const drawn = render(state({ sourceMs: null, caption: 'H' }));
+    // On black under a black panel, a pixel is 0 outside the glyph, 255
+    // inside it and in between on its edge.
+    let inside = 0;
+    let edge = 0;
+    for (let y = 900; y < 1016; y++) {
+      for (let x = 900; x < 1020; x++) {
+        const [r] = pixel(drawn, x, y);
+        if (r === 255) inside++;
+        else if (r > 0) edge++;
+      }
+    }
+    expect(inside).toBeGreaterThan(100);
+    // At least one partly covered pixel beside each stem, on every row.
+    expect(edge).toBeGreaterThanOrEqual(2 * capHeight(LOOK.caption.text));
+  });
+
   it('draws the end card first line with a cap height of 35 px (48 × 0.72)', () => {
     const drawn = render(
       state({ sourceMs: null, endCard: 'HEH', watermark: false }),
@@ -282,15 +304,53 @@ describe('text size', () => {
   });
 });
 
-describe('the stroke font', () => {
-  const style = { fontPx: 40, weight: 4 };
+/** The mask `text` draws, at the origin. */
+function drawnText(text: string, style: TextStyle): Mask {
+  return mergeMasks(textGlyphs(text, style, 0, 0));
+}
 
-  it('measures by advance and draws non-ASCII as "?"', () => {
+function sameMask(a: Mask, b: Mask): boolean {
+  return (
+    a.x === b.x &&
+    a.y === b.y &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.alpha.every((value, i) => value === b.alpha[i])
+  );
+}
+
+describe('the font', () => {
+  const style: TextStyle = { fontPx: 40, weight: 'regular' };
+
+  it('measures by advance and kerning', () => {
     expect(measureText('', style)).toBe(0);
-    expect(measureText('é', style)).toBe(measureText('?', style));
     expect(measureText('ab', style)).toBeCloseTo(
       measureText('a', style) + measureText('b', style),
     );
+    // Inter kerns these pairs closer than their advances.
+    expect(measureText('AV', style)).toBeLessThan(
+      measureText('A', style) + measureText('V', style) - 1,
+    );
+    expect(measureText('Го', style)).toBeLessThan(
+      measureText('Г', style) + measureText('о', style) - 1,
+    );
+  });
+
+  it('draws Latin and Cyrillic, and anything else as "?"', () => {
+    const question = drawnText('?', style);
+    for (const char of new Set('Создать клиента — Create customer é№')) {
+      if (char === ' ') continue;
+      expect(sameMask(drawnText(char, style), question), char).toBe(false);
+    }
+    expect(sameMask(drawnText('中', style), question)).toBe(true);
+    expect(measureText('中', style)).toBe(measureText('?', style));
+  });
+
+  it('draws the semibold weight heavier', () => {
+    const ink = (mask: Mask) => mask.alpha.reduce((sum, a) => sum + a, 0);
+    const regular = ink(drawnText('FAILED', { fontPx: 32, weight: 'regular' }));
+    const bold = ink(drawnText('FAILED', { fontPx: 32, weight: 'semibold' }));
+    expect(bold).toBeGreaterThan(regular * 1.1);
   });
 
   it('wraps at spaces and breaks a word wider than the line', () => {
