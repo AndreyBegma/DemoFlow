@@ -1,0 +1,41 @@
+{
+  "name": "@demoflow/renderer",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "tsc -p tsconfig.json && vitest run",
+    "lint": "biome lint src test",
+    "spike": "node scripts/spike.ts"
+  },
+  "dependencies": {
+    "@demoflow/core": "workspace:*",
+    "@remotion/bundler": "4.0.532",
+    "@remotion/renderer": "4.0.532",
+    "ffmpeg-static": "5.3.0",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "remotion": "4.0.532"
+  },
+  "devDependencies": {
+    "@demoflow/engine": "workspace:*",
+    "@demoflow/fixture": "workspace:*",
+    "@types/node": "24.19.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "6.0.2",
+    "vitest": "5.0.3"
+  }
+}
