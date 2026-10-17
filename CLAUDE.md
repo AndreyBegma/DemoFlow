@@ -34,7 +34,8 @@ scripts/      — db-start-docker.sh (up → migrate → seed)
 - **Biome** is the only linter and formatter — single quotes, trailing commas, 2 spaces. No ESLint / Prettier.
 - **Prisma is imported only by `apps/api`** — through `PrismaService` (`src/database/`). The web app talks to the API over HTTP, never to the database.
 - Schema changes go through `prisma migrate dev` with a descriptive name; never edit an applied migration.
-- Shared types and pure helpers go in `packages/shared`; it must stay framework-free.
+- `packages/shared` is glue between `apps/api` and `apps/web` only. Product contracts (scenario, project config, timeline, run result) live in `packages/core` — zod is its only dependency, no Node APIs (ADR-0001).
+- The execution plane (`packages/core`, `packages/engine`, `packages/renderer`, `apps/cli`) runs on **Node**, not Bun: test it with Vitest under Node, never `bun test`. It must work on Linux, macOS and Windows.
 - API: global `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`) — every input is a DTO with `class-validator` decorators. `helmet` and CORS (`WEB_URL`) are on.
 - Environment: `docker/.env` and `apps/*/.env` (git-ignored), documented in `.env.example`. The database password lives only in `docker/.env` and `apps/api/.env` — never in a committed file; the two must match. Add a variable to the example in the same change that reads it.
 - TypeScript strict everywhere; no `any`.
@@ -51,3 +52,6 @@ scripts/      — db-start-docker.sh (up → migrate → seed)
 ## Product
 
 `docs/product/vision.md` is the product vision and architecture overview. It is a starting point, not a contract: decisions made in specs and ADRs override it.
+
+- Decisions: `docs/adr/` (one per decision, never rewritten — superseded). Read the index before changing a boundary.
+- Specs: `docs/specs/<issue>-<slug>.md`, one per issue.
