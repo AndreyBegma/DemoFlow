@@ -45,7 +45,7 @@ scripts/      — db-start-docker.sh (up → migrate → seed)
 ## Branches and delivery
 
 - `main` holds releases; `develop` is the integration branch. Every pull request targets `develop`.
-- A merge into `develop` deploys staging (https://staging-demoflow.luna-realm.com) through `.woodpecker/pipeline.yml`. See `deploy/README.md`.
+- A merge into `develop` deploys staging (https://demoflow-app.luna-realm.com) through `.woodpecker/pipeline.yml`. See `deploy/README.md`.
 - Work is specified with `/code-sentinel:spec` and executed by the orchestrator fleet. Keep specs and issues small: one slice per issue, never one spec for a whole phase.
 
 ## Product

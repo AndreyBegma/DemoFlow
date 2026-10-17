@@ -1,4 +1,4 @@
-# DemoFlow staging — https://staging-demoflow.luna-realm.com
+# DemoFlow staging — https://demoflow-app.luna-realm.com
 #
 # Lives in /home/archi/stacks/demoflow-staging on the Woodpecker agent host,
 # copied there by refresh.sh; it is not a git checkout. The images are built
@@ -76,7 +76,7 @@ services:
     logging: *logging
     networks: [staging]
 
-  # Token-based, remote-managed tunnel `demoflow-staging`: the public hostname
+  # Token-based, remote-managed tunnel `demoflow-app`: the public hostname
   # and its target (http://proxy:80) are set in the Zero Trust dashboard.
   cloudflared:
     image: cloudflare/cloudflared:2025.9.1
