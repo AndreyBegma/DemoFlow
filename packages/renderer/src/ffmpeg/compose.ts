@@ -48,7 +48,8 @@ export const LOOK = {
   watermark: {
     fill: hex('#d93025'),
     margin: 24,
-    padding: 16,
+    paddingX: 16,
+    paddingY: 8,
     radius: 12,
     label: 'FAILED',
     text: { capHeight: 32, weight: 6 },
@@ -259,9 +260,9 @@ function layCaption(text: string, output: OutputSpec): Laid {
 }
 
 function layBadge(output: OutputSpec): Laid {
-  const { margin, padding, label, text: style } = LOOK.watermark;
-  const width = measureText(label, style) + 2 * padding;
-  const height = style.capHeight + 2 * padding;
+  const { margin, paddingX, paddingY, label, text: style } = LOOK.watermark;
+  const width = measureText(label, style) + 2 * paddingX;
+  const height = style.capHeight + 2 * paddingY;
   const panel: Box = {
     x: output.width - margin - width,
     y: margin,
@@ -274,7 +275,7 @@ function layBadge(output: OutputSpec): Laid {
       [label],
       style,
       panel.x + width / 2,
-      panel.y + padding + style.capHeight,
+      panel.y + paddingY + style.capHeight,
     ),
   };
 }

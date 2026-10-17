@@ -103,6 +103,18 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
         pixelFormat: 'yuv420p',
       });
       expect(probe.durationMs).toBeCloseTo(plan.durationMs, -2);
+      // BT.709, limited range and tagged, as the Remotion renderer writes.
+      // `ffmpeg-static` ships no `ffprobe`; FFmpeg's stream line says the same.
+      const { stderr } = await runFfmpeg([
+        '-i',
+        file,
+        '-frames:v',
+        '1',
+        '-f',
+        'null',
+        '-',
+      ]);
+      expect(stderr).toMatch(/Video: h264 [^\n]*yuv420p\(tv, bt709[,)]/);
       const result = await readResult(runDir);
       expect(result.renders).toContainEqual(output);
       expect(result.stages.rendering.status).toBe('passed');
