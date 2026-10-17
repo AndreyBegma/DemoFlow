@@ -75,14 +75,11 @@ steps:
     commands:
       - docker build -t demoflow-ci:node-bun deploy/ci-image
 
-  # prisma.config.ts requires DATABASE_URL to load; `generate` never connects.
   - name: install
     image: *ci_image
     depends_on: [ci-image]
     volumes: *caches
-    environment:
-      <<: *cache_env
-      DATABASE_URL: postgresql://postgres:ci@postgres:5432/demoflow?schema=public
+    environment: *cache_env
     commands:
       - bun --version
       - bun install --frozen-lockfile
