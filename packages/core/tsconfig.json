@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2023",
+    "lib": ["es2023"],
+    "types": ["node"],
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "rewriteRelativeImportExtensions": true,
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": ["src/**/*", "test/**/*", "scripts/**/*", "vitest.config.ts"],
+  // Node's types already declare `URL`; the stand-in is for the build only.
+  "exclude": ["node_modules", "dist", "src/web-globals.d.ts"]
+}
