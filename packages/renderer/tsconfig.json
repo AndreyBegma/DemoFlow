@@ -14,6 +14,6 @@
     "noEmit": true,
     "incremental": false
   },
-  "include": ["src/**/*", "test/**/*", "vitest.config.ts"],
+  "include": ["src/**/*", "test/**/*", "scripts/**/*", "vitest.config.ts"],
   "exclude": ["node_modules", "dist"]
 }
