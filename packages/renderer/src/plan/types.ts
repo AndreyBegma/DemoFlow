@@ -120,9 +120,9 @@ export interface FailureSpec {
 }
 
 /**
- * What both renderers draw (spec 4, Decisions). Times are output
+ * What a renderer draws (spec 4, Decisions). Times are output
  * milliseconds unless named `source…`; points and boxes are viewport CSS
- * pixels. Plain JSON, so it can cross into a Remotion composition as props.
+ * pixels. Plain JSON.
  */
 export interface RenderPlan {
   version: 1;
