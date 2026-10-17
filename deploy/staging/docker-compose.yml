@@ -1,0 +1,98 @@
+# DemoFlow staging — https://staging-demoflow.luna-realm.com
+#
+# Lives in /home/archi/stacks/demoflow-staging on the Woodpecker agent host,
+# copied there by refresh.sh; it is not a git checkout. The images are built
+# on the same Docker daemon by build-staging.sh (tag :staging) — no registry.
+#
+# NOTHING IS PUBLISHED: there is no `ports:` entry. Traffic arrives through the
+# Cloudflare tunnel (cloudflared below, remote-managed, one public hostname →
+# http://proxy:80). Caddy splits it: /api/* → api (prefix stripped), everything
+# else → web.
+
+name: demoflow-staging
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: '5'
+
+services:
+  postgres:
+    image: postgres:16.5-alpine
+    container_name: demoflow-staging-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set it in .env}
+      POSTGRES_DB: demoflow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+    logging: *logging
+    networks: [staging]
+
+  # Migrates and seeds in its entrypoint before it listens.
+  api:
+    image: demoflow-api:staging
+    container_name: demoflow-staging-api
+    restart: unless-stopped
+    env_file: ./env/api.env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/demoflow?schema=public
+    depends_on:
+      postgres: { condition: service_healthy }
+    mem_limit: 1g
+    logging: *logging
+    networks: [staging]
+
+  web:
+    image: demoflow-web:staging
+    container_name: demoflow-staging-web
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:8370
+    depends_on:
+      api: { condition: service_healthy }
+    mem_limit: 512m
+    logging: *logging
+    networks: [staging]
+
+  proxy:
+    image: caddy:2.10.2-alpine
+    container_name: demoflow-staging-proxy
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      api: { condition: service_healthy }
+      web: { condition: service_started }
+    mem_limit: 128m
+    logging: *logging
+    networks: [staging]
+
+  # Token-based, remote-managed tunnel `demoflow-staging`: the public hostname
+  # and its target (http://proxy:80) are set in the Zero Trust dashboard.
+  cloudflared:
+    image: cloudflare/cloudflared:2025.9.1
+    container_name: demoflow-staging-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: ./env/cloudflared.env
+    depends_on:
+      proxy: { condition: service_started }
+    mem_limit: 128m
+    logging: *logging
+    networks: [staging]
+
+volumes:
+  pgdata:
+
+networks:
+  staging:
+    driver: bridge
