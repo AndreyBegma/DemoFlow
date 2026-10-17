@@ -1,6 +1,7 @@
 import type { Box } from '@demoflow/core';
 import type { FrameState, OutputSpec } from '../plan/types.ts';
 import {
+  capHeight,
   descent,
   lineHeight,
   measureText,
@@ -30,7 +31,8 @@ const BLACK = hex('#000000');
 
 /**
  * The look both renderers share (agreed for spec 4): output pixels, times the
- * frame's `scale` for the cursor and the rings. Text sizes are cap heights.
+ * frame's `scale` for the cursor and the rings. Text sizes are CSS font sizes;
+ * the compositor draws a cap height of `round(fontPx × 0.72)`.
  */
 export const LOOK = {
   mask: { sigma: 12, wash: hex('#808080'), washAlpha: 0.35 },
@@ -43,7 +45,7 @@ export const LOOK = {
     radius: 12,
     bottom: 64,
     maxWidth: 1600,
-    text: { capHeight: 40, weight: 4 },
+    text: { fontPx: 40, weight: 4 },
   },
   watermark: {
     fill: hex('#d93025'),
@@ -52,12 +54,12 @@ export const LOOK = {
     paddingY: 8,
     radius: 12,
     label: 'FAILED',
-    text: { capHeight: 32, weight: 6 },
+    text: { fontPx: 32, weight: 6 },
   },
   endCard: {
     background: hex('#111111'),
     maxWidth: 1600,
-    text: { capHeight: 48, weight: 5 },
+    text: { fontPx: 48, weight: 5 },
   },
 } as const;
 
@@ -232,7 +234,7 @@ function textMask(
 /** The height of `lines` from the first cap top to the last descender. */
 function blockHeight(lines: readonly string[], style: TextStyle): number {
   return (
-    (lines.length - 1) * lineHeight(style) + style.capHeight + descent(style)
+    (lines.length - 1) * lineHeight(style) + capHeight(style) + descent(style)
   );
 }
 
@@ -254,7 +256,7 @@ function layCaption(text: string, output: OutputSpec): Laid {
       lines,
       style,
       output.width / 2,
-      panel.y + padding + style.capHeight,
+      panel.y + padding + capHeight(style),
     ),
   };
 }
@@ -262,7 +264,7 @@ function layCaption(text: string, output: OutputSpec): Laid {
 function layBadge(output: OutputSpec): Laid {
   const { margin, paddingX, paddingY, label, text: style } = LOOK.watermark;
   const width = measureText(label, style) + 2 * paddingX;
-  const height = style.capHeight + 2 * paddingY;
+  const height = capHeight(style) + 2 * paddingY;
   const panel: Box = {
     x: output.width - margin - width,
     y: margin,
@@ -275,7 +277,7 @@ function layBadge(output: OutputSpec): Laid {
       [label],
       style,
       panel.x + width / 2,
-      panel.y + paddingY + style.capHeight,
+      panel.y + paddingY + capHeight(style),
     ),
   };
 }
@@ -283,11 +285,11 @@ function layBadge(output: OutputSpec): Laid {
 function layEndCard(text: string, output: OutputSpec): Laid {
   const { maxWidth, text: style } = LOOK.endCard;
   const lines = wrapText(text, style, maxWidth);
-  const height = (lines.length - 1) * lineHeight(style) + style.capHeight;
+  const height = (lines.length - 1) * lineHeight(style) + capHeight(style);
   const top = (output.height - height) / 2;
   const panel: Box = { x: 0, y: 0, width: output.width, height: output.height };
   return {
     panel,
-    mask: textMask(lines, style, output.width / 2, top + style.capHeight),
+    mask: textMask(lines, style, output.width / 2, top + capHeight(style)),
   };
 }

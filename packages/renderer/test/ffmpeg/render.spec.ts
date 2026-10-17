@@ -4,6 +4,7 @@ import path from 'node:path';
 import { RunResultSchema, type TimelineEvent } from '@demoflow/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LOOK } from '../../src/ffmpeg/compose.ts';
+import { wrapText } from '../../src/ffmpeg/font.ts';
 import { drawPlan } from '../../src/ffmpeg/pipeline.ts';
 import {
   buildRenderPlan,
@@ -103,7 +104,7 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
         pixelFormat: 'yuv420p',
       });
       expect(probe.durationMs).toBeCloseTo(plan.durationMs, -2);
-      // BT.709, limited range and tagged, as the Remotion renderer writes.
+      // BT.709, limited range and tagged in the stream.
       // `ffmpeg-static` ships no `ffprobe`; FFmpeg's stream line says the same.
       const { stderr } = await runFfmpeg([
         '-i',
@@ -143,6 +144,30 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
         }
       }
       expect(white).toBeGreaterThan(1000);
+
+      // The end card text fits within 1600 px, in no more lines than when the
+      // sizes were read as cap heights (a font size of 48 / 0.72 draws those).
+      const text = frameAt(plan, last).endCard ?? '';
+      const style = LOOK.endCard.text;
+      const lines = wrapText(text, style, LOOK.endCard.maxWidth);
+      const before = wrapText(
+        text,
+        { fontPx: 48 / 0.72, weight: style.weight },
+        LOOK.endCard.maxWidth,
+      );
+      expect(lines.length).toBeLessThanOrEqual(before.length);
+      let left = width;
+      let right = 0;
+      for (let y = 100; y < 1000; y++) {
+        for (let x = 0; x < width; x++) {
+          if (rgb(end, width, x, y)[0] > 200) {
+            left = Math.min(left, x);
+            right = Math.max(right, x);
+          }
+        }
+      }
+      expect(right).toBeGreaterThan(left);
+      expect(right - left + 1).toBeLessThanOrEqual(LOOK.endCard.maxWidth);
     });
   }
 

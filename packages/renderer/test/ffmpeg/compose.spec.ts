@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createCompositor, LOOK } from '../../src/ffmpeg/compose.ts';
-import { measureText, wrapText } from '../../src/ffmpeg/font.ts';
+import {
+  capHeight,
+  lineHeight,
+  measureText,
+  wrapText,
+} from '../../src/ffmpeg/font.ts';
 import { sourceFrameIndex } from '../../src/ffmpeg/pipeline.ts';
 import {
   createPicture,
@@ -169,7 +174,7 @@ describe('the compositor', () => {
   it('draws the caption as a lower third, 64 px above the bottom', () => {
     const drawn = render(state({ caption: 'Customers, at a glance' }), SOURCE);
     const panelHeight =
-      LOOK.caption.text.capHeight * (1 + 7 / 21) + 2 * LOOK.caption.padding;
+      capHeight(LOOK.caption.text) * (1 + 7 / 21) + 2 * LOOK.caption.padding;
     const bottom = OUTPUT.height - LOOK.caption.bottom;
     // Above the panel and below it: untouched.
     expect(
@@ -211,8 +216,74 @@ describe('the compositor', () => {
   });
 });
 
+/**
+ * The vertical extent of the pixels in `box` that `isInk` accepts: the height
+ * of a line of capitals, measured from the picture rather than from the layout.
+ */
+function inkHeight(
+  picture: Picture,
+  box: { x: number; y: number; width: number; height: number },
+  isInk: (rgb: number[]) => boolean,
+): number {
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (let y = Math.floor(box.y); y < box.y + box.height; y++) {
+    for (let x = Math.floor(box.x); x < box.x + box.width; x++) {
+      if (isInk(pixel(picture, x, y))) {
+        top = Math.min(top, y);
+        bottom = Math.max(bottom, y);
+      }
+    }
+  }
+  return bottom - top + 1;
+}
+
+const isWhite = ([r, g, b]: number[]) => r > 200 && g > 200 && b > 200;
+
+describe('text size', () => {
+  it('draws the FAILED label with a cap height of 23 px (32 × 0.72)', () => {
+    const drawn = render(state({ sourceMs: null, watermark: true }));
+    const style = LOOK.watermark.text;
+    const width = measureText(LOOK.watermark.label, style);
+    const box = {
+      x: OUTPUT.width - LOOK.watermark.margin - width - LOOK.watermark.paddingX,
+      y: LOOK.watermark.margin,
+      width: width + 2 * LOOK.watermark.paddingX,
+      height: capHeight(style) + 2 * LOOK.watermark.paddingY,
+    };
+    expect(Math.abs(inkHeight(drawn, box, isWhite) - 23)).toBeLessThanOrEqual(
+      1,
+    );
+  });
+
+  it('draws a caption with a cap height of 29 px (40 × 0.72)', () => {
+    const plain = render(state({ sourceMs: null }));
+    const drawn = render(state({ sourceMs: null, caption: 'HEH' }));
+    const box = { x: 800, y: 900, width: 320, height: 116 };
+    expect(changed(drawn, plain, box)).toBeGreaterThan(0);
+    expect(Math.abs(inkHeight(drawn, box, isWhite) - 29)).toBeLessThanOrEqual(
+      1,
+    );
+  });
+
+  it('draws the end card first line with a cap height of 35 px (48 × 0.72)', () => {
+    const drawn = render(
+      state({ sourceMs: null, endCard: 'HEH', watermark: false }),
+    );
+    const box = { x: 700, y: 400, width: 520, height: 280 };
+    expect(Math.abs(inkHeight(drawn, box, isWhite) - 35)).toBeLessThanOrEqual(
+      1,
+    );
+  });
+
+  it('spaces lines at 1.25 × the font size', () => {
+    expect(lineHeight(LOOK.endCard.text)).toBe(60);
+    expect(lineHeight(LOOK.caption.text)).toBe(50);
+  });
+});
+
 describe('the stroke font', () => {
-  const style = { capHeight: 40, weight: 4 };
+  const style = { fontPx: 40, weight: 4 };
 
   it('measures by advance and draws non-ASCII as "?"', () => {
     expect(measureText('', style)).toBe(0);
