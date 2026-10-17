@@ -46,8 +46,8 @@ so a person can watch what each OS rendered.
       all three OS and is green.
 - [ ] On a pull request touching only `apps/web/**`, it does not run.
 - [ ] Each run uploads `demos-ubuntu-latest`, `demos-macos-latest` and
-      `demos-windows-latest`, each with six MP4s (three scenarios × two
-      renderers while ADR-0005 is proposed) and three `result.json`.
+      `demos-windows-latest`, each with three MP4s (one per scenario; the FFmpeg compositor is the only
+      renderer, ADR-0005) and three `result.json`.
 - [ ] The `failing` step fails the job if its exit code is anything but 1.
 - [ ] No step uses a secret, and the workflow's token is read-only.
 - [ ] `deploy/README.md` gains a short section on the second CI and how to
@@ -70,6 +70,6 @@ so a person can watch what each OS rendered.
 - **Starting the fixture preview on Windows in the background** (medium).
   Mitigation: start it from a Node script that waits for the port, not a
   shell `&`.
-- **Remotion or `ffmpeg-static` fails on one OS** (medium): that is a finding
-  for ADR-0005, not a reason to drop the OS — the job for that renderer is
-  marked failed and the report (#4) cites it.
+- **`ffmpeg-static` fails on one OS** (medium): it is the only renderer's
+  encoder, so the job fails and the failure is a bug to fix, not a reason to
+  drop the OS.
