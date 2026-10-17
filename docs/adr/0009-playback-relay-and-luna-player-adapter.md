@@ -30,3 +30,13 @@ it exposes no URL scheme, IPC or desktop interface.
   cost is accepted for one path that works from any device.
 - A loopback endpoint for same-machine playback can be added later as an
   optimisation behind the same adapter.
+
+## Update — 2026-10-17
+
+Luna Player is published to npm as
+[`luna-player`](https://www.npmjs.com/package/luna-player) (0.1.2, MIT),
+released by its own Woodpecker pipeline on every version bump merged into its
+`main`. `apps/web` installs it from npm, pinned exactly, like
+`@andrewbehma/glass-ui` — not as a GitHub pin. 0.1.2 still ships only the
+logic and platform modules; the adapter of decision 2 switches to Luna when a
+version with the player component is published.
