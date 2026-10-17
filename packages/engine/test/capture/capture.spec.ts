@@ -7,6 +7,7 @@ import {
   type Scenario,
   TimelineSchema,
 } from '@demoflow/core';
+import type { Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createCaptureObserver,
@@ -220,13 +221,50 @@ describe('failing.demo.json', () => {
   });
 });
 
+interface TooltipState {
+  visible: boolean;
+  /** The product of the opacity of the tooltip and its ancestors. */
+  opacity: number;
+  /** Running animations on the tooltip and its ancestors. */
+  animations: number;
+  box: { x: number; y: number; width: number; height: number };
+}
+
+async function tooltipState(page: Page): Promise<TooltipState> {
+  const tooltip = page.getByText('Details', { exact: true });
+  const visible = await tooltip.isVisible();
+  const { opacity, animations } = await tooltip.evaluate((element) => {
+    let product = 1;
+    let running = 0;
+    for (let el: Element | null = element; el; el = el.parentElement) {
+      product *= Number(getComputedStyle(el).opacity);
+      running += el.getAnimations().length;
+    }
+    return { opacity: product, animations: running };
+  });
+  const box = (await tooltip.boundingBox()) ?? {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+  };
+  return { visible, opacity, animations, box };
+}
+
 describe('tour.demo.json', () => {
   it('shows the "Details" tooltip when the screenshot after the hover is taken', async () => {
     let visibleAtShot: boolean | undefined;
+    let before: TooltipState | undefined;
     let page: import('playwright').Page | undefined;
     const probe: EngineObserver = {
       onPageCreated: (event) => {
         page = event.page;
+      },
+      // Sampled before the PNG is taken: the tooltip must be fully faded in.
+      onStepStarted: async ({ step }) => {
+        if (step.action === 'screenshot' && step.name === 'hover-tooltip') {
+          before = await tooltipState(page as Page);
+        }
       },
       onScreenshot: async ({ name }) => {
         if (name === 'hover-tooltip') {
@@ -245,6 +283,11 @@ describe('tour.demo.json', () => {
 
     expect(outcome.status).toBe('running');
     expect(visibleAtShot).toBe(true);
+    expect(before?.visible).toBe(true);
+    expect(before?.opacity).toBe(1);
+    expect(before?.animations).toBe(0);
+    expect(before?.box.width).toBeGreaterThan(0);
+    expect(before?.box.height).toBeGreaterThan(0);
 
     const timeline = TimelineSchema.parse(
       await readJson(runDir, 'timeline.json'),
