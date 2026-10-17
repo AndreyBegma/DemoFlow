@@ -1,5 +1,4 @@
 import type { Box } from '@demoflow/core';
-import type { Segment } from './font.ts';
 
 /** An RGB24 picture: `width × height × 3` bytes, rows top to bottom. */
 export interface Picture {
@@ -324,49 +323,41 @@ export interface Mask {
   alpha: Float32Array;
 }
 
-/** Strokes of `weight` pixels with round ends, anti-aliased, as a mask. */
-export function strokeMask(segments: readonly Segment[], weight: number): Mask {
-  const pad = weight / 2 + 1;
+/**
+ * Masks moved by whole pixels and merged into one. Where two overlap, their
+ * coverage adds up to at most 1: two glyphs' anti-aliased edges that touch
+ * fill the pixel they share.
+ */
+export function mergeMasks(
+  parts: readonly { mask: Mask; x: number; y: number }[],
+): Mask {
+  if (parts.length === 0) {
+    return { x: 0, y: 0, width: 0, height: 0, alpha: new Float32Array(0) };
+  }
   let left = Number.POSITIVE_INFINITY;
   let top = Number.POSITIVE_INFINITY;
   let right = Number.NEGATIVE_INFINITY;
   let bottom = Number.NEGATIVE_INFINITY;
-  for (const s of segments) {
-    left = Math.min(left, s.x1, s.x2);
-    top = Math.min(top, s.y1, s.y2);
-    right = Math.max(right, s.x1, s.x2);
-    bottom = Math.max(bottom, s.y1, s.y2);
+  for (const { mask, x, y } of parts) {
+    left = Math.min(left, mask.x + x);
+    top = Math.min(top, mask.y + y);
+    right = Math.max(right, mask.x + x + mask.width);
+    bottom = Math.max(bottom, mask.y + y + mask.height);
   }
-  if (segments.length === 0) {
-    return { x: 0, y: 0, width: 0, height: 0, alpha: new Float32Array(0) };
-  }
-  const x = Math.floor(left - pad);
-  const y = Math.floor(top - pad);
-  const width = Math.ceil(right + pad) - x;
-  const height = Math.ceil(bottom + pad) - y;
-  const alpha = new Float32Array(width * height);
-  for (const s of segments) {
-    const sx0 = Math.max(0, Math.floor(Math.min(s.x1, s.x2) - pad) - x);
-    const sy0 = Math.max(0, Math.floor(Math.min(s.y1, s.y2) - pad) - y);
-    const sx1 = Math.min(width, Math.ceil(Math.max(s.x1, s.x2) + pad) - x);
-    const sy1 = Math.min(height, Math.ceil(Math.max(s.y1, s.y2) + pad) - y);
-    for (let py = sy0; py < sy1; py++) {
-      for (let px = sx0; px < sx1; px++) {
-        const d = segmentDistance(
-          s.x1,
-          s.y1,
-          s.x2,
-          s.y2,
-          x + px + 0.5,
-          y + py + 0.5,
-        );
-        const cover = edge(weight / 2 - d);
-        const at = py * width + px;
-        if (cover > alpha[at]) alpha[at] = cover;
+  const width = right - left;
+  const alpha = new Float32Array(width * (bottom - top));
+  for (const { mask, x, y } of parts) {
+    const ox = mask.x + x - left;
+    const oy = mask.y + y - top;
+    for (let my = 0; my < mask.height; my++) {
+      const row = (oy + my) * width + ox;
+      for (let mx = 0; mx < mask.width; mx++) {
+        const amount = mask.alpha[my * mask.width + mx];
+        if (amount > 0) alpha[row + mx] = Math.min(1, alpha[row + mx] + amount);
       }
     }
   }
-  return { x, y, width, height, alpha };
+  return { x: left, y: top, width, height: bottom - top, alpha };
 }
 
 /** Paints `colour` through `mask`, moved by (`dx`, `dy`). */

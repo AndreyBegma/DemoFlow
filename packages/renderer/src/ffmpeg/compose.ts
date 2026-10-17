@@ -6,7 +6,7 @@ import {
   lineHeight,
   measureText,
   type TextStyle,
-  textSegments,
+  textGlyphs,
   wrapText,
 } from './font.ts';
 import {
@@ -18,12 +18,12 @@ import {
   fillBox,
   hex,
   type Mask,
+  mergeMasks,
   type Picture,
   paint,
   paintMask,
   polygonDistance,
   roundRectDistance,
-  strokeMask,
 } from './raster.ts';
 
 const WHITE = hex('#ffffff');
@@ -45,7 +45,7 @@ export const LOOK = {
     radius: 12,
     bottom: 64,
     maxWidth: 1600,
-    text: { fontPx: 40, weight: 4 },
+    text: { fontPx: 40, weight: 'regular' },
   },
   watermark: {
     fill: hex('#d93025'),
@@ -54,12 +54,12 @@ export const LOOK = {
     paddingY: 8,
     radius: 12,
     label: 'FAILED',
-    text: { fontPx: 32, weight: 6 },
+    text: { fontPx: 32, weight: 'semibold' },
   },
   endCard: {
     background: hex('#111111'),
     maxWidth: 1600,
-    text: { fontPx: 48, weight: 5 },
+    text: { fontPx: 48, weight: 'regular' },
   },
 } as const;
 
@@ -220,15 +220,15 @@ function textMask(
   centreX: number,
   baseline: number,
 ): Mask {
-  const segments = lines.flatMap((line, index) =>
-    textSegments(
+  const glyphs = lines.flatMap((line, index) =>
+    textGlyphs(
       line,
       style,
       centreX - measureText(line, style) / 2,
       baseline + index * lineHeight(style),
     ),
   );
-  return strokeMask(segments, style.weight);
+  return mergeMasks(glyphs);
 }
 
 /** The height of `lines` from the first cap top to the last descender. */

@@ -6,7 +6,7 @@ import { drawPlan } from './pipeline.ts';
  * The FFmpeg compositor (spec 4, slot i4-ffmpeg). It pipes frames through
  * FFmpeg rather than building a filter graph, so `frameAt` stays the only
  * interpretation of the plan: a graph would re-express its easing as FFmpeg
- * expressions. Text is drawn with an embedded stroke font (`font.ts`).
+ * expressions. Text is drawn with the bundled Inter font (`font.ts`).
  */
 export const ffmpegRenderer: Renderer = {
   name: 'ffmpeg',
