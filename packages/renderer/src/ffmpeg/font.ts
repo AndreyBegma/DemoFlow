@@ -158,15 +158,32 @@ function glyph(char: string): Glyph {
 
 /** A text style, in output pixels. */
 export interface TextStyle {
-  /** Height of a capital letter. */
-  capHeight: number;
+  /** The CSS font size the look agreed on. */
+  fontPx: number;
   /** Stroke width. */
   weight: number;
 }
 
+/** Cap height of a typical sans-serif, as a fraction of its font size. */
+const CAP_RATIO = 0.72;
+
+/** Height of a capital letter: what the look's font size draws. */
+export function capHeight(style: TextStyle): number {
+  return Math.round(style.fontPx * CAP_RATIO);
+}
+
+/**
+ * Pixels per font unit. The stroke is centred on the glyph outline, so it
+ * reaches half its weight beyond it: the outline is drawn that much smaller to
+ * keep the inked capital at exactly `capHeight`.
+ */
+function unitOf(style: TextStyle): number {
+  return (capHeight(style) - style.weight) / CAP_UNITS;
+}
+
 /** The width `text` takes on one line. */
 export function measureText(text: string, style: TextStyle): number {
-  const unit = style.capHeight / CAP_UNITS;
+  const unit = unitOf(style);
   let units = 0;
   for (const char of text) units += glyph(char).advance;
   return units * unit;
@@ -205,12 +222,12 @@ export function wrapText(
 
 /** The distance from one baseline to the next. */
 export function lineHeight(style: TextStyle): number {
-  return style.capHeight * 1.6;
+  return style.fontPx * 1.25;
 }
 
 /** How far a descender reaches below the baseline. */
 export function descent(style: TextStyle): number {
-  return (style.capHeight * DESCENT_UNITS) / CAP_UNITS;
+  return unitOf(style) * DESCENT_UNITS + style.weight / 2;
 }
 
 /** A segment of a drawn stroke, in output pixels. */
@@ -228,7 +245,9 @@ export function textSegments(
   x: number,
   y: number,
 ): Segment[] {
-  const unit = style.capHeight / CAP_UNITS;
+  const unit = unitOf(style);
+  // The baseline is the bottom of the inked capital, not of its outline.
+  const base = y - style.weight / 2;
   const segments: Segment[] = [];
   let pen = x;
   for (const char of text) {
@@ -240,9 +259,9 @@ export function textSegments(
         const b = line[Math.min(i + 1, line.length - 1)];
         segments.push({
           x1: pen + a.x * unit,
-          y1: y - a.y * unit,
+          y1: base - a.y * unit,
           x2: pen + b.x * unit,
-          y2: y - b.y * unit,
+          y2: base - b.y * unit,
         });
       }
     }
