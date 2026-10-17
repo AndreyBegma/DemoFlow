@@ -45,8 +45,10 @@ variables:
   - &caches
     - /home/archi/ci-cache/demoflow/bun:/ci-cache/bun
     - /home/archi/ci-cache/demoflow/turbo:/ci-cache/turbo
+    - /home/archi/ci-cache/demoflow/playwright:/ci-cache/playwright
   - &cache_env
     BUN_INSTALL_CACHE_DIR: /ci-cache/bun
+    PLAYWRIGHT_BROWSERS_PATH: /ci-cache/playwright
     TURBO_CACHE_DIR: /ci-cache/turbo
     TURBO_TELEMETRY_DISABLED: '1'
   # A pull request that touches only these skips `build` and `test`.
@@ -84,6 +86,15 @@ steps:
       - bun --version
       - bun install --frozen-lockfile
       - bun run db:generate
+      # The Chromium build for the repository's own `playwright`, cached under
+      # /ci-cache. System libraries are already in the CI image. Skipped while
+      # no workspace depends on playwright.
+      - |
+        if [ -x node_modules/.bin/playwright ]; then
+          bunx playwright install chromium
+        else
+          echo "playwright not installed: skipping the Chromium install"
+        fi
 
   - name: check
     image: *ci_image
