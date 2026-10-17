@@ -15,7 +15,7 @@ macOS and Windows (ADR-0001).
 1. **`develop` is the integration branch.** Every pull request targets
    `develop`. `main` holds releases. The orchestrator's base is `develop`.
 2. **A merge into `develop` deploys staging** at
-   https://staging-demoflow.luna-realm.com through `.woodpecker/pipeline.yml`.
+   https://demoflow-app.luna-realm.com through `.woodpecker/pipeline.yml`.
 3. **Woodpecker is the main CI**: check, build and test on every pull request.
 4. **GitHub Actions runs the execution plane on three operating systems**
    (`ubuntu-latest`, `macos-latest`, `windows-latest`): install, build, and a

@@ -1,68 +1,21 @@
-# Prompt: create the Cloudflare tunnel for DemoFlow staging
+# The Cloudflare tunnel of the develop environment
 
-Hand this to an agent (or a person) with access to the Cloudflare Zero Trust
-dashboard of the `luna-realm.com` account. Everything else — Woodpecker, the
-pipeline, the stack on the host — is already done or is done afterwards by the
-agent working in the DemoFlow repository.
+Done on 2026-10-17. Kept as the record of what exists and how to recreate it.
 
----
+| | |
+|---|---|
+| Tunnel | `demoflow-app`, id `3b476de8-2a3f-4a1e-bd8b-f0f504b64dbd`, remote-managed, its own tunnel |
+| Public hostname | `demoflow-app.luna-realm.com` → `HTTP` `proxy:80`, no path, no Access policy |
+| DNS | proxied CNAME `demoflow-app` → `3b476de8-2a3f-4a1e-bd8b-f0f504b64dbd.cfargotunnel.com` |
+| Token | on the host in `~/.demoflow/cloudflared.env` (`TUNNEL_TOKEN=…`, mode 600, directory 700) |
 
-Create a Cloudflare tunnel for **DemoFlow staging** and leave its token on the
-staging host. Do only what is listed here.
+The stack reads the token from `/home/archi/stacks/demoflow-staging/env/cloudflared.env`;
+see [deploy/README.md](../../deploy/README.md) for copying it in.
 
-## Context
+## Recreating it
 
-- Staging host: the machine that runs the Woodpecker agents and the existing
-  stacks in `/home/archi/stacks/` (`agentdock-staging`, `denitsa-staging`).
-- The stack `/home/archi/stacks/demoflow-staging` runs a `cloudflared`
-  container on its own compose network; it reaches Caddy at `http://proxy:80`.
-  Its compose file reads `TUNNEL_TOKEN` from `env/cloudflared.env`.
-- The setup mirrors AgentDock's staging exactly. If anything is unclear, look
-  at how the `agentdock-staging` tunnel is configured in the dashboard and do
-  the same — but **do not touch it**.
-
-## Do
-
-1. In Zero Trust → Networks → Tunnels, create a new tunnel:
-   - type **Cloudflared** (remote-managed, token-based),
-   - name **`demoflow-staging`** — a tunnel of its own, not a connector on
-     `agentdock-staging` or `denitsa`.
-   - Skip the connector install step: the connector runs in Docker on the host.
-2. Add the public hostname:
-   - subdomain `staging-demoflow`, domain `luna-realm.com`, no path,
-   - service type **HTTP**, URL **`proxy:80`**.
-   - Confirm a proxied CNAME `staging-demoflow` → `<tunnel-id>.cfargotunnel.com`
-     exists in the DNS of `luna-realm.com` afterwards.
-3. Copy the tunnel token (the long string after `--token` in the install
-   command) and write it on the staging host:
-   ```sh
-   mkdir -p ~/.demoflow && chmod 700 ~/.demoflow
-   ( umask 177; printf 'TUNNEL_TOKEN=%s\n' '<token>' > ~/.demoflow/cloudflared-staging.env )
-   ls -l ~/.demoflow/cloudflared-staging.env   # must be -rw-------
-   ```
-
-## Never
-
-- Print, paste, log or commit the token anywhere except that one file — not in
-  chat, not in your report, not in a shell history line you leave behind
-  (clear it if you typed it).
-- Change or delete any other tunnel, public hostname, DNS record or Access
-  policy.
-- Put a Cloudflare Access policy in front of the hostname (the site has its own
-  sign-in; the runner must reach `/api/runner` without an Access login).
-
-## Report back — exactly this, nothing secret
-
-```
-tunnel name:      demoflow-staging
-tunnel id:        <uuid>
-public hostname:  staging-demoflow.luna-realm.com → HTTP proxy:80
-dns record:       CNAME staging-demoflow → <uuid>.cfargotunnel.com (proxied: yes/no)
-token file:       ~/.demoflow/cloudflared-staging.env  <output of ls -l>
-token check:      <output of: grep -c '^TUNNEL_TOKEN=.\{100,\}$' ~/.demoflow/cloudflared-staging.env>   (must be 1)
-anything unusual: <none | what and why>
-```
-
-If a step cannot be done (no dashboard access, the name is taken, the domain
-is not on this account), stop and report which step and the exact message —
-do not improvise an alternative.
+In Zero Trust → Networks → Tunnels, create a Cloudflared tunnel (do not
+install a connector — it runs in Docker in the stack), add the public hostname
+above, and write its token to `~/.demoflow/cloudflared.env` with mode 600.
+Never put an Access policy in front of the hostname: the runner reaches
+`/api/runner` without an Access login. Never paste the token anywhere else.
