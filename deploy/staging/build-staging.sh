@@ -4,7 +4,7 @@
 # tag `:staging` is the boundary: refresh.sh starts whatever it points at.
 set -eu
 
-HOST="https://staging-demoflow.luna-realm.com"
+HOST="https://demoflow-app.luna-realm.com"
 REVISION="${CI_COMMIT_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
 
 echo "Building demoflow-api:staging ($REVISION)"

@@ -73,7 +73,7 @@ chown -R 1000:1000 "$STAGING_DIR"
 if [ -z "$(value_of TUNNEL_TOKEN "$STAGING_DIR/env/cloudflared.env")" ]; then
   cat >&2 <<EOF
 Staging is prepared but not started: TUNNEL_TOKEN is empty.
-  cp ~/.demoflow/cloudflared-staging.env $STAGING_DIR/env/cloudflared.env
+  cp ~/.demoflow/cloudflared.env $STAGING_DIR/env/cloudflared.env
 then re-run the pipeline or $STAGING_DIR/up.sh (deploy/README.md).
 EOF
   exit 0

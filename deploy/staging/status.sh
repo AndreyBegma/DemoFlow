@@ -4,7 +4,7 @@
 set -u
 cd "$(dirname "$0")"
 
-HOST="https://staging-demoflow.luna-realm.com"
+HOST="https://demoflow-app.luna-realm.com"
 
 echo "── deployed"
 cat deployed.env 2>/dev/null || echo "(no deployed.env — never deployed by refresh.sh)"
