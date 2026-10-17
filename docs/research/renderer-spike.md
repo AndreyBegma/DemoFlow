@@ -41,6 +41,9 @@ readings of the timeline.
 
 ### Reproduce
 
+These commands apply to commit `aa7ffe8`. Remotion was removed in #24, along
+with the `spike` script, so they no longer run on `develop`.
+
 ```sh
 bun install
 bun run build

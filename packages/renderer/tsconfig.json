@@ -4,9 +4,7 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "target": "es2023",
-    // `dom` and `jsx` type the Remotion composition, which runs in the browser.
-    "lib": ["es2023", "dom"],
-    "jsx": "react-jsx",
+    "lib": ["es2023"],
     "types": ["node"],
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
@@ -14,6 +12,6 @@
     "noEmit": true,
     "incremental": false
   },
-  "include": ["src/**/*", "test/**/*", "scripts/**/*", "vitest.config.ts"],
+  "include": ["src/**/*", "test/**/*", "vitest.config.ts"],
   "exclude": ["node_modules", "dist"]
 }
