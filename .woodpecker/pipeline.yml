@@ -14,7 +14,7 @@
 #
 # A push to develop then builds the staging images on the agent host's Docker
 # daemon and replaces the containers of /home/archi/stacks/demoflow-staging
-# (https://staging-demoflow.luna-realm.com). No registry, no ssh: the agents
+# (https://demoflow-app.luna-realm.com). No registry, no ssh: the agents
 # run on the staging host, and the steps that need it get the Docker socket.
 #
 # The CI Postgres holds throwaway data. It runs on tmpfs, with fsync,

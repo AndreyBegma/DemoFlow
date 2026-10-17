@@ -25,7 +25,7 @@ Which tests run depends on the event:
 The CI PostgreSQL is throwaway: tmpfs, with `fsync`, `synchronous_commit` and
 `full_page_writes` off.
 
-## Staging — https://staging-demoflow.luna-realm.com
+## Staging — https://demoflow-app.luna-realm.com
 
 Every push to `develop` runs the pipeline. Once `check` and `build` pass,
 `build-staging` builds `demoflow-api:staging` and `demoflow-web:staging` on the
@@ -42,9 +42,9 @@ Nothing is published on the host. The stack runs on its own compose network
 
 ### One-time setup
 
-1. **Cloudflare.** Create the tunnel `demoflow-staging` in Zero Trust. Give it
-   the public hostname `staging-demoflow.luna-realm.com` → `HTTP` `proxy:80`.
-   Save the token as `~/.demoflow/cloudflared-staging.env`, mode 600, with one
+1. **Cloudflare.** Create the tunnel `demoflow-app` in Zero Trust. Give it
+   the public hostname `demoflow-app.luna-realm.com` → `HTTP` `proxy:80`.
+   Save the token as `~/.demoflow/cloudflared.env`, mode 600, with one
    line: `TUNNEL_TOKEN=...`.
 2. **Woodpecker.** Activate `AndreyBegma/DemoFlow` and apply these settings:
    - *Trusted → volumes*: on. The steps mount the Docker socket, the stack
@@ -58,7 +58,7 @@ Nothing is published on the host. The stack runs on its own compose network
    is missing.
 4. **Add the token and start the stack:**
    ```sh
-   cp ~/.demoflow/cloudflared-staging.env /home/archi/stacks/demoflow-staging/env/cloudflared.env
+   cp ~/.demoflow/cloudflared.env /home/archi/stacks/demoflow-staging/env/cloudflared.env
    /home/archi/stacks/demoflow-staging/up.sh
    ```
 

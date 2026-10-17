@@ -31,7 +31,7 @@ See `CLAUDE.md` for all commands and conventions.
 ## Branches and deployment
 
 `main` holds releases; every pull request targets `develop`. A merge into
-`develop` deploys https://staging-demoflow.luna-realm.com through Woodpecker —
+`develop` deploys https://demoflow-app.luna-realm.com through Woodpecker —
 see [deploy/README.md](deploy/README.md).
 
 The product vision lives in [docs/product/vision.md](docs/product/vision.md).
