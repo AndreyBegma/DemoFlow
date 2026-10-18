@@ -107,6 +107,17 @@ afterAll(async () => {
 const scenario = (name: string) =>
   path.join(project, 'demoflow', `${name}.demo.json`);
 
+describe('demoflow --version', () => {
+  it("prints the package's version and exits 0", async () => {
+    const { version } = JSON.parse(
+      await readFile(path.join(CLI_DIR, 'package.json'), 'utf8'),
+    ) as { version: string };
+    const result = await demoflow(['--version'], project);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe(version);
+  });
+});
+
 describe('demoflow validate', () => {
   it('exits 0 on a valid scenario', async () => {
     const result = await demoflow(['validate', scenario('customers')], project);

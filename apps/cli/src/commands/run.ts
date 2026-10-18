@@ -17,6 +17,7 @@ import {
   runDir as runDirFor,
   scenarioId,
 } from '../config/index.ts';
+import { type BrowserDeps, ensureChromium } from './browser.ts';
 import { CommandError, EXIT_STAGE_FAILED } from './errors.ts';
 import { exitCodeFor } from './exit.ts';
 import type { Io } from './io.ts';
@@ -40,6 +41,8 @@ export interface RunDeps {
   host: HostEnvironment;
   cwd: string;
   runId: () => string;
+  /** Chromium's check and first-use install; Playwright's own by default. */
+  browser?: BrowserDeps;
 }
 
 export function defaultRunDeps(): RunDeps {
@@ -84,6 +87,10 @@ export async function runCommand(
       'invalid-run-id',
       `run directory already exists: ${runDir}`,
     );
+  }
+  // After every input check: a bad scenario never costs a browser download.
+  if ((await ensureChromium(io, deps.browser)) === 'failed') {
+    return EXIT_STAGE_FAILED;
   }
   io.stderr(`Running ${scenarioId(root, file)} (${runId})\n`);
 

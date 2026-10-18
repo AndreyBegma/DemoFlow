@@ -9,8 +9,10 @@ import {
 } from './commands/errors.ts';
 import { type Io, processIo } from './commands/io.ts';
 import { runCommand } from './commands/run.ts';
+import { setupCommand } from './commands/setup.ts';
 import { validateCommand } from './commands/validate.ts';
 import { mcpCommand } from './mcp/command.ts';
+import { packageVersion } from './version.ts';
 
 /**
  * The `demoflow` program. Returns the exit code instead of exiting, so the
@@ -23,6 +25,7 @@ export async function main(
   let exitCode = 0;
   const program = new Command('demoflow')
     .description('Turn a scenario into a demo video')
+    .version(packageVersion())
     .exitOverride()
     .configureOutput({
       writeOut: (text) => io.stdout(text),
@@ -62,6 +65,13 @@ export async function main(
         exitCode = await runCommand(scenario, flags, io);
       },
     );
+
+  program
+    .command('setup')
+    .description('Install Chromium now instead of on the first run')
+    .action(async () => {
+      exitCode = await setupCommand(io);
+    });
 
   program
     .command('mcp')

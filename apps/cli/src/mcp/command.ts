@@ -1,5 +1,6 @@
 import { rm } from 'node:fs/promises';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { chromiumPresent } from '../commands/browser.ts';
 import type { Io } from '../commands/io.ts';
 import { readResult } from '../commands/settle.ts';
 import { currentHost } from '../config/index.ts';
@@ -41,6 +42,12 @@ export async function mcpCommand(io: Io): Promise<number> {
 
   await server.connect(transport);
   io.stderr('demoflow mcp: serving on stdio\n');
+  // No download at startup: the first generate_demo installs it through its run.
+  if (!chromiumPresent()) {
+    io.stderr(
+      'demoflow mcp: Chromium is not installed; the first generate_demo downloads it (or run `demoflow setup`)\n',
+    );
+  }
   const reason = await stopped;
 
   for (const signal of SHUTDOWN_SIGNALS) process.off(signal, onSignal);

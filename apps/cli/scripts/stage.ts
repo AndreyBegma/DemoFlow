@@ -1,0 +1,123 @@
+// Stages the publishable `demoflow` package in dist/npm/ — the directory
+// `npm pack` and `npm publish` run in (scripts/smoke.mjs, .woodpecker/release.yml).
+//
+//   node scripts/stage.ts
+//
+// dist/npm/
+//   package.json      generated: no workspace references (manifest.ts)
+//   dist/bin/main.js  src/main.ts with every @demoflow/* package bundled in
+//   fonts/            the renderer's Inter files and their licence
+//   README.md, LICENSE
+//
+// The bundle sits two directories deep on purpose: the renderer reads its fonts
+// from `new URL('../../fonts/…', import.meta.url)`, written for its own
+// src/ffmpeg/font.ts. Bundled, that URL is the bundle's, so `../../fonts` is
+// the package root's fonts/. The build fails if that reference changes.
+
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { isBuiltin } from 'node:module';
+import path from 'node:path';
+import { build, type Plugin } from 'esbuild';
+import {
+  BIN,
+  type Manifest,
+  publishManifest,
+  WORKSPACE_SCOPE,
+} from './manifest.ts';
+
+const CLI = path.resolve(import.meta.dirname, '..');
+const ROOT = path.resolve(CLI, '../..');
+const OUT = path.join(CLI, 'dist', 'npm');
+const FONTS = path.join(ROOT, 'packages', 'renderer', 'fonts');
+const FONT_REFERENCE = '../../fonts/';
+
+async function readManifest(dir: string): Promise<Manifest> {
+  return JSON.parse(
+    await readFile(path.join(dir, 'package.json'), 'utf8'),
+  ) as Manifest;
+}
+
+async function workspaceManifests(): Promise<Map<string, Manifest>> {
+  const manifests = new Map<string, Manifest>();
+  for (const entry of await readdir(path.join(ROOT, 'packages'))) {
+    const manifest = await readManifest(path.join(ROOT, 'packages', entry));
+    if (manifest.name !== undefined) manifests.set(manifest.name, manifest);
+  }
+  return manifests;
+}
+
+/** The package a bare import names: `a/b/c` → `a`, `@s/a/b` → `@s/a`. */
+function packageName(specifier: string): string {
+  const parts = specifier.split('/');
+  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+}
+
+/**
+ * Bundles the workspace and leaves every published dependency external. An
+ * import of anything else is an error, not a silent inline: it would be a
+ * dependency the manifest does not declare.
+ */
+function externals(dependencies: Record<string, string>): Plugin {
+  return {
+    name: 'demoflow-externals',
+    setup(build) {
+      build.onResolve({ filter: /^[^./]/ }, (args) => {
+        // `D:\…` passes the filter on Windows: only bare imports are packages.
+        if (args.kind === 'entry-point' || path.isAbsolute(args.path)) {
+          return undefined;
+        }
+        if (isBuiltin(args.path)) return { path: args.path, external: true };
+        const name = packageName(args.path);
+        if (name.startsWith(WORKSPACE_SCOPE)) return undefined;
+        if (name in dependencies) return { path: args.path, external: true };
+        return {
+          errors: [
+            {
+              text: `${args.path} (imported by ${path.relative(ROOT, args.importer)}) is not a runtime dependency of the published package`,
+            },
+          ],
+        };
+      });
+    },
+  };
+}
+
+const cli = await readManifest(CLI);
+const manifest = publishManifest(cli, await workspaceManifests());
+const dependencies = manifest.dependencies as Record<string, string>;
+
+await rm(OUT, { recursive: true, force: true });
+await mkdir(OUT, { recursive: true });
+
+const bundle = path.join(OUT, BIN);
+await build({
+  entryPoints: [path.join(CLI, 'src', 'main.ts')],
+  outfile: bundle,
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: 'node20',
+  plugins: [externals(dependencies)],
+  logLevel: 'warning',
+});
+
+if (!(await readFile(bundle, 'utf8')).includes(FONT_REFERENCE)) {
+  throw new Error(
+    `the bundle no longer reads its fonts from ${FONT_REFERENCE}: update scripts/stage.ts to where the renderer looks now`,
+  );
+}
+await cp(FONTS, path.join(OUT, 'fonts'), { recursive: true });
+const fonts = await readdir(path.join(OUT, 'fonts'));
+if (!fonts.includes('OFL.txt') || !fonts.some((f) => f.endsWith('.ttf'))) {
+  throw new Error(`${FONTS} lacks its .ttf files or OFL.txt`);
+}
+
+await cp(path.join(CLI, 'README.md'), path.join(OUT, 'README.md'));
+await cp(path.join(ROOT, 'LICENSE'), path.join(OUT, 'LICENSE'));
+await writeFile(
+  path.join(OUT, 'package.json'),
+  `${JSON.stringify(manifest, null, 2)}\n`,
+);
+console.log(
+  `staged ${manifest.name}@${manifest.version} in ${path.relative(CLI, OUT)}`,
+);

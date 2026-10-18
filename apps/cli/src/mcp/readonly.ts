@@ -153,7 +153,6 @@ function ffmpegAvailability(): ProjectCheck['ffmpeg'] {
 
 async function browserAvailability(): Promise<ProjectCheck['browser']> {
   try {
-    // #75 makes `playwright` a dependency of apps/cli; until then it resolves through the engine's.
     const { chromium } = await import('playwright');
     return existsSync(chromium.executablePath()) ? 'installed' : 'missing';
   } catch {

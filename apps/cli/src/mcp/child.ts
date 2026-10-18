@@ -1,8 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-
-/** The CLI's own entry point, next to this module once built (`dist/main.js`). */
-export const CLI_ENTRY = fileURLToPath(new URL('../main.js', import.meta.url));
+import { CLI_ENTRY } from '../entry.ts';
 
 /** How long a run gets to close its browser after SIGTERM before SIGKILL. */
 const KILL_GRACE_MS = 5_000;

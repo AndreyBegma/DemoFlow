@@ -63,16 +63,35 @@ and tags it. The first version is `0.1.0`.
 5. **Bundle internal packages, keep third-party ones external** — ADR-0001;
    the bundler is the slot's choice (esbuild or tsup, pinned exactly), stated
    with its reason in the PR. — orchestrator.
+6. **The 3-OS tarball smoke test is a new workflow,
+   `.github/workflows/package-smoke.yml`** (pull requests and pushes to
+   `develop`), not a job in `execution-plane.yml`, which another slot held at
+   the time. — orchestrator decision.
+7. **`playwright` is an explicit dependency of `apps/cli`**, pinned to the
+   engine's version: `check_project` (#69) and the Chromium first-use install
+   import it, and must not rely on hoisting. — orchestrator decision.
+8. **What is packed and published is the staged `apps/cli/dist/npm`.** The CLI's
+   build bundles the workspace into it with a generated `package.json`;
+   `apps/cli/package.json` keeps its `workspace:*` references and stays
+   `private`. The smoke test packs that directory and `release.yml` publishes
+   that same directory. Acceptance criterion 1 reads "`npm pack` of
+   `apps/cli/dist/npm`". — orchestrator decision.
+9. **`demoflow mcp` downloads nothing at startup.** It says on stderr when
+   Chromium is missing; the first `generate_demo` installs it through its
+   `demoflow run` child (inside the task's timeout; tasks run one at a time),
+   and the tool's description says the first run may download the browser.
+   `check_project` reports `browser: missing` until then. — orchestrator
+   decision.
 
 ## Acceptance criteria
 
-- [ ] `npm pack` in `apps/cli` produces a tarball with no `workspace:` or
-      `@demoflow/*` references in its `package.json`, containing the fonts and
-      their licence.
+- [ ] `npm pack` of the staged `apps/cli/dist/npm` (Decision 8) produces a
+      tarball with no `workspace:` or `@demoflow/*` references in its
+      `package.json`, containing the fonts and their licence.
 - [ ] Installing that tarball in an empty directory and running
       `demoflow --version`, `demoflow validate <fixture>` and an MCP
       `tools/list` against `demoflow mcp` succeeds — on Linux, macOS and Windows
-      (the `execution-plane` workflow gains this smoke job).
+      (`package-smoke.yml`, Decision 6).
 - [ ] On a machine without Chromium, `demoflow run` installs it with progress
       output and then runs; `demoflow setup` does the same on its own (test
       with an empty `PLAYWRIGHT_BROWSERS_PATH`).
@@ -87,7 +106,7 @@ and tags it. The first version is `0.1.0`.
 
 | Slot | Owns | Touches | Depends on | Lead | Model |
 |---|---|---|---|---|---|
-| i75 | packaging, first-use Chromium, release workflow, docs | apps/cli/**, .woodpecker/release.yml, .github/workflows/execution-plane.yml, deploy/README.md, package.json, bun.lock | #68, #69 | yes | opus |
+| i75 | packaging, first-use Chromium, release workflow, docs | apps/cli/**, .woodpecker/release.yml, .github/workflows/package-smoke.yml (Decision 6), scripts/release/**, deploy/README.md, package.json, bun.lock | #68, #69 | yes | opus |
 
 One slot. `opus`: bundling the workspace with assets and a cross-OS smoke test
 have no precedent in the repository.
