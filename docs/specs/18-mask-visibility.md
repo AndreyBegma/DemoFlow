@@ -60,7 +60,7 @@ renderer end (and resume) the mask from them. Surfaced by the renderer spike
    *k*'s `endMs` and a new one, with the box measured after *k*, starts at
    *k*'s `startMs`. The two overlap for that step and the renderer masks both
    boxes. Same-document navigations (`pushState`) count as navigations. —
-   amended in #PR, orchestrator decision (the earlier wording made these two
+   amended in #43, orchestrator decision (the earlier wording made these two
    intervals overlap, which the refinements below rejected).
 4. **Intervals, not one end.** A field that comes back (a form error, a back
    navigation, the same locator on another page) gets a new interval and the
@@ -101,7 +101,7 @@ maskVisibility: z
 Refinements: `maskVisibility` only where `masked === true`; every interval
 has `endMs >= startMs`; intervals are ordered by `startMs`; an interval may
 start before the previous one's `endMs` only if the previous one is closed
-(Decision 3, amended in #PR); only the last may be open. The first interval
+(Decision 3, amended in #43); only the last may be open. The first interval
 starts at the fill event's `startMs` with the fill's target box. A masked
 `fill` whose box could not be measured carries no `maskVisibility`.
 
@@ -120,10 +120,10 @@ starts at the fill event's `startMs` with the fill's target box. A masked
 - [ ] A step that navigates to a page showing the same masked field yields
       two overlapping intervals: the old one ends at that step's `endMs`, the
       new one starts at its `startMs` with the new page's box (engine test;
-      amended in #PR).
+      amended in #43).
 - [ ] `TimelineSchema` rejects `maskVisibility` on a non-masked event,
       unordered intervals, an interval overlapping an open one, and an open
-      interval that is not the last (core tests; amended in #PR).
+      interval that is not the last (core tests; amended in #43).
 - [ ] A timeline without `maskVisibility` still validates and renders exactly
       as before (renderer test on an existing timeline fixture).
 - [ ] With `maskVisibility`, `buildRenderPlan` emits one mask span per
