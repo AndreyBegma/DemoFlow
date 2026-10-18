@@ -11,9 +11,15 @@ import {
   TimelineSchema,
 } from '@demoflow/core';
 import { resolveBackground } from './background.ts';
+import { placeCards, shiftOverlays } from './cards.ts';
 import { probeVideo } from './ffmpeg.ts';
 import { findSyncClear, syncOffset } from './sync-mark.ts';
-import { buildTimeMap, idleStretches, toOutputMs } from './time-map.ts';
+import {
+  buildTimeMap,
+  idleStretches,
+  insertCards,
+  toOutputMs,
+} from './time-map.ts';
 import type {
   CameraKeyframe,
   Caption,
@@ -211,11 +217,42 @@ export function planRender(
       endMs: toSource(event.endMs),
     }));
   const idle = idleStretches(source.freezes, active, thresholdMs, sourceEndMs);
-  const timeMap = buildTimeMap(idle, sourceEndMs, compressToMs, startMs);
+  // Page time: the map before cards. Overlays are planned in it, then moved
+  // past the cards, so no lead or trail is ever measured across a card.
+  const pageMap = buildTimeMap(idle, sourceEndMs, compressToMs, startMs);
   const out = (timelineMs: number): number =>
-    toOutputMs(timeMap, toSource(timelineMs));
+    toOutputMs(pageMap, toSource(timelineMs));
+  const pageEndMs = pageMap.at(-1)?.outputEndMs ?? 0;
+
+  const cards = placeCards({
+    ...(options.cards === undefined ? {} : { config: options.cards }),
+    events,
+    out,
+    pageEndMs,
+    scenarioName: result.scenarioName,
+    ...(options.scenario?.description === undefined
+      ? {}
+      : { description: options.scenario.description }),
+    failed: failure !== undefined,
+  });
+  const overlays = shiftOverlays(
+    {
+      cursor: cursorMoves(events, out),
+      clicks: clickRings(events, out),
+      camera: cameraKeyframes(events, out, viewport, maxZoom),
+      masks: maskSpans(events, out, viewport, pageEndMs, {
+        leadMs: maskLeadMs,
+        trailMs: maskTrailMs,
+      }),
+      captions: captions(events, out, pageEndMs),
+      keys: keyBadges(events, out, pageEndMs, viewport),
+    },
+    cards,
+  );
+  const timeMap = insertCards(pageMap, cards);
   const videoEndMs = timeMap.at(-1)?.outputEndMs ?? 0;
 
+  // No outro on a failed run (Decision 4): the end card follows the page.
   const failureSpec =
     failure === undefined
       ? undefined
@@ -246,15 +283,11 @@ export function planRender(
     maskTrailMs,
     durationMs: videoEndMs + (failureSpec?.endCard.durationMs ?? 0),
     timeMap,
-    cursor: cursorMoves(events, out),
-    clicks: clickRings(events, out),
-    camera: cameraKeyframes(events, out, viewport, maxZoom),
-    masks: maskSpans(events, out, viewport, videoEndMs, {
-      leadMs: maskLeadMs,
-      trailMs: maskTrailMs,
-    }),
-    captions: captions(events, out, videoEndMs),
-    keys: keyBadges(events, out, videoEndMs, viewport),
+    cards: cards.map(({ atMs: _, ...card }) => card),
+    cardBackground:
+      frame?.background ??
+      resolveBackground(options.background ?? { preset: 'ocean' }),
+    ...overlays,
     ...(failureSpec === undefined ? {} : { failure: failureSpec }),
   };
 }

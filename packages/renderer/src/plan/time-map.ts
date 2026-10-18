@@ -90,18 +90,102 @@ export function buildTimeMap(
   return segments;
 }
 
-/** Source ms → output ms, clamped to the map. */
+/** A card at page time `atMs`: output time of the map without cards. */
+export interface CardSlot {
+  atMs: number;
+  durationMs: number;
+}
+
+/**
+ * Inserts each card into `map`, a map without cards (spec 108, Decision 1):
+ * the page is cut at the card's `atMs`, the card plays for its duration on
+ * the frame there — a segment with no source span — and the page resumes on
+ * the same frame. `cards` are in page order; one past the end goes after it.
+ */
+export function insertCards(
+  map: readonly TimeSegment[],
+  cards: readonly CardSlot[],
+): TimeSegment[] {
+  const out: TimeSegment[] = [];
+  let shift = 0;
+  let next = 0;
+  const card = (atMs: number, sourceMs: number): void => {
+    const { durationMs } = cards[next++];
+    out.push({
+      outputStartMs: atMs + shift,
+      outputEndMs: atMs + shift + durationMs,
+      sourceStartMs: sourceMs,
+      sourceEndMs: sourceMs,
+    });
+    shift += durationMs;
+  };
+  for (const segment of map) {
+    let piece = segment;
+    while (next < cards.length && cards[next].atMs < piece.outputEndMs) {
+      const atMs = Math.max(cards[next].atMs, piece.outputStartMs);
+      if (atMs > piece.outputStartMs) {
+        const sourceMs = lerp(
+          atMs,
+          piece.outputStartMs,
+          piece.outputEndMs,
+          piece.sourceStartMs,
+          piece.sourceEndMs,
+        );
+        out.push({
+          outputStartMs: piece.outputStartMs + shift,
+          outputEndMs: atMs + shift,
+          sourceStartMs: piece.sourceStartMs,
+          sourceEndMs: sourceMs,
+        });
+        piece = { ...piece, outputStartMs: atMs, sourceStartMs: sourceMs };
+      }
+      card(atMs, piece.sourceStartMs);
+    }
+    out.push({
+      ...piece,
+      outputStartMs: piece.outputStartMs + shift,
+      outputEndMs: piece.outputEndMs + shift,
+    });
+  }
+  const last = map.at(-1);
+  while (next < cards.length) {
+    card(last?.outputEndMs ?? 0, last?.sourceEndMs ?? 0);
+  }
+  return out;
+}
+
+/**
+ * Page ms → output ms once `cards` are inserted: later by every card before
+ * it. An instant on a card's cut lands just after the card; the `end` of a
+ * half-open span there lands just before it, since the span is already over.
+ */
+export function shiftPastCards(
+  cards: readonly CardSlot[],
+  pageMs: number,
+  { end = false }: { end?: boolean } = {},
+): number {
+  let shifted = pageMs;
+  for (const card of cards) {
+    if (end ? card.atMs < pageMs : card.atMs <= pageMs) {
+      shifted += card.durationMs;
+    }
+  }
+  return shifted;
+}
+
+/** Source ms → output ms, clamped to the map; a cut with a card on it maps past the card. */
 export function toOutputMs(
   map: readonly TimeSegment[],
   sourceMs: number,
 ): number {
-  const first = map[0];
-  const last = map.at(-1);
+  const page = map.filter((s) => s.sourceEndMs > s.sourceStartMs);
+  const first = page[0] ?? map[0];
+  const last = page.at(-1) ?? map.at(-1);
   if (first === undefined || last === undefined) return 0;
   if (sourceMs <= first.sourceStartMs) return first.outputStartMs;
   if (sourceMs >= last.sourceEndMs) return last.outputEndMs;
   const segment =
-    map.find((s) => sourceMs >= s.sourceStartMs && sourceMs < s.sourceEndMs) ??
+    page.find((s) => sourceMs >= s.sourceStartMs && sourceMs < s.sourceEndMs) ??
     last;
   return lerp(
     sourceMs,
