@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { RunResultSchema, type TimelineEvent } from '@demoflow/core';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LOOK } from '../../src/ffmpeg/compose.ts';
 import { wrapText } from '../../src/ffmpeg/font.ts';
 import { drawPlan } from '../../src/ffmpeg/pipeline.ts';
@@ -18,9 +18,7 @@ import {
   toOutputMs,
 } from '../../src/index.ts';
 import { hasFfmpeg, recordFixtureRun } from '../plan/fixture-runs.ts';
-
-// A Windows CI runner records and renders the customers run in 108 s of the default 120.
-vi.setConfig({ testTimeout: 240_000 });
+import { countFrames, sampleFrames } from './sample-frames.ts';
 
 if (!hasFfmpeg) {
   console.warn('no usable FFmpeg: skipping the FFmpeg compositor tests');
@@ -222,20 +220,18 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
       );
     const from = toFrame(password.startMs);
     // A slow runner can deliver a video that ends before the timeline does
-    // (the same run measures shorter than its events); only frames the render
-    // has can be checked.
-    const to = Math.min(toFrame(navigation.endMs), frameCount(plan));
+    // (the same run measures shorter than its events); only frames the
+    // rendered file has can be checked.
+    const maskedFile = renderPath(runDir, 'ffmpeg');
+    const to = Math.min(
+      toFrame(navigation.endMs),
+      await countFrames(maskedFile),
+    );
     // A frame every 500 ms (15 at 30 fps), and the last one before the navigation.
-    const numbers: number[] = [];
-    for (let n = from; n < to; n += plan.output.fps / 2) numbers.push(n);
-    numbers.push(to - 1);
+    const numbers = sampleFrames(from, to, plan.output.fps / 2);
     expect(numbers.length).toBeGreaterThan(2);
 
-    const masked = await extractFrames(
-      renderPath(runDir, 'ffmpeg'),
-      numbers,
-      plan,
-    );
+    const masked = await extractFrames(maskedFile, numbers, plan);
     const unmasked = await extractFrames(unmaskedFile, numbers, plan);
     const { width } = plan.output;
     numbers.forEach((n, i) => {
