@@ -20,6 +20,7 @@ import {
   osDataDir,
   runDir as runDirFor,
 } from '../config/index.ts';
+import { packageVersion } from '../version.ts';
 import { ToolError } from './errors.ts';
 import {
   checkInlineScenario,
@@ -129,7 +130,7 @@ const TOOLS: Tool[] = [
   {
     name: 'generate_demo',
     description:
-      'Queue a demo video run of a DemoFlow scenario in a local project. Returns a task ID at once; poll it with get_task. Runs execute one at a time.',
+      'Queue a demo video run of a DemoFlow scenario in a local project. Returns a task ID at once; poll it with get_task. Runs execute one at a time. The first run on a machine may download the browser (~250 MB) and take longer.',
     inputSchema: inputSchema(GenerateDemoInput),
   },
   {
@@ -179,7 +180,7 @@ export function createMcpServer(deps: McpServerDeps): Server {
   const homes = new Set<string>();
 
   const server = new Server(
-    { name: 'demoflow', version: '0.0.1' },
+    { name: 'demoflow', version: packageVersion() },
     { capabilities: { tools: {} } },
   );
 

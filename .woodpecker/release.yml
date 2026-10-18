@@ -1,0 +1,170 @@
+# Publishes `demoflow` to npm (spec #75) — luna-player's release workflow,
+# adapted to the monorepo.
+#
+# What is published is apps/cli/dist/npm: the package the CLI's build stages
+# (apps/cli/scripts/stage.ts) with the @demoflow/* workspace packages bundled
+# in and a generated package.json. The smoke step packs and installs exactly
+# that directory, and the publish step publishes exactly that directory.
+#
+# A push to main (the merge of the develop → main release pull request)
+# publishes the version in apps/cli/package.json when it is not on npm yet,
+# then pushes the tag vX.Y.Z. A push without a version bump publishes nothing
+# and passes. A push to a maint/* branch does the same on a maint dist-tag.
+#
+# Pushing the tag vX.Y.Z still works: it checks that X.Y.Z is the version in
+# apps/cli/package.json, builds, smoke-tests the packed tarball and publishes
+# if npm does not have it yet — which is also what the tag this pipeline pushes
+# itself finds. deploy/README.md, "Releasing demoflow", has the procedure.
+#
+# A manual run is a dry run: the same steps, ending in `npm publish --dry-run`.
+# It starts only when the message given to the manual run contains
+# [demoflow-release], so a plain manual run does not publish-rehearse by
+# accident. The gate reads the message, not a variable: Woodpecker passes the
+# variables of a manual run to the steps only, never to a workflow's `when`.
+#
+# Pull requests and pushes to develop never run this workflow. npm_token is
+# restricted to manual, push and tag events; without it a push says so and
+# passes. Creating the tag needs github_token (push only) and is skipped
+# without it. Provenance is not attached: npm accepts provenance only from
+# GitHub Actions and GitLab CI, not from Woodpecker.
+#
+# The tests that need Chromium (the execution-plane suites, the GitHub
+# package-smoke run on three OSes) ran on the release pull request; this
+# image has no browser libraries, so the smoke here is the browser-less part.
+
+when:
+  - event: push
+    branch: [main, maint/*]
+  - event: tag
+    ref: refs/tags/v*
+  - event: manual
+    evaluate: 'CI_COMMIT_MESSAGE contains "[demoflow-release]"'
+
+variables:
+  - &node_image node:24
+  - &setup npm install --global --no-fund --no-audit bun@1.4.0
+  - &package apps/cli/dist/npm
+
+steps:
+  - name: check-version
+    image: *node_image
+    when:
+      - event: tag
+    commands:
+      - version=$(node -p "require('./apps/cli/package.json').version")
+      - |
+        if [ "v$${version}" != "$${CI_COMMIT_TAG}" ]; then
+          echo "tag $${CI_COMMIT_TAG} does not match apps/cli/package.json version $${version}"
+          exit 1
+        fi
+
+  - name: install
+    image: *node_image
+    commands:
+      - *setup
+      - bun install --frozen-lockfile
+
+  - name: check
+    image: *node_image
+    commands:
+      - *setup
+      - bun run check
+      - bun run test:release
+
+  # The CLI and what it bundles; no Prisma, apps/api or apps/web.
+  - name: build
+    image: *node_image
+    commands:
+      - *setup
+      - bun run build --filter=demoflow
+
+  - name: smoke
+    image: *node_image
+    commands:
+      - node apps/cli/scripts/smoke.mjs
+
+  # --ignore-scripts: publish the package `smoke` just tested; it has no
+  # scripts anyway.
+  - name: publish
+    image: *node_image
+    environment:
+      NPM_TOKEN:
+        from_secret: npm_token
+      PACKAGE: *package
+    commands:
+      # npm_token is empty when the secret is not available to this event. On a
+      # push that is a configuration gap, not a broken build: say so and pass.
+      - |
+        if [ "$${CI_PIPELINE_EVENT}" = push ] && [ -z "$${NPM_TOKEN}" ]; then
+          echo "npm_token is not available to push events; add the push event to the secret"
+          exit 0
+        fi
+      - npm config set //registry.npmjs.org/:_authToken "$${NPM_TOKEN}"
+      - name=$(node -p "require('./$${PACKAGE}/package.json').name")
+      - version=$(node -p "require('./$${PACKAGE}/package.json').version")
+      # A version already on the registry is not an error, so a push without a
+      # version bump, or a re-run of a tag that published, passes instead of
+      # failing on the duplicate.
+      - published=no
+      - if npm view "$${name}@$${version}" version >/dev/null 2>&1; then published=yes; fi
+      - latest=$(npm view "$${name}" dist-tags.latest 2>/dev/null || true)
+      - branch=""
+      - if [ "$${CI_PIPELINE_EVENT}" = push ]; then branch="$${CI_COMMIT_BRANCH}"; fi
+      - sh scripts/release/decide.sh "$${version}" "$${published}" "$${latest}" "$${branch}" > /tmp/decision
+      - cat /tmp/decision
+      - . /tmp/decision
+      - |
+        if [ "$${CI_PIPELINE_EVENT}" = manual ]; then
+          npm publish "$${PACKAGE}" --dry-run --ignore-scripts --access public --tag "$${npm_tag}"
+          exit 0
+        fi
+      # publish.sh treats the registry's 409 ("cannot publish over") as
+      # published: `npm view` above can lag a publish by seconds.
+      - |
+        if [ "$${publish}" = yes ]; then
+          sh scripts/release/publish.sh "$${PACKAGE}" "$${npm_tag}"
+        else
+          echo "$${name}@$${version} is already published"
+        fi
+      # What this step decided, for `tag`. Written only after the publish
+      # succeeded, and read from the shared workspace: `tag` runs right after
+      # and the registry can still answer "not found" for a fresh version.
+      - mkdir -p .release
+      - printf 'publish=%s\nversion=%s\n' "$${publish}" "$${version}" > .release/decision
+
+  # Pushes the tag v<version> for a version the publish step published (or found
+  # already published) and that has no tag yet. It decides from
+  # .release/decision, never from `npm view`. Needs github_token: a token with
+  # contents:write on this repository, restricted to the push event. Without it
+  # the step says so and passes. The tag it pushes starts the tag pipeline,
+  # which finds the version on npm and publishes nothing (or gets a 409 that
+  # publish.sh passes).
+  - name: tag
+    image: *node_image
+    when:
+      - event: push
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - |
+        if [ -z "$${GITHUB_TOKEN}" ]; then
+          echo "github_token is not available to push events; the tag is not created"
+          exit 0
+        fi
+      - |
+        if [ ! -f .release/decision ]; then
+          echo "the publish step recorded no decision; no tag"
+          exit 0
+        fi
+      - . .release/decision
+      - remote="https://x-access-token:$${GITHUB_TOKEN}@github.com/$${CI_REPO}.git"
+      - tag_exists=no
+      - if git ls-remote --exit-code --tags "$${remote}" "refs/tags/v$${version}" >/dev/null 2>&1; then tag_exists=yes; fi
+      - |
+        if [ "$(sh scripts/release/should-tag.sh .release/decision "$${tag_exists}")" != tag=yes ]; then
+          echo "v$${version}: nothing to tag (no version bump, or the tag exists)"
+          exit 0
+        fi
+      - git tag "v$${version}"
+      - git push "$${remote}" "refs/tags/v$${version}"
