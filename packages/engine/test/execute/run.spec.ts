@@ -280,6 +280,10 @@ describe('failures', () => {
     const outcome = await runScenario(
       scenario([
         { action: 'navigate', path: '/customers' },
+        // The assertion's short timeout also bounds its wait for the heading;
+        // on a slow runner (2560×1440 recording on macOS) that wait alone
+        // exceeded 500 ms, so the page is waited for with the default timeout.
+        { action: 'waitFor', target: { role: 'heading', name: 'Customers' } },
         {
           action: 'assertText',
           target: { role: 'heading', name: 'Customers' },
@@ -300,16 +304,16 @@ describe('failures', () => {
     expect(outcome.stages.verification).toMatchObject({
       status: 'failed',
       error: {
-        stepIndex: 1,
+        stepIndex: 2,
         message:
           'expected {"role":"heading","name":"Customers"} to contain "Invoices", got "Customers"',
       },
     });
     expect(outcome.stages.recording.status).toBe('passed');
     expect(outcome.status).toBe('failed');
-    expect(outcome.events.map((event) => event.stepIndex)).toEqual([0, 1]);
-    expect(outcome.events[1].assertion?.passed).toBe(false);
-    expect(observer.calls).not.toContain('stepStarted 2');
+    expect(outcome.events.map((event) => event.stepIndex)).toEqual([0, 1, 2]);
+    expect(outcome.events[2].assertion?.passed).toBe(false);
+    expect(observer.calls).not.toContain('stepStarted 3');
     expect((await stat(outcome.videoPath as string)).size).toBeGreaterThan(0);
   });
 
