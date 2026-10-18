@@ -10,7 +10,10 @@ interface FakeChild extends RunChild {
   exit(code: number, result?: RunResult['status']): void;
 }
 
-function harness() {
+function harness(
+  options: { removeFile?: (file: string) => Promise<void> } = {},
+) {
+  const logged: string[] = [];
   const children: FakeChild[] = [];
   const results = new Map<string, RunResult['status']>();
   const removed: string[] = [];
@@ -56,8 +59,10 @@ function harness() {
       return { status, renders: [], stages: {} } as unknown as RunResult;
     },
     removeFile: async (file) => {
+      await options.removeFile?.(file);
       removed.push(file);
     },
+    log: (line) => logged.push(line),
   });
   const spec = (taskId: string, extra: Partial<TaskSpec> = {}): TaskSpec => ({
     taskId,
@@ -71,6 +76,7 @@ function harness() {
     queue,
     children,
     removed,
+    logged,
     spec,
     maxRunning: () => maxRunning,
   };
@@ -185,6 +191,40 @@ describe('TaskQueue', () => {
     setTimeout(() => h.children[0]?.exit(0, 'completed'), 10);
     await h.queue.wait('t1', 5_000);
     expect(task.status).toBe('completed');
+  });
+
+  it('stays running until the staged file is removed, then completes', async () => {
+    const h = harness({
+      removeFile: () => new Promise((resolve) => setTimeout(resolve, 200)),
+    });
+    const task = h.queue.submit(
+      h.spec('t1', { staged: '/home/mcp/t1.demo.json' }),
+    );
+    h.children[0]?.exit(0, 'completed');
+    await tick();
+    await tick();
+    expect(task.status).toBe('running');
+    expect(h.removed).toEqual([]);
+    await h.queue.wait('t1', 5_000);
+    expect(task.status).toBe('completed');
+    expect(h.removed).toEqual(['/home/mcp/t1.demo.json']);
+  });
+
+  it('a failed removal logs one line and the task still completes', async () => {
+    const h = harness({
+      removeFile: async () => {
+        throw new Error('EBUSY');
+      },
+    });
+    const task = h.queue.submit(
+      h.spec('t1', { staged: '/home/mcp/t1.demo.json' }),
+    );
+    h.children[0]?.exit(0, 'completed');
+    await h.queue.wait('t1', 5_000);
+    expect(task.status).toBe('completed');
+    expect(
+      h.logged.filter((line) => line.includes('could not remove')),
+    ).toEqual(['task t1 could not remove /home/mcp/t1.demo.json: EBUSY']);
   });
 
   it('close kills the running child, cancels the queue, removes staged files', async () => {

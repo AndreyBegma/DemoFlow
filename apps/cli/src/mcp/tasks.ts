@@ -72,7 +72,7 @@ export class TaskQueue {
     const task: Task = { spec, status: 'queued' };
     this.tasks.set(spec.taskId, task);
     if (this.closed) {
-      this.end(task, 'cancelled');
+      void this.end(task, 'cancelled');
       return task;
     }
     this.queue.push(task);
@@ -117,7 +117,7 @@ export class TaskQueue {
     if (task === undefined) return undefined;
     if (task.status === 'queued') {
       this.queue.splice(this.queue.indexOf(task), 1);
-      this.end(task, 'cancelled');
+      await this.end(task, 'cancelled');
     } else if (this.running?.task === task) {
       await this.stop(this.running, 'cancelled');
     }
@@ -127,7 +127,9 @@ export class TaskQueue {
   /** Shutdown: nothing new starts, the queue is cancelled, the child is killed. */
   async close(): Promise<void> {
     this.closed = true;
-    for (const task of this.queue.splice(0)) this.end(task, 'cancelled');
+    await Promise.all(
+      this.queue.splice(0).map((task) => this.end(task, 'cancelled')),
+    );
     if (this.running !== undefined) await this.stop(this.running, 'cancelled');
   }
 
@@ -194,17 +196,30 @@ export class TaskQueue {
         task.message = failureMessage(exit);
       }
     }
+    await this.end(task, status);
     this.running = undefined;
-    this.end(task, status);
     this.pump();
   }
 
-  private end(task: Task, status: TaskStatus): void {
+  /**
+   * The terminal status is set only after the staged scenario is gone, so a
+   * client that sees a finished task never finds its staging left behind
+   * (spec #92). A failed removal is logged and does not change the status.
+   */
+  private async end(task: Task, status: TaskStatus): Promise<void> {
+    const { staged } = task.spec;
+    if (staged !== undefined) {
+      try {
+        await this.deps.removeFile(staged);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.deps.log?.(
+          `task ${task.spec.taskId} could not remove ${staged}: ${reason}`,
+        );
+      }
+    }
     task.status = status;
     this.deps.log?.(`task ${task.spec.taskId} ${status}`);
-    if (task.spec.staged !== undefined) {
-      this.deps.removeFile(task.spec.staged).catch(() => undefined);
-    }
     for (const waiter of this.waiters.get(task.spec.taskId) ?? []) waiter();
     this.waiters.delete(task.spec.taskId);
   }
