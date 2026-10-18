@@ -92,17 +92,17 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     await rm(parent, { recursive: true, force: true });
   });
 
-  it('records the source at the viewport size (1×), so the zoom stays at 1.25', () => {
-    // Measured for spec 4's sharpness risk: `videoSize` is the viewport (#3).
+  it('records the source at device pixels (2×), so the zoom is 1.6', () => {
+    // `videoSize` is viewport × deviceScaleFactor (#17, ADR-0004 §1).
     expect(customersPlan.source).toMatchObject({
       file: 'source.webm',
-      width: 1280,
-      height: 720,
+      width: 2560,
+      height: 1440,
       fps: 25,
-      scale: 1,
+      scale: 2,
     });
     const zooms = customersPlan.camera.map((key) => key.zoom);
-    expect(Math.max(...zooms)).toBeCloseTo(1.25);
+    expect(Math.max(...zooms)).toBeCloseTo(1.6);
   });
 
   it('plans the customers run: cursor, rings, captions, no failure', () => {
