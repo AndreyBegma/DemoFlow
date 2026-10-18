@@ -31,6 +31,8 @@ import { type TaskView, taskView } from './view.ts';
 
 const DEFAULT_TIMEOUT_MINUTES = 15;
 const MINUTE_MS = 60_000;
+/** Headroom under the 60 s request timeout of MCP clients (the SDK's default). */
+const MAX_WAIT_SECONDS = 50;
 
 const GenerateDemoInput = z.strictObject({
   project: z
@@ -68,10 +70,10 @@ const GetTaskInput = z.strictObject({
   waitSeconds: z
     .number()
     .min(0)
-    .max(60)
+    .max(MAX_WAIT_SECONDS)
     .optional()
     .describe(
-      'Hold the reply until the task finishes or this many seconds pass (0–60, default 0).',
+      `Hold the reply until the task finishes or this many seconds pass (0–${MAX_WAIT_SECONDS}, default 0). Poll again to wait longer.`,
     ),
 });
 
@@ -88,8 +90,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'get_task',
-    description:
-      "A task's status, stage results and artifact paths (video, timeline, source, run directory). Can wait up to 60 s for it to finish.",
+    description: `A task's status, stage results and artifact paths (video, timeline, source, run directory). Can wait up to ${MAX_WAIT_SECONDS} s for it to finish.`,
     inputSchema: inputSchema(GetTaskInput),
   },
   {
@@ -202,7 +203,8 @@ export function createMcpServer(deps: McpServerDeps): Server {
     checkTaskId(input.taskId);
     const task = queue.get(input.taskId);
     if (task === undefined) return fromDisk(input.taskId);
-    await queue.wait(input.taskId, (input.waitSeconds ?? 0) * 1000);
+    const waitSeconds = Math.min(input.waitSeconds ?? 0, MAX_WAIT_SECONDS);
+    await queue.wait(input.taskId, waitSeconds * 1000);
     return taskView({
       taskId: input.taskId,
       status: task.status,

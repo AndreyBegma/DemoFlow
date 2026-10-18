@@ -101,10 +101,11 @@ async function untilDone(
   client: Client,
   taskId: string,
 ): Promise<Record<string, unknown>> {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  // Short polls, far under the client's 60 s request timeout.
+  for (let attempt = 0; attempt < 12; attempt += 1) {
     const { value } = await call(client, 'get_task', {
       taskId,
-      waitSeconds: 60,
+      waitSeconds: 20,
     });
     if (TERMINAL.includes(value.status as string)) return value;
   }
@@ -402,6 +403,16 @@ describe('demoflow mcp', () => {
       taskId: '../runs',
     });
     expect(traversal.value.code).toBe('task-not-found');
+
+    // Capped at 50 s: headroom under a 60 s client request timeout.
+    const tooLong = await call(server.client, 'get_task', {
+      taskId: '20200101-000000-nosuch',
+      waitSeconds: 51,
+    });
+    expect(tooLong.value.code).toBe('invalid-input');
+    expect((tooLong.value.issues as { path: string }[])[0]?.path).toBe(
+      'waitSeconds',
+    );
 
     const missing = await call(server.client, 'generate_demo', {
       project: path.join(tmpdir(), 'demoflow-no-such-project'),

@@ -10,7 +10,7 @@ Decisions: [ADR-0001](../adr/0001-control-plane-execution-plane-one-package.md) 
 Claude Code and other MCP clients can generate a demo today only by shelling
 out to `demoflow run`. This item adds `demoflow mcp`, a local stdio MCP server
 (vision §3.3) with three tools: start a demo (returns a task ID at once), read
-a task's status and result (optionally waiting up to 60 s), and cancel a task.
+a task's status and result (optionally waiting up to 50 s), and cancel a task.
 Runs execute one at a time in a child `demoflow run --json` process, so a
 browser or encoder failure never takes the server down, and finished tasks are
 read back from their run directories after a restart. No account and no
@@ -66,8 +66,10 @@ All by the owner in the #68 interview (2026-10-18) unless noted.
    run directory.* Starting the app, `baseUrl` and allowed origins come only
    from the project's `demoflow.config.json` (ADR-0008 §4) — the tool takes no
    command or URL.
-6. **`get_task` can wait**: optional `waitSeconds` (0–60, default 0) holds the
-   reply until the task reaches a terminal status or the wait ends.
+6. **`get_task` can wait**: optional `waitSeconds` (0–50, default 0) holds the
+   reply until the task reaches a terminal status or the wait ends; poll again
+   to wait longer. *Amended in #78, orchestrator decision: SDK/client request
+   timeouts are 60 s (was 0–60).*
 7. **Timeout**: 15 minutes per task by default; `generate_demo` accepts
    `timeoutMinutes` (1–60). On expiry the child is killed and the task is
    `timed_out`.
@@ -89,7 +91,8 @@ All by the owner in the #68 interview (2026-10-18) unless noted.
 - output: `{ taskId: string, status: 'queued' | 'running', position: number }`.
 
 `get_task`
-- input: `{ taskId: string, waitSeconds?: number }`.
+- input: `{ taskId: string, waitSeconds?: number }` — `waitSeconds` 0–50.
+  *Amended in #78, orchestrator decision: SDK/client request timeouts are 60 s.*
 - output: `{ taskId, status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out', stages?: Stages, failedStep?: { stepIndex, message }, artifacts?: { video?: string, timeline?: string, source?: string, runDir: string } }`
   — `stages` and `failedStep` from `result.json` (`RunResultSchema`); paths are
   absolute local paths (the client is the local OS user, ADR-0008 §1).
@@ -155,7 +158,7 @@ merges.
 
 - **Orphaned children** (high — #31 showed how they accumulate). Mitigation:
   kill on every shutdown path; an acceptance test.
-- **An agent waits forever** (medium). Mitigation: `waitSeconds` capped at 60;
+- **An agent waits forever** (medium). Mitigation: `waitSeconds` capped at 50;
   per-task timeout.
 - **Scenario injection** (medium): an inline scenario cannot run a command or
   reach a non-allowed origin — the engine's origin guard and ADR-0008 §4 apply
