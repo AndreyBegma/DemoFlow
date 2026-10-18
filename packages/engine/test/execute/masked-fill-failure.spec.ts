@@ -141,13 +141,17 @@ describe('a masked fill that fails', () => {
 });
 
 describe('a masked fill whose field is removed during typing', () => {
-  // Playwright sends the rest of the keys to the page and the step passes.
-  it('is masked from the fill on', async () => {
+  // The step's outcome differs by platform: on Linux Playwright sends the rest
+  // of the keys to the page and the step passes, on Windows it fails. Either
+  // way the event is masked.
+  it('is masked from the fill on, whether the step passes or fails', async ({
+    annotate,
+  }) => {
     const { outcome, files } = await run([
       { action: 'navigate', path: '/detach' },
       fillSecret,
     ]);
-    expect(outcome.stages.execution.status).toBe('passed');
+    await annotate(`execution ${outcome.stages.execution.status}`);
     const fill = outcome.events[1];
     expect(fill.masked).toBe(true);
     const box = fill.target?.box;
@@ -156,6 +160,7 @@ describe('a masked fill whose field is removed during typing', () => {
       startMs: fill.startMs,
       box,
     });
+    expectNoPartialSecret(JSON.stringify(outcome));
     expectNoPartialSecret(files);
   });
 });

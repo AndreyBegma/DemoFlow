@@ -47,8 +47,9 @@ whether the step succeeds or fails.
    failure messages from Playwright that echo typed text are scrubbed of the
    secret. — orchestrator.
 
-AC 1 amended in #54: on Playwright 1.64.1 a detached field does not fail the
-step (keys go to the body).
+AC 1 amended in #54: on Playwright 1.64.1 a detached field does not reliably
+fail the step (on Linux the keys go to the body and the step passes; on
+Windows it fails).
 
 ## Acceptance criteria
 
@@ -58,8 +59,9 @@ step (keys go to the body).
       no partial secret in `value`, the error message, `timeline.json` or
       `result.json`.
 - [ ] An engine test: a masked fill whose field is removed during typing (on an
-      inline page) yields `masked: true`, the field's box and a
-      `maskVisibility` interval starting at the fill.
+      inline page) yields `masked: true`, the field's box, a
+      `maskVisibility` interval starting at the fill and no partial secret,
+      whether the step passes or fails.
 - [ ] A masked fill whose field cannot be measured yields `masked: true` with
       no box; `buildRenderPlan` masks the full viewport from its start
       (renderer test).
