@@ -101,10 +101,17 @@ All four, in this order:
 
 ## Cross-cutting
 
-- **npm release**: Changesets. Pull requests carry a changeset and a bot keeps a
-  Version PR. Merging the Version PR publishes `demoflow` with npm provenance
-  and a generated changelog. The orchestrator merges it when CI is green — the
-  owner chose no person gate.
+- **npm release** — the luna-player pattern
+  (https://github.com/AndreyBegma/luna-player/blob/main/.woodpecker/release.yml),
+  not Changesets: a Woodpecker `release` workflow. A push to `main` (the merge
+  of the `develop` → `main` release pull request that bumps the version in
+  `apps/cli/package.json`) builds, smoke-tests the packed tarball and publishes
+  `demoflow` when that version is not on npm yet, then pushes the tag
+  `vX.Y.Z`. A manual run is a dry run. Secrets on the DemoFlow repository in
+  Woodpecker: `npm_token` (events push, tag, manual) and `github_token` (a
+  fine-grained token with contents:write on DemoFlow only, event push). The
+  person adds both. The orchestrator merges the release pull request when CI is
+  green, so publishing needs no person gate (owner's choice).
 - **Release branch flow**: when a phase is complete and staging is green, the
   orchestrator opens `develop` → `main` with the change list and merges it once
   CI is green (owner's choice).
