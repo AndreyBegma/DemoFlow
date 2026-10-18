@@ -41,5 +41,11 @@ decisions live in [../adr/](../adr/README.md).
 | [#68](https://github.com/AndreyBegma/DemoFlow/issues/68) | [Generate, poll and cancel a demo](68-mcp-generate-poll-cancel.md) | — |
 | [#69](https://github.com/AndreyBegma/DemoFlow/issues/69) | [Validate scenarios, list demos, check the project](69-mcp-read-only-tools.md) | #68 |
 
+## Before Phase 4 (roadmap)
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#73](https://github.com/AndreyBegma/DemoFlow/issues/73) | [Visual baselines](73-visual-baselines.md) | — |
+
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.
