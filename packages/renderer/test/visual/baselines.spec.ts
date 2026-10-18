@@ -5,7 +5,12 @@ import { baselinePath, failurePath } from './baselines.ts';
 import { comparePictures, type Tolerance } from './compare.ts';
 import { checkLayout } from './layout.ts';
 import { decodePng, encodePng } from './png.ts';
-import { renderScene, SCENES, syntheticSource } from './scenes.ts';
+import {
+  renderScene,
+  renderSwatches,
+  SCENES,
+  syntheticSource,
+} from './scenes.ts';
 
 /**
  * Set from measurement (spec 73, decision 3): just above the largest
@@ -16,30 +21,35 @@ const TOLERANCE: Tolerance = { pixel: 2, share: 0.0005 };
 
 const SOURCE = syntheticSource();
 
+/** Compares `actual` with the baseline `name`, writing the actual and diff images on a failure. */
+async function expectBaseline(name: string, actual: Picture): Promise<void> {
+  const expected = decodePng(await readFile(baselinePath(name)));
+  const result = comparePictures(actual, expected, TOLERANCE);
+  console.info(
+    `baseline ${name}: max delta ${result.maxDelta}, ` +
+      `${result.differing} px over ${TOLERANCE.pixel} ` +
+      `(${(result.share * 100).toFixed(4)} %, allowed ${TOLERANCE.share * 100} %)`,
+  );
+  if (!result.ok && result.diff !== undefined) {
+    await writeFile(failurePath(name, 'actual'), encodePng(actual));
+    await writeFile(failurePath(name, 'diff'), encodePng(result.diff));
+  }
+  expect(
+    result.ok,
+    `${name} differs from its baseline; see ${failurePath(name, 'diff')}`,
+  ).toBe(true);
+}
+
 describe('golden images of the compositor', () => {
   for (const scene of SCENES) {
     it(`draws the ${scene.name} as its baseline`, async () => {
-      const actual = renderScene(scene, SOURCE);
-      const expected = decodePng(await readFile(baselinePath(scene.name)));
-      const result = comparePictures(actual, expected, TOLERANCE);
-      console.info(
-        `baseline ${scene.name}: max delta ${result.maxDelta}, ` +
-          `${result.differing} px over ${TOLERANCE.pixel} ` +
-          `(${(result.share * 100).toFixed(4)} %, allowed ${TOLERANCE.share * 100} %)`,
-      );
-      if (!result.ok && result.diff !== undefined) {
-        await writeFile(failurePath(scene.name, 'actual'), encodePng(actual));
-        await writeFile(
-          failurePath(scene.name, 'diff'),
-          encodePng(result.diff),
-        );
-      }
-      expect(
-        result.ok,
-        `${scene.name} differs from its baseline; see ${failurePath(scene.name, 'diff')}`,
-      ).toBe(true);
+      await expectBaseline(scene.name, renderScene(scene, SOURCE));
     });
   }
+
+  it('draws every background — the presets, a colour, a gradient — as its baseline', async () => {
+    await expectBaseline('background-swatches', renderSwatches(SOURCE));
+  });
 
   it('fails on a one-pixel-wide change in the cursor colour, with a diff image', async () => {
     const scene = SCENES.find((s) => s.name === 'cursor');

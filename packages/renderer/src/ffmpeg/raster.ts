@@ -108,6 +108,128 @@ export function drawScaled(
   }
 }
 
+/**
+ * `drawScaled` with the corners of `content` rounded to `radius`: what was
+ * under each corner shows through outside the arc, anti-aliased. The
+ * straight edges are exactly `drawScaled`'s.
+ */
+export function drawScaledRounded(
+  target: Picture,
+  source: Picture,
+  crop: Box,
+  content: Box,
+  radius: number,
+): void {
+  const r = Math.min(radius, content.width / 2, content.height / 2);
+  if (r <= 0) {
+    drawScaled(target, source, crop, content);
+    return;
+  }
+  const reach = Math.ceil(r) + 1;
+  const left = content.x;
+  const top = content.y;
+  const right = content.x + content.width;
+  const bottom = content.y + content.height;
+  // Each corner: its square, and the centre of its arc.
+  const corners = [
+    { x: left, y: top, cx: left + r, cy: top + r },
+    { x: right - reach, y: top, cx: right - r, cy: top + r },
+    { x: left, y: bottom - reach, cx: left + r, cy: bottom - r },
+    { x: right - reach, y: bottom - reach, cx: right - r, cy: bottom - r },
+  ].map((corner) => {
+    const bounds = pixelBounds(target, {
+      ...corner,
+      width: reach,
+      height: reach,
+    });
+    return { ...corner, bounds, under: copyPixels(target, bounds) };
+  });
+  drawScaled(target, source, crop, content);
+  const dst = target.data;
+  for (const { cx, cy, bounds, under } of corners) {
+    const [x0, y0, x1, y1] = bounds;
+    let at = 0;
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++, at += 3) {
+        const px = x + 0.5;
+        const py = y + 0.5;
+        // Only beyond the arc's centre on both axes is the pixel in the corner.
+        const outward =
+          (cx < (left + right) / 2 ? px < cx : px > cx) &&
+          (cy < (top + bottom) / 2 ? py < cy : py > cy);
+        if (!outward) continue;
+        const cover = edge(r - Math.hypot(px - cx, py - cy));
+        if (cover >= 1) continue;
+        const index = (y * target.width + x) * 3;
+        for (let c = 0; c < 3; c++) {
+          dst[index + c] =
+            under[at + c] * (1 - cover) + dst[index + c] * cover + 0.5;
+        }
+      }
+    }
+  }
+}
+
+/** The pixels of `[x0, y0, x1, y1)`, row by row. */
+function copyPixels(
+  picture: Picture,
+  [x0, y0, x1, y1]: [number, number, number, number],
+): Uint8Array {
+  const width = Math.max(0, x1 - x0);
+  const out = new Uint8Array(width * Math.max(0, y1 - y0) * 3);
+  for (let y = y0; y < y1; y++) {
+    const from = (y * picture.width + x0) * 3;
+    out.set(
+      picture.data.subarray(from, from + width * 3),
+      (y - y0) * width * 3,
+    );
+  }
+  return out;
+}
+
+/** A 4×4 Bayer matrix, as offsets in (−0.5, 0.5): breaks the bands of a slow gradient. */
+const DITHER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(
+  (n) => (n + 0.5) / 16 - 0.5,
+);
+
+/**
+ * Fills `picture` with a linear gradient from `from` to `to`, `angle` in
+ * degrees as in CSS `linear-gradient` (0 runs towards the top, clockwise),
+ * ordered-dithered so it does not band.
+ */
+export function fillGradient(
+  picture: Picture,
+  from: Colour,
+  to: Colour,
+  angle: number,
+): void {
+  const { width, height, data } = picture;
+  const radians = (angle * Math.PI) / 180;
+  const dx = Math.sin(radians);
+  const dy = -Math.cos(radians);
+  // CSS: the gradient line is as long as the box's projection onto it.
+  const length = Math.abs(width * dx) + Math.abs(height * dy);
+  const channels = [
+    [from.r, to.r],
+    [from.g, to.g],
+    [from.b, to.b],
+  ];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const along =
+        ((x + 0.5 - width / 2) * dx + (y + 0.5 - height / 2) * dy) / length;
+      const t = Math.min(1, Math.max(0, along + 0.5));
+      const offset = DITHER[(y & 3) * 4 + (x & 3)];
+      const index = (y * width + x) * 3;
+      for (let c = 0; c < 3; c++) {
+        const [a, b] = channels[c];
+        const value = a + (b - a) * t + (a === b ? 0 : offset);
+        data[index + c] = Math.min(255, Math.max(0, Math.round(value)));
+      }
+    }
+  }
+}
+
 /** For each output pixel `[start, end)`, the two source pixels it mixes and the weight of the second. */
 function samples(
   start: number,

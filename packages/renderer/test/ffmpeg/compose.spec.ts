@@ -12,6 +12,9 @@ import { sourceFrameIndex } from '../../src/ffmpeg/pipeline.ts';
 import {
   createPicture,
   drawScaled,
+  drawScaledRounded,
+  fillGradient,
+  hex,
   type Mask,
   mergeMasks,
   type Picture,
@@ -118,6 +121,93 @@ describe('drawScaled', () => {
     // Source (640, 360) is a black square's corner; at 3× it fills output (0..12).
     expect(pixel(zoomed, 4, 4)).toEqual([0, 0, 0]);
     expect(pixel(zoomed, 16, 4)).toEqual([255, 255, 255]);
+  });
+});
+
+describe('drawScaledRounded', () => {
+  function rounded(radius: number): Picture {
+    const source = createPicture(1, 1);
+    source.data.set([255, 255, 255]);
+    const target = createPicture(40, 40);
+    target.data.fill(50);
+    drawScaledRounded(
+      target,
+      source,
+      { x: 0, y: 0, width: 1, height: 1 },
+      { x: 10, y: 10, width: 20, height: 20 },
+      radius,
+    );
+    return target;
+  }
+
+  it('leaves what was under each corner outside the arc, and draws the rest', () => {
+    const target = rounded(8);
+    for (const [x, y] of [
+      [10, 10],
+      [29, 10],
+      [10, 29],
+      [29, 29],
+    ]) {
+      expect(pixel(target, x, y), `corner (${x}, ${y})`).toEqual([50, 50, 50]);
+    }
+    // The straight edges and the middle are the source.
+    expect(pixel(target, 20, 10)).toEqual([255, 255, 255]);
+    expect(pixel(target, 10, 20)).toEqual([255, 255, 255]);
+    expect(pixel(target, 20, 20)).toEqual([255, 255, 255]);
+    // Outside the box: untouched.
+    expect(pixel(target, 9, 20)).toEqual([50, 50, 50]);
+    // On the arc: a mix.
+    const edge = pixel(target, 12, 12)[0];
+    expect(edge).toBeGreaterThan(50);
+    expect(edge).toBeLessThan(255);
+  });
+
+  it('is drawScaled at radius 0', () => {
+    expect(pixel(rounded(0), 10, 10)).toEqual([255, 255, 255]);
+  });
+});
+
+describe('fillGradient', () => {
+  it('runs from the first stop to the second along the CSS angle, dithered by at most one level', () => {
+    const picture = createPicture(256, 4);
+    fillGradient(picture, hex('#000000'), hex('#ffffff'), 90);
+    // 90° runs towards the right.
+    expect(pixel(picture, 0, 0)[0]).toBeLessThanOrEqual(1);
+    expect(pixel(picture, 255, 0)[0]).toBeGreaterThanOrEqual(254);
+    for (let x = 0; x < 256; x++) {
+      expect(Math.abs(pixel(picture, x, 1)[0] - x)).toBeLessThanOrEqual(1);
+    }
+    // 0° runs towards the top.
+    const tall = createPicture(4, 256);
+    fillGradient(tall, hex('#000000'), hex('#ffffff'), 0);
+    expect(pixel(tall, 0, 255)[0]).toBeLessThanOrEqual(1);
+    expect(pixel(tall, 0, 0)[0]).toBeGreaterThanOrEqual(254);
+  });
+
+  it('fills a solid colour exactly, without dither', () => {
+    const picture = createPicture(8, 8);
+    fillGradient(picture, hex('#3b3b98'), hex('#3b3b98'), 0);
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        expect(pixel(picture, x, y)).toEqual([0x3b, 0x3b, 0x98]);
+      }
+    }
+  });
+});
+
+describe('the framed compositor (spec 100)', () => {
+  it('refuses a framed state without the stage', () => {
+    expect(() =>
+      render(
+        state({
+          frame: {
+            view: { x: 0, y: 0, width: 1920, height: 1080 },
+            radius: 12,
+          },
+        }),
+        SOURCE,
+      ),
+    ).toThrow(/stage/);
   });
 });
 

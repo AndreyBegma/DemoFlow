@@ -1,6 +1,20 @@
-import { createCompositor } from '../../src/ffmpeg/compose.ts';
+import {
+  BACKGROUND_PRESETS,
+  type BackgroundConfig,
+  type RunResult,
+  type Stages,
+  type TimelineEvent,
+} from '@demoflow/core';
+import { createCompositor, renderStage } from '../../src/ffmpeg/compose.ts';
 import { createPicture, type Picture } from '../../src/ffmpeg/raster.ts';
-import type { FrameState, OutputSpec } from '../../src/index.ts';
+import {
+  type FrameState,
+  frameAt,
+  type OutputSpec,
+  planRender,
+  type RenderPlan,
+  type RenderPlanOptions,
+} from '../../src/index.ts';
 import { cropPicture } from './compare.ts';
 
 export const OUTPUT: OutputSpec = {
@@ -58,7 +72,83 @@ export interface Scene {
   name: string;
   frame: FrameState;
   region: { x: number; y: number; width: number; height: number };
+  /** The framed plan `frame` comes from: the compositor draws its stage. */
+  plan?: RenderPlan;
 }
+
+const PASSED_STAGES: Stages = {
+  readiness: { status: 'passed' },
+  execution: { status: 'passed' },
+  verification: { status: 'passed' },
+  recording: { status: 'passed' },
+  rendering: { status: 'pending' },
+  storage: { status: 'pending' },
+};
+
+const RESULT: RunResult = {
+  schemaVersion: 1,
+  runId: 'baseline',
+  scenarioId: 'baseline',
+  scenarioName: 'baseline',
+  startedAt: '2026-10-18T10:00:00.000Z',
+  finishedAt: '2026-10-18T10:00:03.000Z',
+  status: 'completed',
+  stages: PASSED_STAGES,
+  renders: [],
+  warnings: [],
+};
+
+/**
+ * A run over the synthetic source, planned with the frame on: the white bar
+ * is a masked field, then the red block is clicked — the camera zooms on it.
+ */
+export function framedPlan(options: RenderPlanOptions = {}): RenderPlan {
+  const events: TimelineEvent[] = [
+    {
+      stepIndex: 0,
+      action: 'fill',
+      startMs: 0,
+      endMs: 600,
+      target: { box: { x: 200, y: 120, width: 320, height: 60 } },
+      masked: true,
+      value: '***',
+    },
+    {
+      stepIndex: 1,
+      action: 'click',
+      startMs: 600,
+      endMs: 1600,
+      target: { box: { x: 700, y: 300, width: 200, height: 120 } },
+      pointer: { from: { x: 640, y: 560 }, to: { x: 800, y: 360 } },
+    },
+    { stepIndex: 2, action: 'wait', startMs: 1600, endMs: 3000 },
+  ];
+  return planRender(
+    {
+      timeline: {
+        schemaVersion: 1,
+        viewport: { width: 1280, height: 720 },
+        deviceScaleFactor: 1,
+        videoFile: 'source.webm',
+        events,
+      },
+      result: RESULT,
+      source: {
+        width: 1280,
+        height: 720,
+        fps: 25,
+        durationMs: 4000,
+        codec: 'vp9',
+        freezes: [],
+      },
+    },
+    { offsetMs: 0, frame: {}, ...options },
+  );
+}
+
+const FRAMED = framedPlan();
+/** The press of the click: the camera is at its 1.25× zoom on the red block. */
+const PRESS_FRAME = Math.round((FRAMED.clicks[0].atMs * 30) / 1000);
 
 export const SCENES: readonly Scene[] = [
   {
@@ -113,12 +203,67 @@ export const SCENES: readonly Scene[] = [
     }),
     region: { x: 0, y: 0, width: 1920, height: 1080 },
   },
+  {
+    // Spec 100: the default look at zoom 1 — the window on the ocean preset.
+    name: 'framed-window',
+    frame: frameAt(FRAMED, 0),
+    region: { x: 0, y: 0, width: 1920, height: 1080 },
+    plan: FRAMED,
+  },
+  {
+    // Zoomed on the click: the window, the mask, the cursor and the ring move together.
+    name: 'framed-zoomed',
+    frame: frameAt(FRAMED, PRESS_FRAME),
+    region: { x: 0, y: 0, width: 1920, height: 1080 },
+    plan: FRAMED,
+  },
 ];
+
+/** Every background a config can name: the six presets, a colour and a custom gradient. */
+export const SWATCH_BACKGROUNDS: readonly BackgroundConfig[] = [
+  ...BACKGROUND_PRESETS.map((preset) => ({ preset })),
+  { color: '#3b3b98' },
+  { gradient: { from: '#ffd166', to: '#06d6a0', angle: 90 } },
+];
+
+const SWATCH = { width: 480, height: 270, columns: 4 } as const;
+
+/** Each background in `SWATCH_BACKGROUNDS` framing the page at zoom 1, 480×270, four to a row. */
+export function renderSwatches(source: Picture): Picture {
+  const rows = Math.ceil(SWATCH_BACKGROUNDS.length / SWATCH.columns);
+  const strip = createPicture(
+    SWATCH.width * SWATCH.columns,
+    SWATCH.height * rows,
+  );
+  SWATCH_BACKGROUNDS.forEach((background, i) => {
+    const plan = framedPlan({
+      background,
+      output: { width: SWATCH.width, height: SWATCH.height },
+    });
+    const swatch = createPicture(SWATCH.width, SWATCH.height);
+    createCompositor(plan.output, renderStage(plan)).compose(
+      swatch,
+      frameAt(plan, 0),
+      source,
+    );
+    const left = (i % SWATCH.columns) * SWATCH.width;
+    const top = Math.floor(i / SWATCH.columns) * SWATCH.height;
+    for (let y = 0; y < SWATCH.height; y++) {
+      const from = y * SWATCH.width * 3;
+      strip.data.set(
+        swatch.data.subarray(from, from + SWATCH.width * 3),
+        ((top + y) * strip.width + left) * 3,
+      );
+    }
+  });
+  return strip;
+}
 
 /** Draws `scene` and returns the region it keeps. */
 export function renderScene(scene: Scene, source: Picture): Picture {
   const target = createPicture(OUTPUT.width, OUTPUT.height);
-  createCompositor(OUTPUT).compose(
+  const stage = scene.plan === undefined ? undefined : renderStage(scene.plan);
+  createCompositor(OUTPUT, stage).compose(
     target,
     scene.frame,
     scene.frame.endCard === undefined ? source : undefined,
