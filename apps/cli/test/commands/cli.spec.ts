@@ -211,6 +211,53 @@ describe('demoflow run', () => {
     );
   });
 
+  it('--run-id writes to <home>/runs/<id>/ and a reused id exits 2', async () => {
+    const args = (id: string) => [
+      'run',
+      scenario('customers'),
+      '--json',
+      '--out',
+      out,
+      '--run-id',
+      id,
+    ];
+    const first = await demoflow(args('named-run'), project);
+    expect(first.code, first.stderr).toBe(0);
+    const json = JSON.parse(first.stdout);
+    expect(json.runId).toBe('named-run');
+    expect(json.runDir).toBe(path.join(out, 'runs', 'named-run'));
+    expect(await exists(path.join(json.runDir, json.renders[0].file))).toBe(
+      true,
+    );
+
+    const again = await demoflow(args('named-run'), project);
+    expect(again.code).toBe(2);
+    expect(again.stderr).toContain('invalid-run-id');
+    expect(again.stdout).toBe('');
+  });
+
+  it.each([
+    '../escape',
+    'a/b',
+    '..',
+    '',
+  ])('--run-id %j exits 2 before anything runs', async (id) => {
+    const result = await demoflow(
+      ['run', scenario('customers'), '--out', out, '--run-id', id],
+      project,
+    );
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('invalid-run-id');
+    expect(result.stdout).toBe('');
+  });
+
+  it('--run-id is hidden from --help', async () => {
+    const result = await demoflow(['run', '--help'], project);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('--json');
+    expect(result.stdout).not.toContain('run-id');
+  });
+
   it('exits 2 no-project-config when no config is above the scenario', async () => {
     const lonely = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-lonely-'));
     try {
