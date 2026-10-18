@@ -385,35 +385,16 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     await writeFile(file, original);
   });
 
-  // Skipped on CI runners: offMs lags on slow CI runners — see
-  // https://github.com/AndreyBegma/DemoFlow/issues/48. It still runs locally.
-  it('measures the offset within one frame of the clock-drift method (#19)', async (context) => {
-    context.skip(
-      process.env.CI !== undefined,
-      'offMs lags on slow CI runners, #48',
-    );
-    // The engine sometimes records no frame while the mark is up (#48): then
-    // one more customers run, and the test fails if that one lacks it too.
-    let runDir = customers;
-    let plan = customersPlan;
-    let clearedAtMs = customersClearedAtMs;
-    if (!plan.offsetMeasured) {
-      console.info(
-        'sync mark not in the shared customers recording: recording once more',
-      );
-      const probe = clearProbe();
-      runDir = await recordFixtureRun('customers', path.join(parent, 'again'), [
-        probe.observer,
-      ]);
-      plan = await buildRenderPlan(runDir);
-      clearedAtMs = probe.clearedAtMs();
-    }
-    expect(plan.offsetMeasured, 'the sync mark was not found twice').toBe(true);
+  it('measures the offset within 20 ms of the clock-drift method (#19, #48)', async () => {
+    const plan = customersPlan;
+    // #48: the mark is in every recording, not in most.
+    expect(plan.offsetMeasured, 'the sync mark was not found').toBe(true);
     expect(plan.maskLeadMs).toBe(40);
+    expect(plan.maskTrailMs).toBe(40);
 
     // clock-drift.spec.ts: the first frame showing the change, less the
     // instant the page reported it, both decoded and timed independently.
-    const decoded = await driftFrames(path.join(runDir, plan.source.file));
+    const decoded = await driftFrames(path.join(customers, plan.source.file));
     const isMark = (pixel: Rgb): boolean =>
       pixel[0] > 200 && pixel[1] < 100 && pixel[2] > 200;
     const markAt = decoded.findIndex(isMark);
@@ -422,14 +403,17 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     );
     expect(markAt, 'no mark frame in the video').toBeGreaterThanOrEqual(0);
     expect(clearAt).toBeGreaterThan(markAt);
-    expect(clearedAtMs, 'the page never reported the clear').toBeGreaterThan(0);
-    const driftOffsetMs = clearAt * DRIFT_FRAME_MS - clearedAtMs;
+    expect(
+      customersClearedAtMs,
+      'the page never reported the clear',
+    ).toBeGreaterThan(0);
+    const driftOffsetMs = clearAt * DRIFT_FRAME_MS - customersClearedAtMs;
     console.info(
-      `sync offset: renderer ${plan.offsetMs.toFixed(1)} ms, drift method ${driftOffsetMs.toFixed(1)} ms (${runDir === customers ? 'shared recording' : 're-recorded'})`,
+      `sync offset: renderer ${plan.offsetMs.toFixed(1)} ms, drift method ${driftOffsetMs.toFixed(1)} ms`,
     );
-    expect(Math.abs(plan.offsetMs - driftOffsetMs)).toBeLessThanOrEqual(
-      DRIFT_FRAME_MS,
-    );
+    // Both read the same clear frame, so they differ only by when the clear
+    // was timed: −47.6 ms apart on a Windows runner before #48, ~2 ms after.
+    expect(Math.abs(plan.offsetMs - driftOffsetMs)).toBeLessThanOrEqual(20);
 
     // The output starts after the mark: its first source frame does not show it.
     const first = frameAt(plan, 0).sourceMs ?? 0;

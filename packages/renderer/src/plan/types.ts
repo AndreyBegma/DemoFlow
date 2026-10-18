@@ -137,6 +137,8 @@ export interface RenderPlan {
   offsetMeasured: boolean;
   /** Masks start this long before the field is on the page: one source frame when measured, else 200. */
   maskLeadMs: number;
+  /** Masks end this long after the field leaves the page: one source frame when measured, else 200 (#48). */
+  maskTrailMs: number;
   /** The whole video, end card included. */
   durationMs: number;
   /** Contiguous from output 0 to the end of the source part; it starts after the sync mark when one was found. */
