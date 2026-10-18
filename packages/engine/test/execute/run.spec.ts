@@ -290,6 +290,10 @@ describe('failures', () => {
       ]),
       await options({ observers: [observer] }),
     );
+    // First, so a step that failed before the assertion shows its own error.
+    expect(outcome.stages.execution, 'execution stage').toMatchObject({
+      status: 'skipped',
+    });
     expect(outcome.stages.verification).toMatchObject({
       status: 'failed',
       error: {
@@ -298,7 +302,6 @@ describe('failures', () => {
           'expected {"role":"heading","name":"Customers"} to contain "Invoices", got "Customers"',
       },
     });
-    expect(outcome.stages.execution.status).toBe('skipped');
     expect(outcome.stages.recording.status).toBe('passed');
     expect(outcome.status).toBe('failed');
     expect(outcome.events.map((event) => event.stepIndex)).toEqual([0, 1]);
