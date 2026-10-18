@@ -86,7 +86,8 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     tour = await recordFixtureRun('tour', parent);
     customersPlan = await buildRenderPlan(customers);
     failingPlan = await buildRenderPlan(failing);
-  });
+    // Three real recordings at device pixels: over 120 s on a macOS runner.
+  }, 300_000);
 
   afterAll(async () => {
     await rm(parent, { recursive: true, force: true });
