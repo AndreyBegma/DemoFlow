@@ -26,6 +26,13 @@ import {
   resolveProject,
   resolveScenarioFile,
 } from './project.ts';
+import {
+  checkProject,
+  DEFAULT_LIST_LIMIT,
+  listDemos,
+  MAX_LIST_LIMIT,
+  validateScenario,
+} from './readonly.ts';
 import type { TaskQueue, TaskStatus } from './tasks.ts';
 import { type TaskView, taskView } from './view.ts';
 
@@ -81,6 +88,43 @@ const CancelTaskInput = z.strictObject({
   taskId: z.string().describe('The ID returned by generate_demo.'),
 });
 
+const PROJECT_DESCRIPTION =
+  "Absolute path of the project (the directory with demoflow.config.json); default: the server's working directory.";
+
+const ValidateScenarioInput = z.strictObject({
+  project: z.string().optional().describe(PROJECT_DESCRIPTION),
+  scenario: ScenarioSchema.optional().describe(
+    'An inline scenario. Exactly one of `scenario` and `file`.',
+  ),
+  file: z
+    .string()
+    .optional()
+    .describe(
+      'A *.demo.json file inside the project, relative to its root or absolute. Exactly one of `scenario` and `file`.',
+    ),
+});
+/** The same input, with the scenario left for `parseScenario` and its issue paths. */
+const ValidateScenarioArgs = ValidateScenarioInput.extend({
+  scenario: z.unknown().optional(),
+});
+
+const ListDemosInput = z.strictObject({
+  project: z.string().optional().describe(PROJECT_DESCRIPTION),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_LIST_LIMIT)
+    .optional()
+    .describe(
+      `How many runs to return, newest first (1–${MAX_LIST_LIMIT}, default ${DEFAULT_LIST_LIMIT}).`,
+    ),
+});
+
+const CheckProjectInput = z.strictObject({
+  project: z.string().optional().describe(PROJECT_DESCRIPTION),
+});
+
 const TOOLS: Tool[] = [
   {
     name: 'generate_demo',
@@ -98,6 +142,24 @@ const TOOLS: Tool[] = [
     description:
       'Cancel a task: a queued one never starts, a running one is killed; a finished one is unchanged.',
     inputSchema: inputSchema(CancelTaskInput),
+  },
+  {
+    name: 'validate_scenario',
+    description:
+      'Check a scenario (inline or a *.demo.json in the project) against the scenario schema without running it. Returns { valid: true } or an invalid-scenario error with issue paths.',
+    inputSchema: inputSchema(ValidateScenarioInput),
+  },
+  {
+    name: 'list_demos',
+    description:
+      "Recent demo runs of the project's artifacts home, newest first: task ID, scenario name, status, start time, duration and video path.",
+    inputSchema: inputSchema(ListDemosInput),
+  },
+  {
+    name: 'check_project',
+    description:
+      'Whether a project is ready to run demos: its scenario files, a valid config, and FFmpeg and browser availability.',
+    inputSchema: inputSchema(CheckProjectInput),
   },
 ];
 
@@ -133,11 +195,21 @@ export function createMcpServer(deps: McpServerDeps): Server {
           return ok(await getTask(parse(GetTaskInput, args)));
         case 'cancel_task':
           return ok(await cancelTask(parse(CancelTaskInput, args)));
+        case 'validate_scenario':
+          return ok(
+            validateScenario(parse(ValidateScenarioArgs, args), cwd, host),
+          );
+        case 'list_demos':
+          return ok(await listDemos(parse(ListDemosInput, args), cwd, host));
+        case 'check_project':
+          return ok(
+            await checkProject(parse(CheckProjectInput, args), cwd, host),
+          );
         default:
           throw new ToolError(
             'invalid-input',
             `unknown tool: ${request.params.name}`,
-            'Call generate_demo, get_task or cancel_task.',
+            `Call one of: ${TOOLS.map((tool) => tool.name).join(', ')}.`,
           );
       }
     } catch (error) {

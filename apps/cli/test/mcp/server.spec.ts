@@ -216,13 +216,17 @@ afterAll(async () => {
 });
 
 describe('demoflow mcp', () => {
-  it('lists exactly generate_demo, get_task and cancel_task with input schemas', async () => {
+  it('lists its six tools with input schemas', async () => {
     const { tools } = await server.client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       'cancel_task',
+      'check_project',
       'generate_demo',
       'get_task',
+      'list_demos',
+      'validate_scenario',
     ]);
+    for (const tool of tools) expect(tool.inputSchema.type).toBe('object');
     const generate = tools.find((tool) => tool.name === 'generate_demo');
     const properties = generate?.inputSchema.properties as Record<
       string,
