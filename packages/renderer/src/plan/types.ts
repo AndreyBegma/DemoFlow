@@ -1,6 +1,7 @@
 import type {
   BackgroundConfig,
   Box,
+  CardsConfig,
   FrameConfig,
   Viewport,
 } from '@demoflow/core';
@@ -48,8 +49,12 @@ export interface RenderPlanOptions {
   output?: { width?: number; height?: number; fps?: number };
   /** The window around the page (spec 100). Default: on, as in `FrameConfigSchema`. */
   frame?: Partial<FrameConfig>;
-  /** Behind the window. Default: the `ocean` preset. */
+  /** Behind the window, and behind every card. Default: the `ocean` preset. */
   background?: BackgroundConfig;
+  /** Intro, scene and outro cards (spec 108). Default: none. */
+  cards?: CardsConfig;
+  /** The intro card's subtitle; its title is the run's scenario name. */
+  scenario?: { description?: string };
 }
 
 /** A two-stop linear gradient; a solid colour has `from` equal to `to`. */
@@ -96,7 +101,8 @@ export interface SourceSpec {
 
 /**
  * One piece of the time map. Output time maps linearly onto source time: a
- * piece whose spans differ is an idle stretch played fast.
+ * piece whose spans differ is an idle stretch played fast, and one with no
+ * source span is a card, the page held on that frame behind it.
  */
 export interface TimeSegment {
   outputStartMs: number;
@@ -149,6 +155,19 @@ export interface KeyBadge {
   anchor: Point;
 }
 
+/**
+ * A card on the background, in time inserted between page frames (spec 108):
+ * the page pauses for it and resumes on the same frame.
+ */
+export interface CardSpec {
+  kind: 'intro' | 'scene' | 'outro';
+  startMs: number;
+  durationMs: number;
+  title: string;
+  /** The intro's description or the outro's call to action. */
+  subtitle?: string;
+}
+
 export interface FailureSpec {
   stage: 'readiness' | 'execution' | 'verification' | 'recording';
   /** 1-based, as a person counts steps; absent when the failure has no step. */
@@ -183,10 +202,14 @@ export interface RenderPlan {
   maskLeadMs: number;
   /** Masks end this long after the field leaves the page: one source frame when measured, else 200 (#48). */
   maskTrailMs: number;
-  /** The whole video, end card included. */
+  /** The whole video, cards and end card included. */
   durationMs: number;
-  /** Contiguous from output 0 to the end of the source part; it starts after the sync mark when one was found. */
+  /** Contiguous from output 0 to the end of the source part and the outro; it starts after the sync mark when one was found. */
   timeMap: TimeSegment[];
+  /** In output order; each one is a segment of `timeMap` with no source span. */
+  cards: CardSpec[];
+  /** Behind every card: the frame's background, or the configured one with the frame off. */
+  cardBackground: GradientSpec;
   cursor: CursorMove[];
   clicks: ClickRing[];
   camera: CameraKeyframe[];
@@ -198,7 +221,7 @@ export interface RenderPlan {
 
 /** Everything a renderer draws on one output frame; geometry in output pixels. */
 export interface FrameState {
-  /** The source time to show; `null` on the end card. */
+  /** The source time to show; `null` on a card and on the end card. */
   sourceMs: number | null;
   /** The part of the source frame to show, in source pixels. */
   crop: Box;
@@ -218,4 +241,6 @@ export interface FrameState {
   key?: { text: string; anchor: Point };
   watermark: boolean;
   endCard?: string;
+  /** An intro, scene or outro card: nothing of the page is drawn. */
+  card?: { title: string; subtitle?: string; background: GradientSpec };
 }

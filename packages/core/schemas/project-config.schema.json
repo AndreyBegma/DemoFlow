@@ -181,6 +181,72 @@
               "additionalProperties": false
             }
           ]
+        },
+        "cards": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "intro": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "durationMs": {
+                  "default": 2000,
+                  "type": "integer",
+                  "minimum": 500,
+                  "maximum": 10000
+                }
+              },
+              "additionalProperties": false
+            },
+            "scenes": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "durationMs": {
+                  "default": 1500,
+                  "type": "integer",
+                  "minimum": 500,
+                  "maximum": 10000
+                }
+              },
+              "additionalProperties": false
+            },
+            "outro": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "\\S"
+                },
+                "cta": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "\\S"
+                },
+                "durationMs": {
+                  "default": 2500,
+                  "type": "integer",
+                  "minimum": 500,
+                  "maximum": 10000
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

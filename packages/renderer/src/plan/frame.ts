@@ -40,6 +40,39 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
   };
   const watermark = plan.failure !== undefined;
 
+  // Cards are inserted time (spec 108): no page, no overlay, the camera at zoom 1.
+  const titleCard = onCard
+    ? undefined
+    : plan.cards.find(
+        (entry) =>
+          atMs >= entry.startMs && atMs < entry.startMs + entry.durationMs,
+      );
+  if (titleCard !== undefined) {
+    // Before every camera key, so at zoom 1: the window as the stage shows it.
+    const { content, scale } = geometryAt(plan, -1);
+    return {
+      sourceMs: null,
+      crop: {
+        x: 0,
+        y: 0,
+        width: plan.source.width,
+        height: plan.source.height,
+      },
+      content,
+      scale,
+      rings: [],
+      masks: [],
+      watermark,
+      card: {
+        title: titleCard.title,
+        ...(titleCard.subtitle === undefined
+          ? {}
+          : { subtitle: titleCard.subtitle }),
+        background: plan.cardBackground,
+      },
+    };
+  }
+
   if (onCard) {
     return {
       sourceMs: null,
@@ -199,7 +232,7 @@ export function cameraAt(plan: RenderPlan, atMs: number): Box {
   };
 }
 
-function cameraStateAt(
+export function cameraStateAt(
   keys: readonly CameraKeyframe[],
   atMs: number,
 ): { centre: Point; zoom: number } {
@@ -236,7 +269,7 @@ export function cursorAt(
   return mix(current.from, current.to, t);
 }
 
-function maskBoxAt(mask: MaskSpan, atMs: number): Box {
+export function maskBoxAt(mask: MaskSpan, atMs: number): Box {
   const next = mask.keys.findIndex((key) => key.atMs > atMs);
   if (next === 0) return mask.keys[0].box;
   if (next === -1) return mask.keys[mask.keys.length - 1].box;

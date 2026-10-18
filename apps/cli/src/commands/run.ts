@@ -167,6 +167,11 @@ export async function runCommand(
           },
           frame: config.render.frame,
           background: config.render.background,
+          cards: config.render.cards,
+          scenario:
+            scenario.description === undefined
+              ? {}
+              : { description: scenario.description },
         });
         await ffmpegRenderer.render(runDir, plan);
       } catch (error) {
