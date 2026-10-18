@@ -168,6 +168,17 @@ describe('login.demo.json', () => {
     expect(password.value).toBe('***');
     expect(password.masked).toBe(true);
     expect(fills[0].masked).toBeUndefined();
+    expect(fills[0].maskVisibility).toBeUndefined();
+
+    // Signing in re-renders the page without the form: the mask ends with the click.
+    const signIn = timeline.events.find((event) => event.action === 'click');
+    expect(password.maskVisibility).toEqual([
+      {
+        startMs: password.startMs,
+        endMs: signIn?.endMs,
+        box: password.target?.box,
+      },
+    ]);
 
     const needle = Buffer.from(PASSWORD);
     const files = await filesIn(runDir);
