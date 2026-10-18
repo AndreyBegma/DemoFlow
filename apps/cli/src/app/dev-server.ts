@@ -35,7 +35,7 @@ const NOT_STARTED: RunningApp = { started: false, stop: async () => {} };
  * own dev server is used as is and never stopped.
  */
 export async function startApp(
-  config: Pick<ProjectConfig, 'devCommand'>,
+  config: { devCommand?: ProjectConfig['devCommand'] },
   root: string,
   options: StartAppOptions = {},
 ): Promise<RunningApp> {
