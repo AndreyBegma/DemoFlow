@@ -55,6 +55,13 @@ renderer end (and resume) the mask from them. Surfaced by the renderer spike
    interval at step *k*'s `endMs`; a field found back after step *k* starts a
    new interval at step *k*'s `startMs`. The mask is never off while the
    field could be on screen. — the owner.
+   A step *k* that navigates the main frame and leaves the field on screen
+   (the same locator on the new page) does both: the old interval ends at
+   *k*'s `endMs` and a new one, with the box measured after *k*, starts at
+   *k*'s `startMs`. The two overlap for that step and the renderer masks both
+   boxes. Same-document navigations (`pushState`) count as navigations. —
+   amended in #43, orchestrator decision (the earlier wording made these two
+   intervals overlap, which the refinements below rejected).
 4. **Intervals, not one end.** A field that comes back (a form error, a back
    navigation, the same locator on another page) gets a new interval and the
    mask returns. Each interval carries the box measured when it starts, since
@@ -92,9 +99,11 @@ maskVisibility: z
 ```
 
 Refinements: `maskVisibility` only where `masked === true`; every interval
-has `endMs >= startMs`; intervals are ordered and do not overlap; only the
-last may be open. The first interval starts at the fill event's `startMs`
-with the fill's target box.
+has `endMs >= startMs`; intervals are ordered by `startMs`; an interval may
+start before the previous one's `endMs` only if the previous one is closed
+(Decision 3, amended in #43); only the last may be open. The first interval
+starts at the fill event's `startMs` with the fill's target box. A masked
+`fill` whose box could not be measured carries no `maskVisibility`.
 
 ## Acceptance criteria
 
@@ -108,9 +117,13 @@ with the fill's target box.
       back, with its own box (engine test against a fixture or test page).
 - [ ] Scrolling a masked field out of the viewport does not close its
       interval.
+- [ ] A step that navigates to a page showing the same masked field yields
+      two overlapping intervals: the old one ends at that step's `endMs`, the
+      new one starts at its `startMs` with the new page's box (engine test;
+      amended in #43).
 - [ ] `TimelineSchema` rejects `maskVisibility` on a non-masked event,
-      overlapping or unordered intervals, and an open interval that is not
-      the last (core tests).
+      unordered intervals, an interval overlapping an open one, and an open
+      interval that is not the last (core tests; amended in #43).
 - [ ] A timeline without `maskVisibility` still validates and renders exactly
       as before (renderer test on an existing timeline fixture).
 - [ ] With `maskVisibility`, `buildRenderPlan` emits one mask span per

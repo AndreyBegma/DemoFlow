@@ -14,6 +14,7 @@ import {
   StepFailure,
 } from './execute/actions.ts';
 import { type Clock, startClock } from './execute/clock.ts';
+import { MaskTracker } from './execute/mask.ts';
 import type { EngineObserver, RunOutcome } from './execute/observer.ts';
 import { type Point, viewportCentre } from './execute/pointer.ts';
 import {
@@ -128,6 +129,7 @@ export async function runScenario(
       observers,
       events,
       navigation,
+      masks: new MaskTracker(page),
       scrub,
       emit,
     });
@@ -183,6 +185,7 @@ interface ExecuteInput {
   observers: readonly EngineObserver[];
   events: TimelineEvent[];
   navigation: NavigationWatch;
+  masks: MaskTracker;
   scrub: (message: string) => string;
   emit: <K extends keyof EngineObserver>(
     hook: K,
@@ -235,11 +238,16 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
       failure = new StepFailure('execution', originNotAllowed(foreign));
     }
 
+    // Before endMs is stamped, so a masked field seen gone is gone by then.
+    const sightings = await input.masks.look();
+    const endMs = Math.max(startMs, clock.now());
+    input.masks.record(sightings, startMs, endMs);
+
     const event: TimelineEvent = {
       stepIndex,
       action: step.action,
       startMs,
-      endMs: Math.max(startMs, clock.now()),
+      endMs,
       ...result,
       ...(failure === undefined ? {} : failure.detail),
       ...(step.caption === undefined ? {} : { caption: step.caption }),
@@ -252,6 +260,9 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
         ...event.assertion,
         message: scrub(event.assertion.message),
       };
+    }
+    if (step.action === 'fill' && failure === undefined) {
+      input.masks.track(event, step.target);
     }
     input.events.push(event);
     await emit('onStepFinished', { stepIndex, step, event });
