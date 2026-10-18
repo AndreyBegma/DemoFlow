@@ -64,7 +64,11 @@ function result(failed?: {
   };
 }
 
-/** No clock offset unless a test sets one, so output times read off the timeline. */
+/**
+ * No clock offset unless a test sets one, so output times read off the
+ * timeline. Full-bleed unless a test turns the frame on: the frame has its
+ * own tests below, and everything else reads more simply without it.
+ */
 function plan(
   events: TimelineEvent[],
   freezes: Interval[],
@@ -84,7 +88,7 @@ function plan(
         freezes,
       },
     },
-    { offsetMs: 0, ...rest },
+    { offsetMs: 0, frame: { enabled: false }, ...rest },
   );
 }
 
@@ -872,11 +876,217 @@ describe('output', () => {
       faststart: true,
     });
     expect(rendered.fit).toEqual({ x: 0, y: 0, scale: 1.5 });
-    expect(frameAt(rendered, 0).content).toEqual({
+    expect(rendered.frame).toBeUndefined();
+    const state = frameAt(rendered, 0);
+    expect(state.content).toEqual({
       x: 0,
       y: 0,
       width: 1920,
       height: 1080,
     });
+    expect(state.frame).toBeUndefined();
+  });
+});
+
+describe('the window on a background (spec 100)', () => {
+  const framed = (
+    events: TimelineEvent[],
+    options: RenderPlanOptions = {},
+  ): RenderPlan => plan(events, [], { frame: {}, ...options });
+
+  /** Viewport CSS pixels → output pixels, worked out from the plan alone. */
+  const toOutput = (
+    rendered: RenderPlan,
+    state: ReturnType<typeof frameAt>,
+    point: { x: number; y: number },
+  ): { x: number; y: number } => {
+    const view = state.frame?.view;
+    if (view === undefined) throw new Error('the frame is off');
+    const zoom = rendered.output.width / view.width;
+    const { fit } = rendered;
+    return {
+      x: (fit.x + point.x * fit.scale - view.x) * zoom,
+      y: (fit.y + point.y * fit.scale - view.y) * zoom,
+    };
+  };
+
+  it('is on by default: the ocean preset, a 12 px radius and a shadow, the window inside a 6 % margin', () => {
+    const rendered = planRender(
+      {
+        timeline: timeline([click(0, 1000, { x: 300, y: 200 })]),
+        result: result(),
+        source: {
+          width: 1280,
+          height: 720,
+          fps: 25,
+          durationMs: 5000,
+          codec: 'vp9',
+          freezes: [],
+        },
+      },
+      { offsetMs: 0 },
+    );
+    expect(rendered.frame).toEqual({
+      radius: 12,
+      shadow: true,
+      background: { from: '#0b2e4f', to: '#2b86c5', angle: 135 },
+    });
+    // 6 % of 1080 is 64.8 px; the height binds: (1080 − 129.6) / 720.
+    expect(rendered.fit.scale).toBeCloseTo(1.32);
+    expect(rendered.fit.x).toBe(115);
+    expect(rendered.fit.y).toBe(65);
+  });
+
+  it('shows the whole stage at zoom 1, the page drawn whole into the window', () => {
+    const rendered = framed([
+      event({ action: 'navigate', startMs: 0, endMs: 500 }),
+      event({ action: 'wait', startMs: 500, endMs: 2000 }),
+    ]);
+    const state = frameAt(rendered, 0);
+    expect(state.frame?.view).toEqual({
+      x: 0,
+      y: 0,
+      width: 1920,
+      height: 1080,
+    });
+    expect(state.frame?.radius).toBe(12);
+    expect(state.crop).toEqual({ x: 0, y: 0, width: 1280, height: 720 });
+    expect(state.content.x).toBe(115);
+    expect(state.content.y).toBe(65);
+    expect(state.content.width).toBeCloseTo(1280 * 1.32);
+    expect(state.content.height).toBeCloseTo(720 * 1.32);
+    expect(state.scale).toBeCloseTo(1.32);
+  });
+
+  it('zooms on the window and centres a click target on the frame', () => {
+    const target = { x: 500, y: 300 };
+    const rendered = framed([
+      event({ action: 'navigate', startMs: 0, endMs: 500 }),
+      click(1000, 2000, target),
+      event({ action: 'wait', startMs: 2000, endMs: 4000 }),
+    ]);
+    const press = rendered.clicks[0].atMs;
+    const [frame] = frames(rendered, press, press + 40);
+    const state = frameAt(rendered, frame);
+    const view = state.frame?.view;
+    // 1.25 on a 1× source; the view is the stage at that zoom.
+    expect(view?.width).toBeCloseTo(1920 / 1.25);
+    expect(state.scale).toBeCloseTo(1.32 * 1.25);
+    expect(state.frame?.radius).toBeCloseTo(12 * 1.25);
+    const centre = toOutput(rendered, state, target);
+    expect(centre.x).toBeCloseTo(960);
+    expect(centre.y).toBeCloseTo(540);
+    // The cursor and the ring follow the window.
+    expect(state.cursor?.x).toBeCloseTo(960);
+    expect(state.cursor?.y).toBeCloseTo(540);
+    expect(state.rings[0].point.x).toBeCloseTo(960);
+    // The window moved with the camera.
+    const corner = toOutput(rendered, state, { x: 0, y: 0 });
+    expect(state.content.x).toBeCloseTo(corner.x);
+    expect(state.content.y).toBeCloseTo(corner.y);
+  });
+
+  it('keeps the camera on the stage when the target is near its edge', () => {
+    const rendered = framed([
+      event({ action: 'navigate', startMs: 0, endMs: 500 }),
+      click(1000, 2000, { x: 60, y: 20 }),
+      event({ action: 'wait', startMs: 2000, endMs: 4000 }),
+    ]);
+    const [frame] = frames(rendered, rendered.clicks[0].atMs, 99_999);
+    const view = frameAt(rendered, frame).frame?.view;
+    expect(view?.x).toBe(0);
+    expect(view?.y).toBe(0);
+  });
+
+  it('keeps the masked field under its mask on every frame, zoomed or not', () => {
+    const password = { x: 264, y: 230, width: 384, height: 28 };
+    const rendered = framed([
+      event({ action: 'navigate', startMs: 0, endMs: 100 }),
+      event({
+        action: 'fill',
+        startMs: 800,
+        endMs: 1400,
+        target: { box: password },
+        masked: true,
+        value: '***',
+      }),
+      click(1400, 1800, { x: 456, y: 284 }),
+      event({ action: 'navigate', startMs: 1800, endMs: 2100 }),
+      event({ action: 'wait', startMs: 2100, endMs: 3000 }),
+    ]);
+    let zoomed = 0;
+    for (const frame of frames(rendered, 800, 2100)) {
+      const state = frameAt(rendered, frame);
+      if ((state.frame?.view.width ?? 1920) < 1919) zoomed++;
+      expect(state.masks, `frame ${frame}`).toHaveLength(1);
+      const [box] = state.masks;
+      const corner = toOutput(rendered, state, password);
+      expect(box.x).toBeLessThanOrEqual(corner.x);
+      expect(box.y).toBeLessThanOrEqual(corner.y);
+      expect(box.x + box.width).toBeGreaterThanOrEqual(
+        corner.x + password.width * state.scale,
+      );
+      expect(box.y + box.height).toBeGreaterThanOrEqual(
+        corner.y + password.height * state.scale,
+      );
+    }
+    expect(zoomed).toBeGreaterThan(5);
+  });
+
+  it('clips a whole-page mask to the part of the window on the frame', () => {
+    const rendered = framed([
+      event({ action: 'navigate', startMs: 0, endMs: 100 }),
+      event({
+        action: 'fill',
+        startMs: 800,
+        endMs: 1400,
+        masked: true,
+        value: '***',
+      }),
+      click(1400, 1800, { x: 100, y: 100 }),
+      event({ action: 'wait', startMs: 1800, endMs: 3000 }),
+    ]);
+    for (const frame of frames(rendered, 900, 2500)) {
+      const state = frameAt(rendered, frame);
+      const [box] = state.masks;
+      const { content } = state;
+      const left = Math.max(0, content.x);
+      const top = Math.max(0, content.y);
+      expect(box.x).toBeCloseTo(left);
+      expect(box.y).toBeCloseTo(top);
+      expect(box.x + box.width).toBeCloseTo(
+        Math.min(1920, content.x + content.width),
+      );
+      expect(box.y + box.height).toBeCloseTo(
+        Math.min(1080, content.y + content.height),
+      );
+    }
+  });
+
+  it('scales the margin and the radius with the output height', () => {
+    const rendered = framed([click(0, 1000, { x: 300, y: 200 })], {
+      output: { width: 1280, height: 720 },
+      frame: { radius: 12, marginRatio: 0.1 },
+    });
+    expect(rendered.frame?.radius).toBe(8);
+    // 10 % of 720 is 72 px a side: (720 − 144) / 720.
+    expect(rendered.fit).toEqual({ x: 128, y: 72, scale: 0.8 });
+  });
+
+  it('resolves a colour and a gradient to the two stops it draws', () => {
+    const events = [click(0, 1000, { x: 300, y: 200 })];
+    expect(framed(events, { background: { color: '#123456' } }).frame).toEqual({
+      radius: 12,
+      shadow: true,
+      background: { from: '#123456', to: '#123456', angle: 0 },
+    });
+    const gradient = { from: '#000000', to: '#ffffff', angle: 45 };
+    expect(
+      framed(events, { background: { gradient }, frame: { shadow: false } })
+        .frame,
+    ).toEqual({ radius: 12, shadow: false, background: gradient });
+    expect(
+      framed(events, { background: { preset: 'paper' } }).frame?.background,
+    ).toEqual({ from: '#f4f0e8', to: '#d8d2c5', angle: 135 });
   });
 });
