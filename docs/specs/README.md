@@ -40,6 +40,7 @@ decisions live in [../adr/](../adr/README.md).
 |---|---|---|
 | [#68](https://github.com/AndreyBegma/DemoFlow/issues/68) | [Generate, poll and cancel a demo](68-mcp-generate-poll-cancel.md) | — |
 | [#69](https://github.com/AndreyBegma/DemoFlow/issues/69) | [Validate scenarios, list demos, check the project](69-mcp-read-only-tools.md) | #68 |
+| [#75](https://github.com/AndreyBegma/DemoFlow/issues/75) | [Publish to npm through Woodpecker](75-npm-release.md) | #68, #69 |
 
 ## Before Phase 4 (roadmap)
 
