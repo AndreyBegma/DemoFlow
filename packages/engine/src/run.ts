@@ -23,6 +23,7 @@ import {
   originNotAllowed,
 } from './execute/readiness.ts';
 import { recordingOptions, toContextOptions } from './execute/recording.ts';
+import { recordSyncMark, type SyncMark } from './execute/sync-mark.ts';
 
 export interface RunOptions {
   /** Absolute; created when missing. The caller names it after the run id. */
@@ -108,6 +109,7 @@ export async function runScenario(
     const page = await context.newPage();
     const clock = startClock();
     await emit('onPageCreated', { page, recording });
+    const syncMark = await recordSyncMark(page, clock);
 
     const events: TimelineEvent[] = [];
     const hasAssertions = scenario.steps.some((step) =>
@@ -166,7 +168,7 @@ export async function runScenario(
       });
     }
 
-    const outcome = conclude(startedAt, stages, events, videoPath);
+    const outcome = conclude(startedAt, stages, events, videoPath, syncMark);
     await emit('onRunFinished', { outcome, video });
     return outcome;
   } finally {
@@ -347,6 +349,7 @@ function conclude(
   stages: Stages,
   events: TimelineEvent[],
   videoPath?: string,
+  syncMark?: SyncMark,
 ): RunOutcome {
   const warnings: string[] = [];
   return {
@@ -356,6 +359,7 @@ function conclude(
     stages,
     events,
     warnings,
+    ...(syncMark === undefined ? {} : { syncMark }),
     ...(videoPath === undefined ? {} : { videoPath }),
   };
 }

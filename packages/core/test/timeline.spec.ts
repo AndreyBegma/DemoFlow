@@ -86,6 +86,51 @@ describe('TimelineSchema', () => {
     );
   });
 
+  describe('syncMark', () => {
+    const mark = { colour: '#ff00ff', onMs: 40, offMs: 200 };
+    const withMark = (syncMark: unknown, events = timeline.events) => ({
+      ...timeline,
+      events,
+      syncMark,
+    });
+
+    it('accepts a timeline without one', () => {
+      expect(TimelineSchema.safeParse(timeline).success).toBe(true);
+    });
+
+    it('accepts a mark cleared at or before the first event', () => {
+      for (const startMs of [200, 300]) {
+        const events = [{ ...timeline.events[0], startMs, endMs: 400 }];
+        expect(
+          TimelineSchema.safeParse(withMark(mark, events as never)).success,
+        ).toBe(true);
+      }
+    });
+
+    it('rejects offMs at or before onMs', () => {
+      for (const offMs of [40, 10]) {
+        const parsed = TimelineSchema.safeParse(withMark({ ...mark, offMs }));
+        expect(parsed.error?.issues[0]?.path).toEqual(['syncMark', 'offMs']);
+      }
+    });
+
+    it('rejects a malformed colour', () => {
+      for (const colour of ['ff00ff', '#FF00FF', '#f0f', 'magenta']) {
+        const parsed = TimelineSchema.safeParse(withMark({ ...mark, colour }));
+        expect(parsed.error?.issues[0]?.path).toEqual(['syncMark', 'colour']);
+      }
+    });
+
+    it('rejects offMs after the first event starts', () => {
+      const late = TimelineSchema.safeParse(
+        withMark({ ...mark, offMs: 500 }, [
+          { ...timeline.events[0], startMs: 100, endMs: 200 },
+        ] as never),
+      );
+      expect(late.error?.issues[0]?.path).toEqual(['syncMark', 'offMs']);
+    });
+  });
+
   it('rejects an unknown field', () => {
     expect(TimelineSchema.safeParse({ ...timeline, fps: 30 }).success).toBe(
       false,

@@ -7,6 +7,7 @@ import type {
 } from '@demoflow/core';
 import type { Browser, Page, Video } from 'playwright';
 import type { RecordingOptions } from './recording.ts';
+import type { SyncMark } from './sync-mark.ts';
 
 export type Awaitable<T> = T | Promise<T>;
 
@@ -21,6 +22,8 @@ export interface RunOutcome {
   /** One per executed step, the failed one included. Secrets are already masked. */
   events: TimelineEvent[];
   warnings: string[];
+  /** Painted at clock zero, cleared before step 0; absent when it could not be painted. */
+  syncMark?: SyncMark;
   /** The absolute path of the raw recording, when the browser was started. */
   videoPath?: string;
 }
