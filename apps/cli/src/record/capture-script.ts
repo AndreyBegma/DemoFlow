@@ -44,6 +44,7 @@ type CaptureEventBody =
       secret: boolean;
     }
   | { type: 'select'; candidates: Candidates; option: string }
+  | { type: 'press'; candidates: Candidates; key: string }
   | {
       type: 'scroll';
       atTop: boolean;
@@ -57,7 +58,8 @@ type CaptureEventBody =
  * page is event listeners and the mode setter — nothing is drawn (spec #79).
  *
  * The value of a password field, or of the field marked secret from the panel,
- * is never read: the event carries `secret: true` and no value.
+ * is never read: the event carries `secret: true` and no value. Keys pressed
+ * in such a field are not sent at all.
  */
 export const CAPTURE_SCRIPT = `(() => {
   if (window.top !== window || window.${MODE_SETTER}) return;
@@ -211,6 +213,21 @@ export const CAPTURE_SCRIPT = `(() => {
       ? { type: 'fill', element: el, candidates: candidates(el), secret: true }
       : { type: 'fill', element: el, candidates: candidates(el), secret: false,
           value: el.isContentEditable ? el.innerText : el.value });
+  }, true);
+
+  // Keys that act on a text field without typing into it. Typing stays fill.
+  const PRESS_KEYS = ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+  window.addEventListener('keydown', (event) => {
+    if (mode !== 'record' || !PRESS_KEYS.includes(event.key)) return;
+    if (event.repeat || event.isComposing) return;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    const el = event.target;
+    if (!(el instanceof Element) || !isTextField(el)) return;
+    // Never a key inside a secret field: not even that one was pressed.
+    if ((el instanceof HTMLInputElement && el.type === 'password') || secrets.has(el)) return;
+    // Enter in a multi-line field types a newline.
+    if (event.key === 'Enter' && (el instanceof HTMLTextAreaElement || el.isContentEditable)) return;
+    send({ type: 'press', element: el, candidates: candidates(el), key: event.key });
   }, true);
 
   window.addEventListener('change', (event) => {

@@ -169,6 +169,16 @@ export async function openRecorder(
         );
         return;
       }
+      case 'press': {
+        const chosen = await locate(element, event.candidates);
+        if (chosen) {
+          push(
+            { action: 'press', key: event.key, target: chosen.locator },
+            chosen.warning,
+          );
+        }
+        return;
+      }
       case 'select': {
         const chosen = await locate(element, event.candidates);
         if (chosen) {

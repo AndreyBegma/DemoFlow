@@ -64,6 +64,10 @@ export function describeStep(step: StepInput): string {
       return `assert text ${describeLocator(step.target)} ~ "${step.text}"`;
     case 'assertVisible':
       return `assert visible ${describeLocator(step.target)}`;
+    case 'press':
+      return step.target === undefined
+        ? `press ${step.key}`
+        : `press ${step.key} on ${describeLocator(step.target)}`;
     case 'scroll':
       return step.target === undefined
         ? `scroll to ${step.to ?? ''}`
