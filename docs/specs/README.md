@@ -21,6 +21,7 @@ decisions live in [../adr/](../adr/README.md).
 | Issue | Spec | Depends on |
 |---|---|---|
 | [#25](https://github.com/AndreyBegma/DemoFlow/issues/25) | [Real font rendering](25-compositor-fonts.md) | #24 |
+| [#17](https://github.com/AndreyBegma/DemoFlow/issues/17) | [Source video at device pixels](17-source-video-device-pixels.md) | — |
 
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.
