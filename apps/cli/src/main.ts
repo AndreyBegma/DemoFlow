@@ -10,6 +10,7 @@ import {
 import { type Io, processIo } from './commands/io.ts';
 import { runCommand } from './commands/run.ts';
 import { validateCommand } from './commands/validate.ts';
+import { mcpCommand } from './mcp/command.ts';
 
 /**
  * The `demoflow` program. Returns the exit code instead of exiting, so the
@@ -45,6 +46,7 @@ export async function main(
     .option('--headed', 'show the browser window')
     .option('--json', 'print the result as one JSON object on stdout')
     .addOption(new Option('--run-id <id>', 'name the run directory').hideHelp())
+    .addOption(new Option('--project <dir>', 'the project root').hideHelp())
     .action(
       async (
         scenario: string,
@@ -54,11 +56,23 @@ export async function main(
           headed?: boolean;
           json?: boolean;
           runId?: string;
+          project?: string;
         },
       ) => {
         exitCode = await runCommand(scenario, flags, io);
       },
     );
+
+  program
+    .command('mcp')
+    .description('Serve demo generation to MCP clients over stdio')
+    .addHelpText(
+      'after',
+      '\nRegister with Claude Code:\n  claude mcp add demoflow -- npx demoflow mcp\n',
+    )
+    .action(async () => {
+      exitCode = await mcpCommand(io);
+    });
 
   try {
     await program.parseAsync(argv, { from: 'user' });

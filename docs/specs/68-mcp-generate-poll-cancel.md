@@ -25,6 +25,10 @@ website are involved (ADR-0008 §1).
 - Tools `generate_demo`, `get_task`, `cancel_task` (below).
 - A hidden `--run-id <id>` option on `demoflow run`, so the task ID is known
   before the child starts (the run directory is `<home>/runs/<runId>/`, spec 5).
+- A hidden `--project <dir>` option on `demoflow run`: the project root is
+  taken from it instead of being searched upwards from the scenario file, so a
+  scenario staged outside the project can run (Decision 5). *Amended in
+  #PR_NUMBER, orchestrator decision.*
 - An in-memory FIFO queue, one running task at a time; a per-task timeout.
 - Registration instructions in the CLI's `--help` for `mcp`
   (`claude mcp add demoflow -- npx demoflow mcp`).
@@ -50,9 +54,16 @@ All by the owner in the #68 interview (2026-10-18) unless noted.
 4. **One task at a time.** Further tasks wait as `queued` (FIFO).
 5. **The scenario is a file or inline.** `scenario` (an object, validated
    against `ScenarioSchema` from `@demoflow/core` before queueing) **or** `file`
-   (a path to a `*.demo.json` inside the project). An inline scenario is written
-   to `<runDir>/scenario.demo.json` and run from there; nothing is written into
-   the repository. Starting the app, `baseUrl` and allowed origins come only
+   (a path to a `*.demo.json` inside the project). An inline scenario is staged
+   at `<home>/mcp/<taskId>.demo.json` and run with
+   `demoflow run <staged> --json --run-id <taskId> --project <root>`; the staged
+   file is deleted when the task ends. The run directory keeps the scenario that
+   ran as the engine's `scenario.json`, and its `result.json` records
+   `scenarioId` `inline/<taskId>.demo.json`. Nothing is written into the
+   repository. *Amended in #PR_NUMBER, orchestrator decision: the original
+   `<runDir>/scenario.demo.json` could not work — `demoflow run` finds the
+   project upwards from the scenario file, and `--run-id` refuses an existing
+   run directory.* Starting the app, `baseUrl` and allowed origins come only
    from the project's `demoflow.config.json` (ADR-0008 §4) — the tool takes no
    command or URL.
 6. **`get_task` can wait**: optional `waitSeconds` (0–60, default 0) holds the
@@ -114,6 +125,9 @@ Error codes (minimum): `project-not-found`, `invalid-project-config`,
 - [ ] Invalid input returns `{ code, message, hint }`: an invalid inline
       scenario lists zod issue paths; a `file` outside the project is
       `file-not-in-project`.
+- [ ] `demoflow run --project <dir>` with a scenario outside the project runs
+      and records `scenarioId` `inline/<basename>`. *Amended in #PR_NUMBER,
+      orchestrator decision.*
 - [ ] `demoflow run --run-id <id>` writes to `<home>/runs/<id>/`; without it,
       behaviour is unchanged (existing CLI tests pass).
 - [ ] Tests under Node with Vitest on all three OSes; `bun run check` passes.

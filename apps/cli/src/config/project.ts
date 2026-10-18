@@ -28,13 +28,43 @@ export function findProjectRoot(
   }
 }
 
-/** The scenario's path relative to the project root, with `/` separators on every OS. */
+/**
+ * A directory given as the project root (`run --project`): it must hold
+ * `demoflow.config.json` itself — no search upwards.
+ */
+export function projectRootAt(
+  dir: string,
+  fileExists: (file: string) => boolean = existsSync,
+  pathApi: path.PlatformPath = path,
+): string {
+  if (!fileExists(pathApi.join(dir, PROJECT_CONFIG_FILE))) {
+    throw new CliError(
+      'no-project-config',
+      `no ${PROJECT_CONFIG_FILE} found in ${dir}`,
+    );
+  }
+  return dir;
+}
+
+/**
+ * The scenario's path relative to the project root, with `/` separators on
+ * every OS. A file outside the root (an inline scenario staged by
+ * `demoflow mcp`) is `inline/<file name>`.
+ */
 export function scenarioId(
   root: string,
   scenarioPath: string,
   pathApi: path.PlatformPath = path,
 ): string {
-  const relative = pathApi.relative(root, pathApi.resolve(root, scenarioPath));
+  const file = pathApi.resolve(root, scenarioPath);
+  const relative = pathApi.relative(root, file);
+  if (
+    relative === '..' ||
+    relative.startsWith(`..${pathApi.sep}`) ||
+    pathApi.isAbsolute(relative)
+  ) {
+    return `inline/${pathApi.basename(file)}`;
+  }
   return relative.split(pathApi.sep).join('/');
 }
 
