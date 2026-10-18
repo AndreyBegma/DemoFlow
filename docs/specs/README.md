@@ -34,5 +34,12 @@ decisions live in [../adr/](../adr/README.md).
 | [#62](https://github.com/AndreyBegma/DemoFlow/issues/62) | [Drift reference on the page clock](62-drift-reference-page-clock.md) | #40 |
 | [#64](https://github.com/AndreyBegma/DemoFlow/issues/64) | [Sync mark hold invariant](64-sync-mark-hold-invariant.md) | — |
 
+## Phase 3 — MCP integration
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#68](https://github.com/AndreyBegma/DemoFlow/issues/68) | [Generate, poll and cancel a demo](68-mcp-generate-poll-cancel.md) | — |
+| [#69](https://github.com/AndreyBegma/DemoFlow/issues/69) | [Validate scenarios, list demos, check the project](69-mcp-read-only-tools.md) | #68 |
+
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.
