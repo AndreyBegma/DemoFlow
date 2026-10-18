@@ -35,6 +35,13 @@ describe('packageVersion', () => {
     expect(packageVersion(bundle)).toBe('1.2.3');
   });
 
+  it('reads the workspace manifest named @demoflow/cli', async () => {
+    const pkg = path.join(dir, 'apps', 'cli');
+    await manifest(pkg, { name: '@demoflow/cli', version: '4.5.6' });
+    const source = pathToFileURL(path.join(pkg, 'src', 'version.ts')).href;
+    expect(packageVersion(source)).toBe('4.5.6');
+  });
+
   it('throws when no demoflow manifest is above it', async () => {
     const lonely = pathToFileURL(path.join(dir, 'main.js')).href;
     expect(() => packageVersion(lonely)).toThrow(/no demoflow package\.json/);

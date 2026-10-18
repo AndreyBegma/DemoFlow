@@ -7,7 +7,7 @@ import {
 } from '../../scripts/manifest.ts';
 
 const cli: Manifest = {
-  name: 'demoflow',
+  name: '@demoflow/cli',
   version: '0.1.0',
   license: 'MIT',
   engines: { node: '>=20' },
@@ -65,7 +65,7 @@ describe('runtimeDependencies', () => {
       dependencies: { ...cli.dependencies, zod: '4.6.4' },
     };
     expect(() => runtimeDependencies(clash, workspace)).toThrow(
-      /zod: @demoflow\/core pins 4\.6\.5, demoflow pins 4\.6\.4/,
+      /zod: @demoflow\/core pins 4\.6\.5, @demoflow\/cli pins 4\.6\.4/,
     );
   });
 
@@ -98,6 +98,7 @@ describe('publishManifest', () => {
     expect(manifest).not.toHaveProperty('scripts');
     expect(manifest).not.toHaveProperty('private');
     expect(manifest).not.toHaveProperty('devDependencies');
+    expect(manifest.name).toBe('demoflow');
     expect(manifest.bin).toEqual({ demoflow: BIN });
     expect(manifest.files).toEqual(['dist', 'fonts']);
     expect(manifest.version).toBe('0.1.0');
