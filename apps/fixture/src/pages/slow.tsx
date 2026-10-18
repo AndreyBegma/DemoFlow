@@ -25,7 +25,15 @@ export function Slow() {
         >
           Load report
         </Button>
-        {state === 'loading' && <Spinner label="Loading report" />}
+        {state === 'loading' && (
+          // Large and high-contrast: the renderer's idle rule must see its
+          // motion in every frame a slow runner manages to record.
+          <Spinner
+            label="Loading report"
+            size="lg"
+            className="size-12 text-ink"
+          />
+        )}
         {state === 'ready' && <p>Report ready</p>}
       </div>
     </section>
