@@ -20,6 +20,7 @@ import {
   type FixtureServer,
   startFixtureServer,
 } from '../execute/fixture-server.ts';
+import { webmFrameSize } from './webm.ts';
 
 const SCENARIO_DIR = path.join(FIXTURE_DIST, '..', 'demoflow');
 const PASSWORD = 'hunter2-correct-horse';
@@ -112,6 +113,11 @@ describe('customers.demo.json', () => {
   it('writes a webm that starts with the EBML header', async () => {
     const head = await readFile(path.join(run.runDir, 'source.webm'));
     expect([...head.subarray(0, 4)]).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
+  });
+
+  it('records the video at viewport × deviceScaleFactor', async () => {
+    const file = await readFile(path.join(run.runDir, 'source.webm'));
+    expect(webmFrameSize(file)).toEqual({ width: 2560, height: 1440 });
   });
 
   it('writes a timeline valid against core', async () => {
