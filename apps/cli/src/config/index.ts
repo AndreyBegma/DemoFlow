@@ -14,5 +14,6 @@ export {
   findProjectRoot,
   loadProjectConfig,
   PROJECT_CONFIG_FILE,
+  projectRootAt,
   scenarioId,
 } from './project.ts';

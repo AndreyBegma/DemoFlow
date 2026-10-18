@@ -12,6 +12,7 @@ import {
   type HostEnvironment,
   loadGlobalConfig,
   loadProjectConfig,
+  projectRootAt,
   resolveHome,
   runDir as runDirFor,
   scenarioId,
@@ -31,6 +32,8 @@ export interface RunFlags {
   json?: boolean;
   /** Hidden: names the run directory so a caller knows it before the start. */
   runId?: string;
+  /** Hidden: the project root, for a scenario file kept outside it (`demoflow mcp`). */
+  project?: string;
 }
 
 export interface RunDeps {
@@ -55,7 +58,10 @@ export async function runCommand(
   deps: RunDeps = defaultRunDeps(),
 ): Promise<number> {
   const { host } = deps;
-  const root = findProjectRoot(file);
+  const root =
+    flags.project === undefined
+      ? findProjectRoot(file)
+      : projectRootAt(path.resolve(deps.cwd, flags.project));
   const config = loadProjectConfig(root);
   const { home } = resolveHome({
     ...host,

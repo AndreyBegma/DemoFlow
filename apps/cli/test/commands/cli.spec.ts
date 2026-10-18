@@ -251,11 +251,42 @@ describe('demoflow run', () => {
     expect(result.stdout).toBe('');
   });
 
-  it('--run-id is hidden from --help', async () => {
+  it('--run-id and --project are hidden from --help', async () => {
     const result = await demoflow(['run', '--help'], project);
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('--json');
     expect(result.stdout).not.toContain('run-id');
+    expect(result.stdout).not.toContain('--project');
+  });
+
+  it('--project runs a scenario kept outside the project as inline/<name>', async () => {
+    const outside = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-inline-'));
+    try {
+      const file = path.join(outside, 'staged.demo.json');
+      await cp(scenario('customers'), file);
+      const result = await demoflow(
+        ['run', file, '--json', '--out', out, '--project', project],
+        outside,
+      );
+      expect(result.code, result.stderr).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.status).toBe('completed');
+      expect(json.scenarioId).toBe('inline/staged.demo.json');
+      expect(await exists(path.join(json.runDir, json.renders[0].file))).toBe(
+        true,
+      );
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('--project without demoflow.config.json exits 2 no-project-config', async () => {
+    const result = await demoflow(
+      ['run', scenario('customers'), '--out', out, '--project', out],
+      project,
+    );
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('no-project-config');
   });
 
   it('exits 2 no-project-config when no config is above the scenario', async () => {
