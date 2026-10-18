@@ -119,8 +119,10 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
   });
 
   it('compresses the failing run’s frozen assertion wait and ends on the card', () => {
-    // The assertion waits out its 10 s timeout on a frozen page.
-    expect(failingPlan.source.durationMs).toBeGreaterThan(10_000);
+    // The assertion waits out its 10 s timeout on a frozen page. The video
+    // can end a few frames short of that (9 960 ms on macOS CI), so the bound
+    // is "most of the wait".
+    expect(failingPlan.source.durationMs).toBeGreaterThan(9_000);
     const videoEndMs = failingPlan.timeMap.at(-1)?.outputEndMs ?? 0;
     expect(videoEndMs).toBeLessThan(2_000);
     expect(failingPlan.failure?.endCard.text).toMatch(
