@@ -181,24 +181,25 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     tour = await recordFixtureRun('tour', parent);
     customersPlan = await buildRenderPlan(customers);
     failingPlan = await buildRenderPlan(failing);
-    // Three real recordings at device pixels: over 120 s on a macOS runner.
+    // Three real recordings: over 120 s on a macOS runner.
   }, 300_000);
 
   afterAll(async () => {
     await rm(parent, { recursive: true, force: true });
   });
 
-  it('records the source at device pixels (2×), so the zoom is 1.6', () => {
-    // `videoSize` is viewport × deviceScaleFactor (#17, ADR-0004 §1).
+  it('records the source at the viewport size (1×), so the zoom is 1.25', () => {
+    // `videoSize` is the viewport: Playwright pads a larger canvas instead of
+    // upscaling (#47).
     expect(customersPlan.source).toMatchObject({
       file: 'source.webm',
-      width: 2560,
-      height: 1440,
+      width: 1280,
+      height: 720,
       fps: 25,
-      scale: 2,
+      scale: 1,
     });
     const zooms = customersPlan.camera.map((key) => key.zoom);
-    expect(Math.max(...zooms)).toBeCloseTo(1.6);
+    expect(Math.max(...zooms)).toBeCloseTo(1.25);
   });
 
   it('plans the customers run: cursor, rings, captions, no failure', () => {
