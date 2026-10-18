@@ -263,7 +263,8 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
         message: scrub(event.assertion.message),
       };
     }
-    if (step.action === 'fill' && failure === undefined) {
+    // A failed masked fill is tracked too (#42): its interval stays open to the end.
+    if (step.action === 'fill') {
       input.masks.track(event, step.target);
     }
     input.events.push(event);

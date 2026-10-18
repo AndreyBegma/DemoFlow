@@ -520,6 +520,41 @@ describe('masks', () => {
     expect(rendered.masks[0].endMs).toBe(rendered.durationMs);
   });
 
+  // #42: a masked fill whose field could not be measured has no box to blur.
+  it('masks the whole viewport from its start, past a navigation, when the masked event has no box', () => {
+    const { target: _, ...unmeasured } = masked;
+    const rendered = plan(
+      [
+        unmeasured,
+        event({ action: 'navigate', startMs: 1400, endMs: 1800 }),
+        event({ action: 'wait', startMs: 1800, endMs: 3000 }),
+      ],
+      [],
+    );
+    expect(rendered.masks).toHaveLength(1);
+    const [mask] = rendered.masks;
+    expect(mask.startMs).toBe(600);
+    expect(mask.endMs).toBe(rendered.durationMs);
+    for (const { box } of mask.keys) {
+      expect(box.x).toBeLessThanOrEqual(0);
+      expect(box.y).toBeLessThanOrEqual(0);
+      expect(box.x + box.width).toBeGreaterThanOrEqual(VIEWPORT.width);
+      expect(box.y + box.height).toBeGreaterThanOrEqual(VIEWPORT.height);
+    }
+    const [frame] = frames(rendered, 800, 900);
+    const state = frameAt(rendered, frame);
+    expect(state.masks).toHaveLength(1);
+    const [box] = state.masks;
+    expect(box.x).toBeLessThanOrEqual(state.content.x);
+    expect(box.y).toBeLessThanOrEqual(state.content.y);
+    expect(box.x + box.width).toBeGreaterThanOrEqual(
+      state.content.x + VIEWPORT.width * state.scale,
+    );
+    expect(box.y + box.height).toBeGreaterThanOrEqual(
+      state.content.y + VIEWPORT.height * state.scale,
+    );
+  });
+
   describe('with maskVisibility', () => {
     const withVisibility = (
       maskVisibility: NonNullable<TimelineEvent['maskVisibility']>,

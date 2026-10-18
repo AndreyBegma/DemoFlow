@@ -444,6 +444,9 @@ function distance(a: Point, b: Point): number {
  * stays: the mask runs from the event's start until a `navigate` ends, a page
  * scroll takes the box fully out of the viewport, or the video ends. It cannot
  * tell which click navigated, so covering too long is safe, too short a leak.
+ *
+ * A masked event with no box (its field could not be measured, #42) masks the
+ * whole viewport from its start to the end of the video.
  */
 function maskSpans(
   events: readonly TimelineEvent[],
@@ -485,7 +488,11 @@ function maskSpans(
       }
       continue;
     }
-    if (event.target === undefined) continue;
+    if (event.target === undefined) {
+      // #42: a field that could not be measured; the whole viewport, to the end.
+      spans.push(wholeViewport(event, out, viewport, videoEndMs, leadMs));
+      continue;
+    }
     let box = grow(event.target.box, TIMING.maskMarginPx);
     const startMs = Math.max(0, out(event.startMs) - leadMs);
     const keys: MaskSpan['keys'] = [{ atMs: startMs, box }];
@@ -513,6 +520,21 @@ function maskSpans(
     spans.push({ startMs, endMs: Math.min(endMs, videoEndMs), keys });
   }
   return spans;
+}
+
+function wholeViewport(
+  event: TimelineEvent,
+  out: (timelineMs: number) => number,
+  viewport: { width: number; height: number },
+  videoEndMs: number,
+  leadMs: number,
+): MaskSpan {
+  const startMs = Math.max(0, out(event.startMs) - leadMs);
+  const box = grow(
+    { x: 0, y: 0, width: viewport.width, height: viewport.height },
+    TIMING.maskMarginPx,
+  );
+  return { startMs, endMs: videoEndMs, keys: [{ atMs: startMs, box }] };
 }
 
 function grow(box: Box, by: number): Box {
