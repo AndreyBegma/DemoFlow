@@ -18,6 +18,11 @@ describe('parseProjectConfig', () => {
           idle: { thresholdMs: 1000, compressToMs: 400 },
           frame: { enabled: true, marginRatio: 0.06, radius: 12, shadow: true },
           background: { preset: 'ocean' },
+          cards: {
+            intro: { enabled: true, durationMs: 2000 },
+            scenes: { enabled: true, durationMs: 1500 },
+            outro: { durationMs: 2500 },
+          },
         },
       },
     });
@@ -95,6 +100,59 @@ describe('parseProjectConfig', () => {
         },
       },
     });
+  });
+
+  it('keeps the cards given, filling the rest', () => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: {
+        cards: {
+          intro: { enabled: false },
+          scenes: { durationMs: 500 },
+          outro: { title: 'Acme', cta: 'acme.dev/try', durationMs: 10_000 },
+        },
+      },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        render: {
+          cards: {
+            intro: { enabled: false, durationMs: 2000 },
+            scenes: { enabled: true, durationMs: 500 },
+            outro: { title: 'Acme', cta: 'acme.dev/try', durationMs: 10_000 },
+          },
+        },
+      },
+    });
+  });
+
+  it.each([
+    [{ intro: { durationMs: 499 } }, 'render.cards.intro.durationMs'],
+    [{ intro: { durationMs: 10_001 } }, 'render.cards.intro.durationMs'],
+    [{ scenes: { durationMs: 1500.5 } }, 'render.cards.scenes.durationMs'],
+    [
+      { outro: { title: 'Acme', durationMs: 0 } },
+      'render.cards.outro.durationMs',
+    ],
+    [{ outro: { title: '' } }, 'render.cards.outro.title'],
+    [{ outro: { title: '   ' } }, 'render.cards.outro.title'],
+    [{ outro: { title: 'x'.repeat(81) } }, 'render.cards.outro.title'],
+    [{ outro: { title: 'Acme', cta: '' } }, 'render.cards.outro.cta'],
+    [
+      { outro: { title: 'Acme', cta: 'x'.repeat(81) } },
+      'render.cards.outro.cta',
+    ],
+    [{ outro: { logo: 'logo.png' } }, 'render.cards.outro.logo'],
+  ])('rejects the cards %o at %s', (cards, path) => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: { cards },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContainEqual(expect.objectContaining({ path }));
+    }
   });
 
   it.each([
