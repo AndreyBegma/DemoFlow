@@ -88,7 +88,7 @@ const PressKeySchema = z.string().superRefine((key, ctx) => {
   if (problem !== undefined) ctx.addIssue({ code: 'custom', message: problem });
 });
 
-const navigateKeys =['path', 'url'] as const;
+const navigateKeys = ['path', 'url'] as const;
 const fillKeys = ['value', 'valueFrom'] as const;
 const scrollKeys = ['to', 'target'] as const;
 
