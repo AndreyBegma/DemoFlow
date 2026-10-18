@@ -14,6 +14,7 @@ export const STEP_ACTIONS = [
   'fill',
   'select',
   'hover',
+  'press',
   'scroll',
   'assertVisible',
   'assertText',
@@ -40,7 +41,54 @@ function step<A extends StepAction, S extends z.ZodRawShape>(
   return z.strictObject({ action: z.literal(action), ...shape, ...common });
 }
 
-const navigateKeys = ['path', 'url'] as const;
+/** Key names a `press` may send, as Playwright spells them. Typing text is `fill`. */
+export const PRESS_KEYS = [
+  'Enter',
+  'Tab',
+  'Escape',
+  'Backspace',
+  'Delete',
+  'Space',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  ...Array.from({ length: 12 }, (_, i) => `F${i + 1}`),
+] as const;
+export const PRESS_MODIFIERS = ['Control', 'Shift', 'Alt', 'Meta'] as const;
+
+const PRESS_KEY_NAMES: ReadonlySet<string> = new Set(PRESS_KEYS);
+const PRESS_MODIFIER_NAMES: ReadonlySet<string> = new Set(PRESS_MODIFIERS);
+
+/** Why `key` is not a valid `press` key, or `undefined` when it is. */
+export function pressKeyProblem(key: string): string | undefined {
+  const parts = key.split('+');
+  const main = parts.pop() ?? '';
+  const modifiers = parts;
+  if (modifiers.some((part) => !PRESS_MODIFIER_NAMES.has(part))) {
+    return `expected modifiers from ${PRESS_MODIFIERS.join('|')}`;
+  }
+  if (new Set(modifiers).size !== modifiers.length) {
+    return 'expected each modifier at most once';
+  }
+  if (PRESS_KEY_NAMES.has(main)) return undefined;
+  // A bare letter or digit would be typing; with a modifier it is a shortcut.
+  if (/^[A-Za-z0-9]$/.test(main) && modifiers.length > 0) return undefined;
+  return modifiers.length > 0 || main === ''
+    ? `expected the key after + to be a letter, a digit or one of ${PRESS_KEYS.join('|')}`
+    : `expected one of ${PRESS_KEYS.join('|')}, or a chord such as Control+a`;
+}
+
+const PressKeySchema = z.string().superRefine((key, ctx) => {
+  const problem = pressKeyProblem(key);
+  if (problem !== undefined) ctx.addIssue({ code: 'custom', message: problem });
+});
+
+const navigateKeys =['path', 'url'] as const;
 const fillKeys = ['value', 'valueFrom'] as const;
 const scrollKeys = ['to', 'target'] as const;
 
@@ -81,6 +129,8 @@ export const StepSchema = z.discriminatedUnion(
       .meta(exactlyOneJsonSchema(fillKeys)),
     step('select', { target: LocatorSchema, option: z.string() }),
     step('hover', { target: LocatorSchema }),
+    // No target: the key goes to the focused element.
+    step('press', { key: PressKeySchema, target: LocatorSchema.optional() }),
     step('scroll', {
       to: z.enum(['top', 'bottom']).optional(),
       target: LocatorSchema.optional(),

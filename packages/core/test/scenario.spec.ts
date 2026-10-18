@@ -59,6 +59,12 @@ const actions: {
     errorPath: 'steps[0].target',
   },
   {
+    action: 'press',
+    valid: { key: 'Enter', target },
+    required: 'key',
+    errorPath: 'steps[0].key',
+  },
+  {
     action: 'scroll',
     valid: { to: 'bottom' },
     required: 'to',
@@ -96,6 +102,47 @@ const actions: {
   },
 ];
 
+describe('parseScenario — press', () => {
+  const press = (extra: Record<string, unknown>) =>
+    parseScenario(scenario({ action: 'press', ...extra }));
+
+  it.each([
+    'Enter',
+    'Tab',
+    'Escape',
+    'ArrowDown',
+    'F5',
+    'Control+a',
+    'Meta+k',
+    'Control+Shift+ArrowLeft',
+  ])('accepts %s', (key) => {
+    expect(press({ key }).ok).toBe(true);
+  });
+
+  it('accepts a press without a target, for the focused element', () => {
+    expect(press({ key: 'Enter' }).ok).toBe(true);
+  });
+
+  it.each([
+    '',
+    'Enterr',
+    'enter',
+    'a',
+    '1',
+    'hello',
+    'Control+',
+    '+a',
+    'Ctrl+a',
+    'Control+Control+a',
+    'Control+ab',
+    'Enter+Enter',
+  ])('rejects %j', (key) => {
+    expect(errorsOf(scenario({ action: 'press', key }))).toContainEqual(
+      expect.objectContaining({ path: 'steps[0].key' }),
+    );
+  });
+});
+
 describe('parseScenario — every action', () => {
   it('covers every action of ADR-0003', () => {
     expect(actions.map((row) => row.action).sort()).toEqual(
@@ -106,6 +153,7 @@ describe('parseScenario — every action', () => {
         'fill',
         'select',
         'hover',
+        'press',
         'scroll',
         'assertVisible',
         'assertText',
