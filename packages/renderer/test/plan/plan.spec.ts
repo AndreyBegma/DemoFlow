@@ -742,6 +742,62 @@ describe('captions', () => {
   });
 });
 
+describe('key badges', () => {
+  const box = { x: 100, y: 200, width: 200, height: 40 };
+
+  it('hangs a badge below the target of a press, from its start to 600 ms after its end', () => {
+    const rendered = plan(
+      [
+        event({
+          action: 'press',
+          startMs: 1000,
+          endMs: 1500,
+          key: 'Control+a',
+          target: { box },
+          pointer: { from: { x: 0, y: 0 }, to: { x: 200, y: 220 } },
+        }),
+        event({ action: 'wait', startMs: 1500, endMs: 3000 }),
+      ],
+      [],
+    );
+    expect(rendered.keys).toEqual([
+      {
+        startMs: 1000,
+        endMs: 2100,
+        text: 'Control + a',
+        anchor: { x: 200, y: 240 },
+      },
+    ]);
+    const frame = (atMs: number) =>
+      frameAt(rendered, Math.round((atMs * rendered.output.fps) / 1000));
+    expect(frame(900).key).toBeUndefined();
+    expect(frame(1200).key?.text).toBe('Control + a');
+    expect(frame(2200).key).toBeUndefined();
+  });
+
+  it('hangs a press without a target from where the pointer last rested', () => {
+    const rendered = plan(
+      [
+        click(0, 500, { x: 300, y: 200 }),
+        event({ action: 'press', startMs: 600, endMs: 700, key: 'Enter' }),
+      ],
+      [],
+    );
+    expect(rendered.keys[0]?.anchor).toEqual({ x: 300, y: 200 });
+  });
+
+  it('cuts a badge when the next one starts', () => {
+    const rendered = plan(
+      [
+        event({ action: 'press', startMs: 0, endMs: 100, key: 'Tab' }),
+        event({ action: 'press', startMs: 300, endMs: 400, key: 'Tab' }),
+      ],
+      [],
+    );
+    expect(rendered.keys.map((badge) => badge.endMs)).toEqual([300, 1000]);
+  });
+});
+
 describe('failure', () => {
   const steps = [
     event({ action: 'navigate', startMs: 0, endMs: 100 }),

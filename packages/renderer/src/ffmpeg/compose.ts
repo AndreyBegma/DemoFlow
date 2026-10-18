@@ -47,6 +47,13 @@ export const LOOK = {
     maxWidth: 1600,
     text: { fontPx: 40, weight: 'regular' },
   },
+  /** Hangs below the target, in the caption's panel and type. */
+  key: {
+    gap: 12,
+    paddingX: 14,
+    paddingY: 8,
+    text: { fontPx: 28, weight: 'semibold' },
+  },
   watermark: {
     fill: hex('#d93025'),
     margin: 24,
@@ -127,6 +134,16 @@ export function createCompositor(output: OutputSpec): Compositor {
           const { panel } = LOOK.caption;
           drawPanel(target, caption.panel, panel, LOOK.caption.panelAlpha);
           paintMask(target, caption.mask, WHITE);
+        }
+        if (state.key !== undefined) {
+          const laid = layKey(state.key.text, state.key.anchor, state.content);
+          drawPanel(
+            target,
+            laid.panel,
+            LOOK.caption.panel,
+            LOOK.caption.panelAlpha,
+          );
+          paintMask(target, laid.mask, WHITE);
         }
       }
       if (state.watermark) {
@@ -257,6 +274,34 @@ function layCaption(text: string, output: OutputSpec): Laid {
       style,
       output.width / 2,
       panel.y + padding + capHeight(style),
+    ),
+  };
+}
+
+/** The key badge, centred under `anchor` and kept inside `content`. */
+function layKey(
+  text: string,
+  anchor: { x: number; y: number },
+  content: Box,
+): Laid {
+  const { gap, paddingX, paddingY, text: style } = LOOK.key;
+  const width = measureText(text, style) + 2 * paddingX;
+  const height = capHeight(style) + 2 * paddingY;
+  const inside = (value: number, low: number, size: number, span: number) =>
+    Math.round(Math.min(low + span - size, Math.max(low, value)));
+  const panel: Box = {
+    x: inside(anchor.x - width / 2, content.x, width, content.width),
+    y: inside(anchor.y + gap, content.y, height, content.height),
+    width,
+    height,
+  };
+  return {
+    panel,
+    mask: textMask(
+      [text],
+      style,
+      panel.x + width / 2,
+      panel.y + paddingY + capHeight(style),
     ),
   };
 }

@@ -110,6 +110,15 @@ export interface Caption {
   text: string;
 }
 
+/** A key badge, e.g. `Enter`, shown just below `anchor` (viewport CSS pixels). */
+export interface KeyBadge {
+  startMs: number;
+  endMs: number;
+  text: string;
+  /** Where the badge hangs from: the bottom-centre of the target, or the pointer. */
+  anchor: Point;
+}
+
 export interface FailureSpec {
   stage: 'readiness' | 'execution' | 'verification' | 'recording';
   /** 1-based, as a person counts steps; absent when the failure has no step. */
@@ -148,6 +157,7 @@ export interface RenderPlan {
   camera: CameraKeyframe[];
   masks: MaskSpan[];
   captions: Caption[];
+  keys: KeyBadge[];
   failure?: FailureSpec;
 }
 
@@ -167,6 +177,8 @@ export interface FrameState {
   /** Clipped to `content`. */
   masks: Box[];
   caption?: string;
+  /** The key badge to draw, hanging from `anchor` in output pixels. */
+  key?: { text: string; anchor: Point };
   watermark: boolean;
   endCard?: string;
 }

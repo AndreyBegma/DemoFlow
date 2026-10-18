@@ -25,6 +25,8 @@ const COUNTER_PAGE = `<!doctype html>
   <h1>Counter</h1>
   <button id="count" onclick="clicks.textContent = Number(clicks.textContent) + 1">Count</button>
   <output id="clicks">0</output>
+  <input aria-label="Note"><input type="password" aria-label="Pin">
+  <textarea aria-label="Body"></textarea>
   <div class="row"><span class="swatch" style="display:inline-block;width:40px;height:40px;background:teal" onclick="clicks.textContent = Number(clicks.textContent) + 1"></span></div>
 </body></html>`;
 
@@ -181,6 +183,68 @@ describe('demoflow record on a test page', () => {
     expect(steps.slice(1)).toEqual([
       { action: 'assertVisible', target: { role: 'button', name: 'Count' } },
       { action: 'click', target: { role: 'button', name: 'Count' } },
+    ]);
+  });
+
+  it('turns Enter in a text field into a press step on that field', async () => {
+    const root = await project(fixture.origin);
+    const result = await record(root, 'press', {}, async (session) => {
+      const { app, panel } = session;
+      await app.goto(`${fixture.origin}/customers`);
+      await panelShows(panel, 'navigate /customers');
+      const search = app.getByRole('searchbox', { name: 'Search customers' });
+      await search.pressSequentially('Ada', { delay: 40 });
+      await panelShows(panel, '= "Ada"');
+      await search.press('Enter');
+      await panelShows(panel, 'press Enter on');
+      await stopAndSave(session);
+    });
+
+    expect(result.code).toBe(0);
+    const { steps } = await readScenario(root, 'press');
+    expect(steps).toEqual([
+      { action: 'navigate', path: '/customers' },
+      {
+        action: 'fill',
+        target: { role: 'searchbox', name: 'Search customers' },
+        value: 'Ada',
+      },
+      {
+        action: 'press',
+        key: 'Enter',
+        target: { role: 'searchbox', name: 'Search customers' },
+      },
+    ]);
+  });
+
+  it('never records a key inside a password field, or Enter that only types a newline', async () => {
+    const pin = '4821';
+    const root = await project(counterOrigin);
+    const result = await record(root, 'keys', {}, async (session) => {
+      const { app, panel } = session;
+      await panelShows(panel, 'navigate /');
+      const secret = app.getByLabel('Pin');
+      await secret.pressSequentially(pin, { delay: 10 });
+      await panelShows(panel, '← env DEMO_PASSWORD');
+      await secret.press('Enter');
+      await secret.press('Tab');
+      await app.getByLabel('Body').press('Enter');
+      // Queued in order: once this press shows, the ones before it were handled.
+      await app.getByLabel('Note').press('Escape');
+      await panelShows(panel, 'press Escape on');
+      await stopAndSave(session);
+    });
+
+    expect(result.code).toBe(0);
+    const raw = await readFile(scenarioFile(root, 'keys'), 'utf8');
+    expect(raw).not.toContain(pin);
+    const { steps } = JSON.parse(raw) as { steps: { action: string }[] };
+    expect(steps.filter((step) => step.action === 'press')).toEqual([
+      {
+        action: 'press',
+        key: 'Escape',
+        target: { role: 'textbox', name: 'Note' },
+      },
     ]);
   });
 

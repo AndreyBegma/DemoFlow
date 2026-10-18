@@ -23,7 +23,7 @@ export const TYPING_DELAY_MS = 35;
 const SCROLL_FRAME_FALLBACK_MS = 100;
 /** A target that moves while the pointer glides towards it is re-aimed at most this often. */
 const MAX_REAIMS = 3;
-/** How long after a click a navigation it caused may take to start. */
+/** How long after a click or key press a navigation it caused may take to start. */
 const NAVIGATION_START_MS = 100;
 
 export type FailedStage = 'execution' | 'verification';
@@ -99,6 +99,20 @@ export async function runAction(
         await navigationStart(ctx.page);
       }
       return { target: { box }, pointer: { from, to } };
+    }
+    case 'press': {
+      if (step.target === undefined) {
+        await ctx.page.keyboard.press(step.key);
+        await navigationStart(ctx.page);
+        return { key: step.key };
+      }
+      const target = locate(ctx, step.target);
+      await target.hover({ trial: true, timeout: step.timeoutMs });
+      const { box, from, to } = await glide(ctx, target, step.target);
+      await target.focus({ timeout: step.timeoutMs });
+      await ctx.page.keyboard.press(step.key);
+      await navigationStart(ctx.page);
+      return { key: step.key, target: { box }, pointer: { from, to } };
     }
     case 'fill': {
       const target = locate(ctx, step.target);

@@ -83,6 +83,14 @@ export const SCENES: readonly Scene[] = [
     region: { x: 360, y: 880, width: 1200, height: 140 },
   },
   {
+    name: 'key-badge',
+    frame: state({
+      key: { text: 'Enter', anchor: { x: 960, y: 430 } },
+      cursor: { x: 900, y: 400 },
+    }),
+    region: { x: 760, y: 360, width: 400, height: 160 },
+  },
+  {
     name: 'mask',
     frame: state({ masks: [{ x: 1050, y: 450, width: 300, height: 180 }] }),
     region: { x: 1000, y: 400, width: 400, height: 280 },

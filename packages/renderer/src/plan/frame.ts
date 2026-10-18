@@ -87,6 +87,9 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
   const caption = plan.captions.find(
     (entry) => atMs >= entry.startMs && atMs < entry.endMs,
   )?.text;
+  const badge = plan.keys.find(
+    (entry) => atMs >= entry.startMs && atMs < entry.endMs,
+  );
 
   return {
     sourceMs: toSourceMs(plan.timeMap, atMs),
@@ -97,6 +100,9 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
     rings,
     masks,
     ...(caption === undefined ? {} : { caption }),
+    ...(badge === undefined
+      ? {}
+      : { key: { text: badge.text, anchor: toOutput(badge.anchor) } }),
     watermark,
   };
 }
