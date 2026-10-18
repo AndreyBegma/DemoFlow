@@ -48,7 +48,10 @@ async function extractFrames(
   const data = await readFile(raw);
   await rm(raw);
   const size = plan.output.width * plan.output.height * 3;
-  expect(data.length).toBe(size * numbers.length);
+  expect(
+    data.length,
+    `${path.basename(file)}: frames ${numbers.join(',')} of ${frameCount(plan)}`,
+  ).toBe(size * numbers.length);
   return numbers.map((_, i) => data.subarray(i * size, (i + 1) * size));
 }
 
@@ -199,7 +202,10 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
           1000,
       );
     const from = toFrame(password.startMs);
-    const to = toFrame(navigation.endMs);
+    // A slow runner can deliver a video that ends before the timeline does
+    // (the same run measures shorter than its events); only frames the render
+    // has can be checked.
+    const to = Math.min(toFrame(navigation.endMs), frameCount(plan));
     // A frame every 500 ms (15 at 30 fps), and the last one before the navigation.
     const numbers: number[] = [];
     for (let n = from; n < to; n += plan.output.fps / 2) numbers.push(n);

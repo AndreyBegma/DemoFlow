@@ -118,13 +118,22 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     expect(customersPlan.masks).toEqual([]);
   });
 
-  it('compresses the failing run’s frozen assertion wait and ends on the card', () => {
-    // The assertion waits out its 10 s timeout on a frozen page. The video
-    // can end a few frames short of that (9 960 ms on macOS CI), so the bound
-    // is "most of the wait".
-    expect(failingPlan.source.durationMs).toBeGreaterThan(9_000);
+  it('compresses the failing run’s frozen assertion wait and ends on the card', async () => {
+    // The assertion waits out its timeout on a frozen page, and the plan cuts
+    // that wait down. The wait is read from the run's own timeline: a slow
+    // runner's video can be shorter than the wait (9 960 ms of a 10 s wait on
+    // macOS CI), so the check is on what the plan saved, not on a fixed length.
+    const events = JSON.parse(
+      await readFile(path.join(failing, 'timeline.json'), 'utf8'),
+    ).events as { startMs: number; endMs: number }[];
+    const wait = events.at(-1);
+    if (wait === undefined) throw new Error('failing run has no events');
+    const waitMs = wait.endMs - wait.startMs;
     const videoEndMs = failingPlan.timeMap.at(-1)?.outputEndMs ?? 0;
     expect(videoEndMs).toBeLessThan(2_000);
+    expect(failingPlan.source.durationMs - videoEndMs).toBeGreaterThan(
+      waitMs * 0.8,
+    );
     expect(failingPlan.failure?.endCard.text).toMatch(
       /^Verification failed at step 3: /,
     );
@@ -146,11 +155,16 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     if (wait === undefined) throw new Error('tour has no waitFor');
     const from = wait.startMs + plan.offsetMs + 100;
     const to = wait.endMs + plan.offsetMs - 200;
+    // On failure, show whether the source itself froze there (frames the
+    // runner never delivered) or the plan compressed motion.
+    const { freezes } = await probeVideo(path.join(tour, plan.source.file), {
+      freezes: { minMs: 1_000 },
+    });
     for (const segment of plan.timeMap) {
       if (segment.sourceEndMs <= from || segment.sourceStartMs >= to) continue;
       expect(
         segment.outputEndMs - segment.outputStartMs,
-        `segment ${JSON.stringify(segment)} inside the spinner`,
+        `segment ${JSON.stringify(segment)} inside the spinner; source freezes ${JSON.stringify(freezes)}`,
       ).toBeCloseTo(segment.sourceEndMs - segment.sourceStartMs);
     }
   });
