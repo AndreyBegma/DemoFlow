@@ -18,6 +18,7 @@ import {
   toOutputMs,
 } from '../../src/index.ts';
 import { hasFfmpeg, recordFixtureRun } from '../plan/fixture-runs.ts';
+import { checkLayout } from '../visual/layout.ts';
 import { countFrames, sampleFrames } from './sample-frames.ts';
 
 if (!hasFfmpeg) {
@@ -139,6 +140,20 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
         }
         expect(magenta, `output frame ${n}`).toBe(0);
       }
+
+      // The layout (#47): a mid-run frame has page content in every quadrant
+      // and no large block of the recorder's padding grey.
+      const [middle] = await extractFrames(
+        file,
+        [Math.floor(frameCount(plan) / 2)],
+        plan,
+      );
+      const layout = checkLayout(middle, plan.output.width, plan.output.height);
+      console.info(
+        `layout ${scenario}: quadrant ranges ${layout.quadrantRanges.join('/')}, ` +
+          `padding ${(layout.paddingShare * 100).toFixed(1)} %`,
+      );
+      expect(layout.problems, `${scenario}: a mid-run frame`).toEqual([]);
 
       if (scenario !== 'failing') return;
       // The watermark on the first and the last frame; the last is the end card.

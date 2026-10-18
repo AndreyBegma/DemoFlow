@@ -18,6 +18,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "tsc -p tsconfig.json && vitest run",
+    "test:update-baselines": "node test/visual/update-baselines.ts",
     "lint": "biome lint src test"
   },
   "dependencies": {
