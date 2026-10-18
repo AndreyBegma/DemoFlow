@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // Read-only helper of the engine's tests: serves the built fixture on an ephemeral port.
 import {
   type FixtureServer,
@@ -18,9 +18,6 @@ const CLI_DIR = path.resolve(
 const REPO = path.resolve(CLI_DIR, '../..');
 const FIXTURE_SCENARIOS = path.join(REPO, 'apps/fixture/demoflow');
 const MAIN = path.join(CLI_DIR, 'dist/main.js');
-
-// Real-run tests share the CI runner and have grown slow since #17 — see #44.
-vi.setConfig({ testTimeout: 240_000 });
 
 interface Outcome {
   code: number | null;
