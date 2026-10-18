@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { RunResultSchema, type TimelineEvent } from '@demoflow/core';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { LOOK } from '../../src/ffmpeg/compose.ts';
 import { wrapText } from '../../src/ffmpeg/font.ts';
 import { drawPlan } from '../../src/ffmpeg/pipeline.ts';
@@ -18,6 +18,9 @@ import {
   toOutputMs,
 } from '../../src/index.ts';
 import { hasFfmpeg, recordFixtureRun } from '../plan/fixture-runs.ts';
+
+// A Windows CI runner records and renders the customers run in 108 s of the default 120.
+vi.setConfig({ testTimeout: 240_000 });
 
 if (!hasFfmpeg) {
   console.warn('no usable FFmpeg: skipping the FFmpeg compositor tests');

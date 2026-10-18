@@ -42,10 +42,11 @@ export async function drawPlan(
   } catch (error) {
     // A broken pipe means the encoder died: its own error says why.
     if (isPipeError(error)) await encoder.done;
-    encoder.process.kill();
+    encoder.input.destroy();
+    await release(encoder.process, encoder.done);
     throw error;
   } finally {
-    source.close();
+    await source.close();
   }
 }
 
@@ -58,7 +59,8 @@ export function sourceFrameIndex(sourceMs: number, source: SourceSpec): number {
 interface Source {
   /** Frame `index`, or the last one when the video is shorter. Indexes never go back. */
   at(index: number): Promise<Picture>;
-  close(): void;
+  /** Stops the decoder and resolves once it has exited. */
+  close(): Promise<void>;
 }
 
 /** Decodes `file` to RGB24 frames at the source's constant frame rate, read forward once. */
@@ -112,9 +114,23 @@ function openSource(file: string, spec: SourceSpec): Source {
       return current;
     },
     close() {
-      if (child.exitCode === null) child.kill();
+      // The plan rarely needs the last source frame, so the decoder is
+      // usually blocked writing one into a full pipe — and FFmpeg acts on
+      // SIGTERM only once that write returns. Closing our end fails the
+      // write (EPIPE), and the kill covers a decoder that is not writing.
+      child.stdout?.destroy();
+      return release(child, failed);
     },
   };
+}
+
+/** Kills `child` unless it has exited, and resolves once it has: Node holds an unexited child's handle and pipes. */
+async function release(
+  child: ChildProcess,
+  exit: Promise<void>,
+): Promise<void> {
+  if (child.exitCode === null && child.signalCode === null) child.kill();
+  await exit.catch(() => undefined);
 }
 
 /** Whole frames of `size` bytes from the child's stdout. */

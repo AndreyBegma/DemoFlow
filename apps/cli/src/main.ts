@@ -86,11 +86,5 @@ if (
   entry !== undefined &&
   import.meta.url === pathToFileURL(realpathSync(entry)).href
 ) {
-  const code = await main(process.argv.slice(2));
-  process.exitCode = code;
-  // Playwright and FFmpeg can leave handles that keep the loop alive: leave
-  // once stdout and stderr are flushed, so a finished run never hangs.
-  process.stderr.write('', () => {
-    process.stdout.write('', () => process.exit(code));
-  });
+  process.exitCode = await main(process.argv.slice(2));
 }

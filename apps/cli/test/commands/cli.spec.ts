@@ -23,6 +23,8 @@ interface Outcome {
   code: number | null;
   stdout: string;
   stderr: string;
+  /** From the last stdout output to the process exiting. */
+  afterOutputMs: number;
 }
 
 /** Runs the built CLI as a real process: argument array, no shell. */
@@ -38,14 +40,22 @@ function demoflow(
     });
     let stdout = '';
     let stderr = '';
+    let outputAt = performance.now();
+    let exitedAt = 0;
     child.stdout.on('data', (chunk) => {
       stdout += chunk;
+      outputAt = performance.now();
     });
     child.stderr.on('data', (chunk) => {
       stderr += chunk;
     });
     child.on('error', reject);
-    child.on('close', (code) => resolve({ code, stdout, stderr }));
+    child.on('exit', () => {
+      exitedAt = performance.now();
+    });
+    child.on('close', (code) =>
+      resolve({ code, stdout, stderr, afterOutputMs: exitedAt - outputAt }),
+    );
   });
 }
 
@@ -126,6 +136,8 @@ describe('demoflow run', () => {
       project,
     );
     expect(result.code, result.stderr).toBe(0);
+    // The CLI never calls `process.exit`: it leaves once nothing is left open.
+    expect(result.afterOutputMs).toBeLessThan(5_000);
     const json = JSON.parse(result.stdout);
     expect(result.stdout.trim().split('\n')).toHaveLength(1);
     expect(json.status).toBe('completed');
