@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runFfmpegRaw } from '@demoflow/renderer';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // Read-only helper of the engine's tests: serves the built fixture on an ephemeral port.
 import {
@@ -171,6 +172,68 @@ describe('demoflow run', () => {
     expect(result.code, result.stderr).toBe(0);
     expect(result.stdout).toContain('completed');
     expect(result.stdout).toContain('ffmpeg.mp4');
+  });
+
+  it('renders with render.frame and render.background from demoflow.config.json', async () => {
+    const framed = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-framed-'));
+    try {
+      const colour = [0xc0, 0x30, 0x20];
+      await writeFile(
+        path.join(framed, 'demoflow.config.json'),
+        JSON.stringify({
+          baseUrl: fixture.origin,
+          render: {
+            frame: { marginRatio: 0.2 },
+            background: { color: '#c03020' },
+          },
+        }),
+      );
+      await cp(FIXTURE_SCENARIOS, path.join(framed, 'demoflow'), {
+        recursive: true,
+      });
+      const result = await demoflow(
+        [
+          'run',
+          path.join(framed, 'demoflow', 'customers.demo.json'),
+          '--json',
+          '--out',
+          out,
+        ],
+        framed,
+      );
+      expect(result.code, result.stderr).toBe(0);
+      const json = JSON.parse(result.stdout);
+      const { stdout: frame } = await runFfmpegRaw([
+        '-i',
+        path.join(json.runDir, json.renders[0].file),
+        '-frames:v',
+        '1',
+        '-f',
+        'rawvideo',
+        '-pix_fmt',
+        'rgb24',
+        'pipe:1',
+      ]);
+      expect(frame.length).toBe(1920 * 1080 * 3);
+      // The corner is background either way; with a 20 % margin the window
+      // starts 216 px down, so (960, 150) is background too — with the
+      // default 6 % it would be the page.
+      for (const [x, y] of [
+        [5, 5],
+        [960, 150],
+      ]) {
+        const at = (y * 1920 + x) * 3;
+        const pixel = [frame[at], frame[at + 1], frame[at + 2]];
+        pixel.forEach((value, c) => {
+          expect(
+            Math.abs(value - colour[c]),
+            `(${x}, ${y}) is ${pixel}`,
+          ).toBeLessThanOrEqual(8);
+        });
+      }
+    } finally {
+      await rm(framed, { recursive: true, force: true });
+    }
   });
 
   it('a failing scenario exits 1 with status failed', async () => {

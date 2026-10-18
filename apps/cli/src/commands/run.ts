@@ -165,6 +165,8 @@ export async function runCommand(
             height: config.render.height,
             fps: config.render.fps,
           },
+          frame: config.render.frame,
+          background: config.render.background,
         });
         await ffmpegRenderer.render(runDir, plan);
       } catch (error) {
