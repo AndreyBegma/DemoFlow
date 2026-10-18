@@ -57,11 +57,9 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
   camera follows the current step's target in a narrow frame, with captions
   above and below.
 - **Order inside the phase**:
-  1. real 2× capture through a CDP screencast in device pixels, starting with a
-     spike like #4 — `recordVideo.size` cannot upscale (#47). The orchestrator
-     decides on the spike by criteria fixed in its spec: sharp text at the 1.6×
-     zoom, 25 fps without dropped frames on all three OSes, CI no more than 2×
-     slower. If they are not met, the source stays 1×;
+  1. ~~real 2× capture~~ — closed: no capture path gives a device-pixel source
+     ([ADR-0010](../adr/0010-source-video-at-viewport-size.md), #82, #85); the
+     source stays 1×;
   2. frame and background — these, the cards, transitions and GIF/WebM do
      not depend on source sharpness and proceed on the 1× source while the
      capture question is open; #82 rejected the CDP screencast (frames are
