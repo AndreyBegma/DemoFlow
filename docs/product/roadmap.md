@@ -79,6 +79,17 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
   ([ADR-0009](../adr/0009-playback-relay-and-luna-player-adapter.md)). Sharing
   is by file or through the GitHub Action.
 - **Language**: English UI, with strings in an i18n dictionary from the start.
+- **A simple public landing page**: what DemoFlow is, a demo video made with
+  DemoFlow, "Install" (`npx demoflow`) and "Sign in"; documentation as its own
+  section.
+- **No pricing or plans**: everything is free; billing is a later phase once
+  there are users, and the schema does not anticipate it.
+- **Production at the end of Phase 5**, deployed from `main`, once sign-in, the
+  Runner and the library exist. The person sets up the domain and the server;
+  until then only staging exists.
+- **Account deletion** (all metadata deleted, every Runner token revoked) is in
+  Phase 5; data export comes later — the videos are already on the user's
+  machine.
 
 ## Phase 6 — Luna Player
 
