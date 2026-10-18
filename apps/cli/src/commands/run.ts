@@ -12,15 +12,17 @@ import {
   type HostEnvironment,
   loadGlobalConfig,
   loadProjectConfig,
+  projectRootAt,
   resolveHome,
   runDir as runDirFor,
   scenarioId,
 } from '../config/index.ts';
-import { EXIT_STAGE_FAILED } from './errors.ts';
+import { type BrowserDeps, ensureChromium } from './browser.ts';
+import { CommandError, EXIT_STAGE_FAILED } from './errors.ts';
 import { exitCodeFor } from './exit.ts';
 import type { Io } from './io.ts';
 import { formatJson, formatSummary } from './output.ts';
-import { generateRunId } from './run-id.ts';
+import { assertSafeRunId, generateRunId } from './run-id.ts';
 import { loadScenario } from './scenario-file.ts';
 import { settleRun } from './settle.ts';
 
@@ -29,12 +31,18 @@ export interface RunFlags {
   out?: string;
   headed?: boolean;
   json?: boolean;
+  /** Hidden: names the run directory so a caller knows it before the start. */
+  runId?: string;
+  /** Hidden: the project root, for a scenario file kept outside it (`demoflow mcp`). */
+  project?: string;
 }
 
 export interface RunDeps {
   host: HostEnvironment;
   cwd: string;
   runId: () => string;
+  /** Chromium's check and first-use install; Playwright's own by default. */
+  browser?: BrowserDeps;
 }
 
 export function defaultRunDeps(): RunDeps {
@@ -53,7 +61,10 @@ export async function runCommand(
   deps: RunDeps = defaultRunDeps(),
 ): Promise<number> {
   const { host } = deps;
-  const root = findProjectRoot(file);
+  const root =
+    flags.project === undefined
+      ? findProjectRoot(file)
+      : projectRootAt(path.resolve(deps.cwd, flags.project));
   const config = loadProjectConfig(root);
   const { home } = resolveHome({
     ...host,
@@ -68,8 +79,19 @@ export async function runCommand(
     io.stderr(`warning ${warning.path}: ${warning.message}\n`);
   }
 
-  const runId = deps.runId();
+  const runId = flags.runId ?? deps.runId();
+  if (flags.runId !== undefined) assertSafeRunId(flags.runId);
   const runDir = runDirFor(home, runId, host.platform);
+  if (flags.runId !== undefined && existsSync(runDir)) {
+    throw new CommandError(
+      'invalid-run-id',
+      `run directory already exists: ${runDir}`,
+    );
+  }
+  // After every input check: a bad scenario never costs a browser download.
+  if ((await ensureChromium(io, deps.browser)) === 'failed') {
+    return EXIT_STAGE_FAILED;
+  }
   io.stderr(`Running ${scenarioId(root, file)} (${runId})\n`);
 
   // Secrets come from the process environment only (spec 5).

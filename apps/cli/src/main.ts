@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, Option } from 'commander';
 import {
   describeError,
   EXIT_STAGE_FAILED,
@@ -9,7 +9,10 @@ import {
 } from './commands/errors.ts';
 import { type Io, processIo } from './commands/io.ts';
 import { runCommand } from './commands/run.ts';
+import { setupCommand } from './commands/setup.ts';
 import { validateCommand } from './commands/validate.ts';
+import { mcpCommand } from './mcp/command.ts';
+import { packageVersion } from './version.ts';
 
 /**
  * The `demoflow` program. Returns the exit code instead of exiting, so the
@@ -22,6 +25,7 @@ export async function main(
   let exitCode = 0;
   const program = new Command('demoflow')
     .description('Turn a scenario into a demo video')
+    .version(packageVersion())
     .exitOverride()
     .configureOutput({
       writeOut: (text) => io.stdout(text),
@@ -44,6 +48,8 @@ export async function main(
     .option('--out <dir>', 'artifacts directory (the home of runs/)')
     .option('--headed', 'show the browser window')
     .option('--json', 'print the result as one JSON object on stdout')
+    .addOption(new Option('--run-id <id>', 'name the run directory').hideHelp())
+    .addOption(new Option('--project <dir>', 'the project root').hideHelp())
     .action(
       async (
         scenario: string,
@@ -52,11 +58,31 @@ export async function main(
           out?: string;
           headed?: boolean;
           json?: boolean;
+          runId?: string;
+          project?: string;
         },
       ) => {
         exitCode = await runCommand(scenario, flags, io);
       },
     );
+
+  program
+    .command('setup')
+    .description('Install Chromium now instead of on the first run')
+    .action(async () => {
+      exitCode = await setupCommand(io);
+    });
+
+  program
+    .command('mcp')
+    .description('Serve demo generation to MCP clients over stdio')
+    .addHelpText(
+      'after',
+      '\nRegister with Claude Code:\n  claude mcp add demoflow -- npx demoflow mcp\n',
+    )
+    .action(async () => {
+      exitCode = await mcpCommand(io);
+    });
 
   try {
     await program.parseAsync(argv, { from: 'user' });

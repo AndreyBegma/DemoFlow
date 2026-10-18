@@ -29,6 +29,32 @@ decisions live in [../adr/](../adr/README.md).
 | [#42](https://github.com/AndreyBegma/DemoFlow/issues/42) | [Masked fill failure still masks](42-masked-fill-failure.md) | #47 |
 | [#44](https://github.com/AndreyBegma/DemoFlow/issues/44) | [Stable real-run tests on CI](44-ci-real-run-stability.md) | #47 |
 | [#48](https://github.com/AndreyBegma/DemoFlow/issues/48) | [Sync mark: always recorded, unbiased](48-sync-mark-reliability.md) | #42, #44 |
+| [#56](https://github.com/AndreyBegma/DemoFlow/issues/56) | [Container scroll settles (macOS)](56-macos-container-scroll.md) | — |
+| [#40](https://github.com/AndreyBegma/DemoFlow/issues/40) | [Screencast stalls: re-measure, un-quarantine](40-screencast-stalls.md) | — |
+| [#62](https://github.com/AndreyBegma/DemoFlow/issues/62) | [Drift reference on the page clock](62-drift-reference-page-clock.md) | #40 |
+| [#64](https://github.com/AndreyBegma/DemoFlow/issues/64) | [Sync mark hold invariant](64-sync-mark-hold-invariant.md) | — |
+
+## Phase 3 — MCP integration
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#68](https://github.com/AndreyBegma/DemoFlow/issues/68) | [Generate, poll and cancel a demo](68-mcp-generate-poll-cancel.md) | — |
+| [#69](https://github.com/AndreyBegma/DemoFlow/issues/69) | [Validate scenarios, list demos, check the project](69-mcp-read-only-tools.md) | #68 |
+| [#75](https://github.com/AndreyBegma/DemoFlow/issues/75) | [Publish to npm through Woodpecker](75-npm-release.md) | #68, #69 |
+| [#79](https://github.com/AndreyBegma/DemoFlow/issues/79) | [`demoflow record`](79-demoflow-record.md) | #75 |
+
+## Before Phase 4 (roadmap)
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#73](https://github.com/AndreyBegma/DemoFlow/issues/73) | [Visual baselines](73-visual-baselines.md) | — |
+
+## Phase 4 — Video quality
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#82](https://github.com/AndreyBegma/DemoFlow/issues/82) | [Spike: CDP capture at device pixels](82-cdp-capture-spike.md) — rejected | — |
+| [#85](https://github.com/AndreyBegma/DemoFlow/issues/85) | [Spike: pipelined screenshots or a zoomed large viewport](85-device-pixel-capture-spike.md) | #82 |
 
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.

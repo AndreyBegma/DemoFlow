@@ -1,7 +1,10 @@
 import type { Issue } from '@demoflow/core';
 import { CliError, EXIT_INVALID_INPUT } from '../config/index.ts';
 
-export type CommandErrorCode = 'scenario-unreadable' | 'invalid-scenario';
+export type CommandErrorCode =
+  | 'scenario-unreadable'
+  | 'invalid-scenario'
+  | 'invalid-run-id';
 
 /** Bad input to a command (spec 5: exit 2) that is not a config problem. */
 export class CommandError extends Error {

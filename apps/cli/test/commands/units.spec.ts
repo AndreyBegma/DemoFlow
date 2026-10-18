@@ -3,10 +3,17 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { RunResult } from '@demoflow/core';
 import { afterEach, describe, expect, it } from 'vitest';
+import { CommandError } from '../../src/commands/errors.ts';
 import { exitCodeFor } from '../../src/commands/exit.ts';
 import { formatJson, formatSummary } from '../../src/commands/output.ts';
-import { generateRunId } from '../../src/commands/run-id.ts';
+import { assertSafeRunId, generateRunId } from '../../src/commands/run-id.ts';
 import { settleRun } from '../../src/commands/settle.ts';
+import {
+  CliError,
+  PROJECT_CONFIG_FILE,
+  projectRootAt,
+  scenarioId,
+} from '../../src/config/index.ts';
 
 type StageStatus = RunResult['stages']['readiness']['status'];
 
@@ -52,6 +59,40 @@ describe('generateRunId', () => {
 
   it('matches the documented shape for real randomness', () => {
     expect(generateRunId()).toMatch(/^\d{8}-\d{6}-[a-z2-7]{6}$/);
+  });
+});
+
+describe('assertSafeRunId', () => {
+  it.each([
+    'task-1',
+    '20261017-123456-abcdef',
+    'a.b_c',
+    '3f2b8c1e-0d4a-4e6f-9a7b-1c2d3e4f5a6b',
+  ])('accepts %s', (id) => {
+    expect(() => assertSafeRunId(id)).not.toThrow();
+  });
+
+  it.each([
+    '',
+    '.',
+    '..',
+    '../x',
+    'a/b',
+    'a\\b',
+    '/abs',
+    'C:\\x',
+    '.hidden',
+    'a b',
+    'a\0b',
+    'a\nb',
+  ])('rejects %j as an input error', (id) => {
+    expect(() => assertSafeRunId(id)).toThrow(CommandError);
+    try {
+      assertSafeRunId(id);
+    } catch (error) {
+      expect((error as CommandError).exitCode).toBe(2);
+      expect((error as CommandError).code).toBe('invalid-run-id');
+    }
   });
 });
 
@@ -141,5 +182,53 @@ describe('settleRun', () => {
     expect(settled.stages.rendering.status).toBe('skipped');
     expect(settled.stages.storage.status).toBe('skipped');
     expect(settled.status).toBe('failed');
+  });
+});
+
+// `run --project` (#68): the root is given, and a scenario may sit outside it.
+describe('scenarioId outside the root', () => {
+  it('is inline/<file name>', () => {
+    expect(
+      scenarioId(
+        '/proj',
+        '/home/u/.local/share/demoflow/mcp/t.demo.json',
+        path.posix,
+      ),
+    ).toBe('inline/t.demo.json');
+    expect(
+      scenarioId('C:\\proj', 'D:\\data\\mcp\\t.demo.json', path.win32),
+    ).toBe('inline/t.demo.json');
+  });
+
+  it('keeps a name that only starts with two dots inside the root', () => {
+    expect(scenarioId('/proj', '/proj/..a.demo.json', path.posix)).toBe(
+      '..a.demo.json',
+    );
+  });
+});
+
+describe('projectRootAt', () => {
+  it('is the directory when it holds demoflow.config.json', () => {
+    const root = path.join('/proj');
+    expect(
+      projectRootAt(
+        root,
+        (file) => file === path.join(root, PROJECT_CONFIG_FILE),
+      ),
+    ).toBe(root);
+  });
+
+  it('does not search upwards: no-project-config, exit 2', () => {
+    let error: unknown;
+    try {
+      projectRootAt(path.join('/proj', 'sub'), (file) =>
+        file.endsWith(path.join('proj', PROJECT_CONFIG_FILE)),
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as CliError).code).toBe('no-project-config');
+    expect((error as CliError).exitCode).toBe(2);
   });
 });

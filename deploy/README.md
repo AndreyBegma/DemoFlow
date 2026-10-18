@@ -22,6 +22,10 @@ Which tests run depends on the event:
 | push to `develop` | none: the pull request already tested it |
 | push to `main`, manual run | the full suite |
 
+A push to `main`, a `v*` tag and a manual run with `[demoflow-release]` in its
+message also run `.woodpecker/release.yml` — see *Releasing `demoflow` to npm*.
+Pull requests and pushes to `develop` never do.
+
 Browser tests run in the `test` step with no extra setup. The CI image carries
 FFmpeg and Chromium's system libraries. The `install` step runs
 `bunx playwright install chromium` with the repository's own `playwright`
@@ -63,6 +67,88 @@ scenario, `runs/<runId>/render/ffmpeg.mp4` and `runs/<runId>/result.json`.
 - Web: open the workflow run, then *Artifacts* at the bottom of the summary.
 - CLI: `gh run download <run-id> -n demos-windows-latest`; omit `-n` to get
   all three. Find the run with `gh run list --workflow execution-plane.yml`.
+
+## CI — the npm package on three OS (GitHub Actions)
+
+`.github/workflows/package-smoke.yml` tests `demoflow` the way a user gets it.
+
+- **When:** the paths of `execution-plane.yml`, plus `scripts/release/**` and
+  `.woodpecker/release.yml`; pull requests, pushes to `develop`, manual runs.
+- **What, on `ubuntu-latest`, `macos-latest` and `windows-latest`:** builds the
+  CLI, which stages the publishable package in `apps/cli/dist/npm`; starts the
+  fixture preview; then, on Node 20 (the package's `engines` floor), runs
+  `apps/cli/scripts/smoke.mjs --browsers`: `npm pack` of `apps/cli/dist/npm`,
+  `npm install` of the tarball into an empty directory, and through the
+  installed bin `demoflow --version`, `demoflow validate`, an MCP `tools/list`
+  against `demoflow mcp`, a `demoflow run` of the fixture's `customers`
+  scenario from an empty `PLAYWRIGHT_BROWSERS_PATH` (it installs Chromium, then
+  runs and renders), and `demoflow setup` from another empty one. On Linux the
+  workflow installs Chromium's system libraries first, never the browser. Ubuntu
+  also runs the release scripts' tests (`bun run test:release`).
+
+Locally: `bun run build --filter=demoflow`, then
+`node apps/cli/scripts/smoke.mjs` (add `--browsers` with the fixture preview up:
+`node .github/scripts/serve-fixture.mjs start`).
+
+## Releasing `demoflow` to npm
+
+`.woodpecker/release.yml` publishes the package, luna-player's pattern.
+What it publishes is `apps/cli/dist/npm`: the package
+`apps/cli/scripts/stage.ts` stages during the CLI's build — the workspace
+packages `@demoflow/core`, `engine` and `renderer` bundled into
+`dist/bin/main.js` by esbuild, the renderer's Inter fonts and their licence in
+`fonts/`, and a generated `package.json` whose `dependencies` are the
+third-party runtime dependencies of those packages, pinned exactly.
+`apps/cli/package.json` itself stays `private` and is never published: it holds
+`workspace:*` references. Chromium is not part of the package; it is downloaded
+on first use (`demoflow run`, the first `generate_demo` of `demoflow mcp`) or by
+`demoflow setup`.
+
+### The procedure
+
+1. On `develop`, in a pull request: bump `version` in `apps/cli/package.json`
+   (semver; the first release is `0.1.0`). Merge it.
+2. Open the release pull request `develop` → `main`. CI must be green: the
+   Woodpecker pipeline and both GitHub workflows (`execution-plane`,
+   `package-smoke`).
+3. The orchestrator merges it.
+4. The push to `main` runs `release.yml`: check, build, smoke, then
+   `npm publish` of `apps/cli/dist/npm` when the version is not on npm yet, then
+   the tag `vX.Y.Z`. A push without a version bump publishes nothing and
+   passes. The tag starts a tag pipeline that finds the version published and
+   passes.
+
+The dist-tag is decided by `scripts/release/decide.sh`: `latest`, or
+`v<major>.<minor>` for a `maint/*` branch or a version below the current
+`latest`, so a patch to an old line never moves `latest` back.
+
+### Rehearsing a release
+
+Start a manual pipeline in Woodpecker on any branch with `[demoflow-release]`
+in its message. It runs every step and ends in `npm publish --dry-run` of
+`apps/cli/dist/npm`; nothing is published and no tag is pushed. A manual run
+without that text does not start this workflow.
+
+### Secrets (Woodpecker, DemoFlow repository)
+
+| Secret | Events | Used by |
+|---|---|---|
+| `npm_token` | manual, push, tag | `publish`: an npm automation token allowed to publish `demoflow` |
+| `github_token` | push | `tag`: a token with `contents: write` on the repository |
+
+Without `npm_token` a push says so and passes; without `github_token` the tag
+is skipped. No provenance is attached: npm accepts it only from GitHub Actions
+and GitLab CI.
+
+### When something goes wrong
+
+- **A broken version is on npm.** npm versions cannot be reused. Deprecate it
+  (`npm deprecate demoflow@X.Y.Z "<why>"`), fix on `develop`, bump the patch
+  version and release again.
+- **The publish succeeded but the tag did not.** Re-run the push pipeline: the
+  publish step finds the version on npm and `tag` creates the missing tag.
+- **The tag disagrees with the version.** The tag pipeline fails in
+  `check-version` before anything is built; delete the tag.
 
 ## Staging — https://demoflow-app.luna-realm.com
 

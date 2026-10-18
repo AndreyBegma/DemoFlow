@@ -107,6 +107,17 @@ afterAll(async () => {
 const scenario = (name: string) =>
   path.join(project, 'demoflow', `${name}.demo.json`);
 
+describe('demoflow --version', () => {
+  it("prints the package's version and exits 0", async () => {
+    const { version } = JSON.parse(
+      await readFile(path.join(CLI_DIR, 'package.json'), 'utf8'),
+    ) as { version: string };
+    const result = await demoflow(['--version'], project);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe(version);
+  });
+});
+
 describe('demoflow validate', () => {
   it('exits 0 on a valid scenario', async () => {
     const result = await demoflow(['validate', scenario('customers')], project);
@@ -209,6 +220,84 @@ describe('demoflow run', () => {
     expect(JSON.parse(result.stdout).stages.readiness.error.message).toContain(
       'origin-not-allowed',
     );
+  });
+
+  it('--run-id writes to <home>/runs/<id>/ and a reused id exits 2', async () => {
+    const args = (id: string) => [
+      'run',
+      scenario('customers'),
+      '--json',
+      '--out',
+      out,
+      '--run-id',
+      id,
+    ];
+    const first = await demoflow(args('named-run'), project);
+    expect(first.code, first.stderr).toBe(0);
+    const json = JSON.parse(first.stdout);
+    expect(json.runId).toBe('named-run');
+    expect(json.runDir).toBe(path.join(out, 'runs', 'named-run'));
+    expect(await exists(path.join(json.runDir, json.renders[0].file))).toBe(
+      true,
+    );
+
+    const again = await demoflow(args('named-run'), project);
+    expect(again.code).toBe(2);
+    expect(again.stderr).toContain('invalid-run-id');
+    expect(again.stdout).toBe('');
+  });
+
+  it.each([
+    '../escape',
+    'a/b',
+    '..',
+    '',
+  ])('--run-id %j exits 2 before anything runs', async (id) => {
+    const result = await demoflow(
+      ['run', scenario('customers'), '--out', out, '--run-id', id],
+      project,
+    );
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('invalid-run-id');
+    expect(result.stdout).toBe('');
+  });
+
+  it('--run-id and --project are hidden from --help', async () => {
+    const result = await demoflow(['run', '--help'], project);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('--json');
+    expect(result.stdout).not.toContain('run-id');
+    expect(result.stdout).not.toContain('--project');
+  });
+
+  it('--project runs a scenario kept outside the project as inline/<name>', async () => {
+    const outside = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-inline-'));
+    try {
+      const file = path.join(outside, 'staged.demo.json');
+      await cp(scenario('customers'), file);
+      const result = await demoflow(
+        ['run', file, '--json', '--out', out, '--project', project],
+        outside,
+      );
+      expect(result.code, result.stderr).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.status).toBe('completed');
+      expect(json.scenarioId).toBe('inline/staged.demo.json');
+      expect(await exists(path.join(json.runDir, json.renders[0].file))).toBe(
+        true,
+      );
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('--project without demoflow.config.json exits 2 no-project-config', async () => {
+    const result = await demoflow(
+      ['run', scenario('customers'), '--out', out, '--project', out],
+      project,
+    );
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('no-project-config');
   });
 
   it('exits 2 no-project-config when no config is above the scenario', async () => {

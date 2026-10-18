@@ -55,31 +55,56 @@ async function frameChanges(
 /** Playwright records at a fixed 25 fps; the drift method decodes at it. */
 const DRIFT_FRAME_MS = 40;
 
+/** Round trips the drift probe makes to map the page clock; it keeps the shortest. */
+const PROBE_EXCHANGES = 7;
+
+/** The page's absolute high-resolution time: it holds across a document change. */
+const PAGE_NOW = 'performance.timeOrigin + performance.now()';
+
 /**
- * The page side of the clock-drift method, on the sync mark: the page reports
- * the instant it removed the mark, on a clock started where the engine's is.
+ * The page side of the clock-drift method, on the sync mark: the page timestamps
+ * the removal of the mark on its own clock, and the probe maps that instant to a
+ * clock started where the engine's is. The binding's arrival time is never used:
+ * on a loaded runner it lands tens of milliseconds late (#62). The mapping is
+ * written here, not taken from the engine, so the two cannot share a bug.
  */
 function clearProbe(): {
   observer: EngineObserver;
   clearedAtMs: () => number;
+  roundTripMs: () => number;
 } {
-  let clearedAtMs = Number.NaN;
+  let zero = Number.NaN;
+  let clearedOnPageMs = Number.NaN;
+  let pageToNodeMs = Number.NaN;
+  let roundTripMs = Number.POSITIVE_INFINITY;
   return {
     observer: {
       async onPageCreated({ page }) {
-        const zero = performance.now();
-        await page.exposeFunction('__demoflowCleared', () => {
-          if (Number.isNaN(clearedAtMs)) clearedAtMs = performance.now() - zero;
+        zero = performance.now();
+        await page.exposeFunction('__demoflowCleared', (pageMs: number) => {
+          if (Number.isNaN(clearedOnPageMs)) clearedOnPageMs = pageMs;
         });
         // The mark is the only child removed from the blank page.
         await page.evaluate(`new MutationObserver((records) => {
           if (records.some((record) => record.removedNodes.length > 0)) {
-            window.__demoflowCleared();
+            window.__demoflowCleared(${PAGE_NOW});
           }
         }).observe(document.documentElement, { childList: true })`);
+        // NTP-style: the page read its clock somewhere inside [t0, t1]; the
+        // shortest round trip bounds that error tightest.
+        for (let i = 0; i < PROBE_EXCHANGES; i++) {
+          const t0 = performance.now();
+          const pageMs = await page.evaluate<number>(PAGE_NOW);
+          const t1 = performance.now();
+          if (t1 - t0 < roundTripMs) {
+            roundTripMs = t1 - t0;
+            pageToNodeMs = (t0 + t1) / 2 - pageMs;
+          }
+        }
       },
     },
-    clearedAtMs: () => clearedAtMs,
+    clearedAtMs: () => clearedOnPageMs + pageToNodeMs - zero,
+    roundTripMs: () => roundTripMs,
   };
 }
 
@@ -170,6 +195,7 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
   let tour: string;
   let customersPlan: RenderPlan;
   let customersClearedAtMs: number;
+  let customersRoundTripMs: number;
   let failingPlan: RenderPlan;
 
   beforeAll(async () => {
@@ -177,6 +203,7 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     const probe = clearProbe();
     customers = await recordFixtureRun('customers', parent, [probe.observer]);
     customersClearedAtMs = probe.clearedAtMs();
+    customersRoundTripMs = probe.roundTripMs();
     failing = await recordFixtureRun('failing', parent);
     tour = await recordFixtureRun('tour', parent);
     customersPlan = await buildRenderPlan(customers);
@@ -238,11 +265,10 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     expect(frameAt(failingPlan, 0).watermark).toBe(true);
   });
 
-  // Skipped on CI runners because their screencast stalls mid-wait (frames
-  // never delivered, a lone frame mid-stall): see
-  // https://github.com/AndreyBegma/DemoFlow/issues/40. It still runs locally.
-  it('keeps the slow report’s spinner: the wait for it plays in real time', async (context) => {
-    context.skip(process.env.CI !== undefined, 'screencast stalls on CI, #40');
+  // Runs on CI. The stalls once seen there (#40) came from the 2× capture;
+  // at 1× the longest gap between moving source frames in the spinner window
+  // over 5 runs per OS was 180 ms (Linux), 218 ms (macOS), 266 ms (Windows).
+  it('keeps the slow report’s spinner: the wait for it plays in real time', async () => {
     const plan = await buildRenderPlan(tour);
     const timeline = JSON.parse(
       await readFile(path.join(tour, 'timeline.json'), 'utf8'),
@@ -385,35 +411,16 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     await writeFile(file, original);
   });
 
-  // Skipped on CI runners: offMs lags on slow CI runners — see
-  // https://github.com/AndreyBegma/DemoFlow/issues/48. It still runs locally.
-  it('measures the offset within one frame of the clock-drift method (#19)', async (context) => {
-    context.skip(
-      process.env.CI !== undefined,
-      'offMs lags on slow CI runners, #48',
-    );
-    // The engine sometimes records no frame while the mark is up (#48): then
-    // one more customers run, and the test fails if that one lacks it too.
-    let runDir = customers;
-    let plan = customersPlan;
-    let clearedAtMs = customersClearedAtMs;
-    if (!plan.offsetMeasured) {
-      console.info(
-        'sync mark not in the shared customers recording: recording once more',
-      );
-      const probe = clearProbe();
-      runDir = await recordFixtureRun('customers', path.join(parent, 'again'), [
-        probe.observer,
-      ]);
-      plan = await buildRenderPlan(runDir);
-      clearedAtMs = probe.clearedAtMs();
-    }
-    expect(plan.offsetMeasured, 'the sync mark was not found twice').toBe(true);
+  it('measures the offset within 20 ms of the clock-drift method (#19, #48)', async () => {
+    const plan = customersPlan;
+    // #48: the mark is in every recording, not in most.
+    expect(plan.offsetMeasured, 'the sync mark was not found').toBe(true);
     expect(plan.maskLeadMs).toBe(40);
+    expect(plan.maskTrailMs).toBe(40);
 
     // clock-drift.spec.ts: the first frame showing the change, less the
     // instant the page reported it, both decoded and timed independently.
-    const decoded = await driftFrames(path.join(runDir, plan.source.file));
+    const decoded = await driftFrames(path.join(customers, plan.source.file));
     const isMark = (pixel: Rgb): boolean =>
       pixel[0] > 200 && pixel[1] < 100 && pixel[2] > 200;
     const markAt = decoded.findIndex(isMark);
@@ -422,14 +429,18 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     );
     expect(markAt, 'no mark frame in the video').toBeGreaterThanOrEqual(0);
     expect(clearAt).toBeGreaterThan(markAt);
-    expect(clearedAtMs, 'the page never reported the clear').toBeGreaterThan(0);
-    const driftOffsetMs = clearAt * DRIFT_FRAME_MS - clearedAtMs;
+    expect(
+      customersClearedAtMs,
+      'the page never reported the clear',
+    ).toBeGreaterThan(0);
+    const driftOffsetMs = clearAt * DRIFT_FRAME_MS - customersClearedAtMs;
     console.info(
-      `sync offset: renderer ${plan.offsetMs.toFixed(1)} ms, drift method ${driftOffsetMs.toFixed(1)} ms (${runDir === customers ? 'shared recording' : 're-recorded'})`,
+      `sync offset: renderer ${plan.offsetMs.toFixed(1)} ms, drift method ${driftOffsetMs.toFixed(1)} ms (probe round trip ${customersRoundTripMs.toFixed(1)} ms)`,
     );
-    expect(Math.abs(plan.offsetMs - driftOffsetMs)).toBeLessThanOrEqual(
-      DRIFT_FRAME_MS,
-    );
+    // Both read the same clear frame, so they differ only by when the clear
+    // was timed. Both time it on the page clock now (#48, #62); the probe's
+    // DOM removal comes no later than the engine's first frame without the mark.
+    expect(Math.abs(plan.offsetMs - driftOffsetMs)).toBeLessThanOrEqual(20);
 
     // The output starts after the mark: its first source frame does not show it.
     const first = frameAt(plan, 0).sourceMs ?? 0;
