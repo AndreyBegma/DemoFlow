@@ -1,9 +1,10 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
+import { renderStage } from '../../src/ffmpeg/compose.ts';
 import { createPicture, type Picture } from '../../src/ffmpeg/raster.ts';
 import { baselinePath, failurePath } from './baselines.ts';
 import { comparePictures, type Tolerance } from './compare.ts';
-import { checkLayout } from './layout.ts';
+import { checkFramedLayout, checkLayout } from './layout.ts';
 import { decodePng, encodePng } from './png.ts';
 import {
   renderScene,
@@ -148,5 +149,58 @@ describe('the layout check (#47)', () => {
       height,
     );
     expect(report.problems.length).toBe(4);
+  });
+});
+
+describe('the framed layout check (spec 100)', () => {
+  const { width, height } = { width: 1920, height: 1080 };
+  const scene = SCENES.find((s) => s.name === 'framed-window');
+  if (scene?.plan === undefined) throw new Error('no framed-window scene');
+  const window = scene.frame.content;
+  const stage = renderStage(scene.plan)?.data ?? new Uint8Array(0);
+
+  it('passes the page in the window on the background', () => {
+    const report = checkFramedLayout(
+      renderScene(scene, SOURCE).data,
+      width,
+      height,
+      window,
+      stage,
+    );
+    expect(report.problems).toEqual([]);
+    expect(report.backgroundDelta).toBe(0);
+  });
+
+  it('fails a page that fills the frame: no background outside the window', () => {
+    const fullBleed = renderScene(
+      {
+        name: 'full',
+        frame: SCENES[0].frame,
+        region: { x: 0, y: 0, width, height },
+      },
+      SOURCE,
+    ).data;
+    const report = checkFramedLayout(fullBleed, width, height, window, stage);
+    expect(report.problems.join('\n')).toMatch(/not the background/);
+  });
+
+  it('fails the #47 shape inside the window', () => {
+    const frame = renderScene(scene, SOURCE).data;
+    // The page kept in the window's top-left quarter, as checkFramedLayout splits it.
+    const x0 = Math.ceil(window.x);
+    const y0 = Math.ceil(window.y);
+    const right = x0 + ((Math.floor(window.x + window.width) - x0) >> 1);
+    const bottom = y0 + ((Math.floor(window.y + window.height) - y0) >> 1);
+    for (let y = Math.floor(window.y); y < window.y + window.height; y++) {
+      for (let x = Math.floor(window.x); x < window.x + window.width; x++) {
+        if (x < right && y < bottom) continue;
+        frame.set([127, 125, 129], (y * width + x) * 3);
+      }
+    }
+    const report = checkFramedLayout(frame, width, height, window, stage);
+    expect(report.problems.join('\n')).toMatch(
+      /in the window: the bottom-right quadrant is uniform/,
+    );
+    expect(report.problems.join('\n')).toMatch(/in the window: padding grey/);
   });
 });
