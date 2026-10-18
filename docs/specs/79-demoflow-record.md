@@ -23,7 +23,7 @@ scenario file and offers to run it.
 - `demoflow record [name]` in a project (found as the CLI finds it): starts the
   app from `devCommand` / `readyUrl` in `demoflow.config.json` (ADR-0008 §4),
   opens a headed Chromium on `baseUrl` with the scenario viewport.
-  *Amended in #PR_NUMBER, orchestrator decision: `devCommand` had no
+  *Amended in #93, orchestrator decision: `devCommand` had no
   implementation — the summary said "exactly as `demoflow run` does", but `run`
   never starts the app. Starting it is a shared module
   (`apps/cli/src/app/dev-server.ts`, `startApp(config, root) → { stop() }`, a
