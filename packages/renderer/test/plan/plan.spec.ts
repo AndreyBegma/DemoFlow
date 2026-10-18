@@ -416,6 +416,126 @@ describe('masks', () => {
     );
     expect(rendered.masks[0].endMs).toBe(rendered.durationMs);
   });
+
+  describe('with maskVisibility', () => {
+    const withVisibility = (
+      maskVisibility: NonNullable<TimelineEvent['maskVisibility']>,
+    ): TimelineEvent => ({ ...masked, maskVisibility });
+
+    it('ends the mask with the interval, so none is active after the sign-in click', () => {
+      const rendered = plan(
+        [
+          event({ action: 'navigate', startMs: 0, endMs: 100 }),
+          withVisibility([{ startMs: 800, endMs: 1800, box: password }]),
+          click(1400, 1800, { x: 456, y: 284 }),
+          event({ action: 'wait', startMs: 1800, endMs: 3000 }),
+        ],
+        [],
+      );
+      expect(rendered.masks).toHaveLength(1);
+      expect(rendered.masks[0]).toMatchObject({ startMs: 600, endMs: 1800 });
+      expect(
+        frameAt(rendered, frames(rendered, 1700, 1800)[0]).masks,
+      ).toHaveLength(1);
+      for (const frame of frames(rendered, 1800, rendered.durationMs)) {
+        expect(frameAt(rendered, frame).masks, `frame ${frame}`).toEqual([]);
+      }
+    });
+
+    it('runs an open interval to the end of the video', () => {
+      const rendered = plan(
+        [
+          withVisibility([{ startMs: 800, box: password }]),
+          event({ action: 'wait', startMs: 1400, endMs: 2000 }),
+        ],
+        [],
+      );
+      expect(rendered.masks).toHaveLength(1);
+      expect(rendered.masks[0].endMs).toBe(rendered.durationMs);
+    });
+
+    it('emits a span per interval, each with its own box', () => {
+      const back = { x: 100, y: 400, width: 300, height: 28 };
+      const rendered = plan(
+        [
+          withVisibility([
+            { startMs: 800, endMs: 1500, box: password },
+            { startMs: 2000, box: back },
+          ]),
+          event({ action: 'wait', startMs: 1400, endMs: 3000 }),
+        ],
+        [],
+      );
+      expect(rendered.masks).toHaveLength(2);
+      expect(rendered.masks[0]).toMatchObject({ startMs: 600, endMs: 1500 });
+      expect(rendered.masks[1]).toMatchObject({
+        startMs: 1800,
+        endMs: rendered.durationMs,
+      });
+      expect(rendered.masks[1].keys[0].box).toEqual({
+        x: back.x - 4,
+        y: back.y - 4,
+        width: back.width + 8,
+        height: back.height + 8,
+      });
+      expect(frameAt(rendered, frames(rendered, 1600, 1700)[0]).masks).toEqual(
+        [],
+      );
+    });
+
+    it('masks both boxes while two intervals overlap', () => {
+      const moved = { x: 300, y: 300, width: 384, height: 28 };
+      const rendered = plan(
+        [
+          withVisibility([
+            { startMs: 800, endMs: 2000, box: password },
+            { startMs: 1800, box: moved },
+          ]),
+          event({ action: 'wait', startMs: 2000, endMs: 3000 }),
+        ],
+        [],
+      );
+      expect(rendered.masks).toHaveLength(2);
+      expect(
+        frameAt(rendered, frames(rendered, 1900, 1950)[0]).masks,
+      ).toHaveLength(2);
+    });
+
+    it('follows a page scroll inside an interval and keeps the span when the box leaves the viewport', () => {
+      const rendered = plan(
+        [
+          withVisibility([{ startMs: 800, box: password }]),
+          event({
+            action: 'scroll',
+            startMs: 1400,
+            endMs: 2400,
+            scroll: { before: { x: 0, y: 0 }, after: { x: 0, y: 2000 } },
+          }),
+          event({ action: 'wait', startMs: 2400, endMs: 4000 }),
+        ],
+        [],
+      );
+      const [mask] = rendered.masks;
+      expect(mask.endMs).toBe(rendered.durationMs);
+      expect(mask.keys.at(-1)?.box.y).toBe(password.y - 4 - 2000);
+    });
+
+    it('ignores a scroll that starts after the interval closed', () => {
+      const rendered = plan(
+        [
+          withVisibility([{ startMs: 800, endMs: 1400, box: password }]),
+          event({
+            action: 'scroll',
+            startMs: 1500,
+            endMs: 2400,
+            scroll: { before: { x: 0, y: 0 }, after: { x: 0, y: 200 } },
+          }),
+        ],
+        [],
+      );
+      expect(rendered.masks[0].keys).toHaveLength(1);
+    });
+  });
 });
 
 describe('captions', () => {
