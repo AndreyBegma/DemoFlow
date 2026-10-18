@@ -45,6 +45,7 @@ decisions live in [../adr/](../adr/README.md).
 | [#90](https://github.com/AndreyBegma/DemoFlow/issues/90) | [`run` starts the app from `devCommand`](90-run-starts-app.md) | — |
 | [#92](https://github.com/AndreyBegma/DemoFlow/issues/92) | [MCP: terminal only after cleanup](92-mcp-staged-cleanup.md) | — |
 | [#91](https://github.com/AndreyBegma/DemoFlow/issues/91) | [A `press` step](91-press-step.md) | #85 |
+| [#103](https://github.com/AndreyBegma/DemoFlow/issues/103) | [`record`: no extra step on a slow runner](103-record-extra-step.md) | — |
 
 ## Before Phase 4 (roadmap)
 
