@@ -4,6 +4,8 @@ Issue: [#18](https://github.com/AndreyBegma/DemoFlow/issues/18) · before Phase 
 Decisions: [ADR-0004](../adr/0004-recording-is-separate-from-rendering.md) (accepted),
 [spec 1](1-core-contracts.md) (optional timeline fields)
 
+Depends on #31
+
 ## Summary
 
 The renderer blurs a `masked` field from its `fill` until a `navigate` step,
