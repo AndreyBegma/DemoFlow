@@ -9,14 +9,18 @@ that contradicts this file wins, and this file is updated with it.
 ## Order
 
 1. **Phase 3 — MCP integration** (in progress: #68, #69).
-2. **Before Phase 4 — visual baselines** for rendered output (below).
-3. **Phase 4 — Video quality.**
-4. **Phase 5 — Website and Runner pairing.**
-5. **Phase 6 — Luna Player.**
-6. **Phase 7 — Optional SDK.**
+2. **npm release** of `demoflow` — right after MCP: without a published
+   package nobody can run `npx demoflow mcp`. The name is free on npm today.
+3. **`demoflow record`** — before Phase 4: a first demo without hand-written
+   JSON matters more than polish.
+4. **Before Phase 4 — visual baselines** for rendered output (below).
+5. **Phase 4 — Video quality.**
+6. **Phase 5 — Website and Runner pairing.**
+7. **Phase 6 — Luna Player.**
+8. **Phase 7 — Optional SDK.**
 
-Cross-cutting, scheduled between phases when the queue allows: the npm release
-pipeline, the release branch flow, the GitHub Action, `demoflow record`.
+The release branch flow applies from the first phase completed after this file
+lands; the GitHub Action follows the npm release whenever the queue allows.
 
 ## Phase 3 — MCP integration
 
@@ -54,7 +58,10 @@ pipeline, the release branch flow, the GitHub Action, `demoflow record`.
   above and below.
 - **Order inside the phase**:
   1. real 2× capture through a CDP screencast in device pixels, starting with a
-     spike like #4 — `recordVideo.size` cannot upscale (#47);
+     spike like #4 — `recordVideo.size` cannot upscale (#47). The orchestrator
+     decides on the spike by criteria fixed in its spec: sharp text at the 1.6×
+     zoom, 25 fps without dropped frames on all three OSes, CI no more than 2×
+     slower. If they are not met, the source stays 1×;
   2. frame and background;
   3. cards and transitions;
   4. export formats.
@@ -101,7 +108,9 @@ All four, in this order:
 - **Release branch flow**: when a phase is complete and staging is green, the
   orchestrator opens `develop` → `main` with the change list and merges it once
   CI is green (owner's choice).
-- **GitHub Action**: runs every `demoflow/**/*.demo.json` of a project on each
+- **GitHub Action** (its own repository, `AndreyBegma/demoflow-action`,
+  published to the Marketplace, using `npx demoflow`): runs every
+  `demoflow/**/*.demo.json` of a project on each
   pull request, posts GIF previews in a PR comment and uploads the MP4s as
   artifacts. A failed verification fails the check.
 - **`demoflow record`**: opens the app in a browser with a step panel. Clicks and
