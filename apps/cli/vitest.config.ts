@@ -7,6 +7,7 @@ export default defineConfig({
     // Real-run files starve each other on a 3–4 vCPU CI runner (#44): one at a time there.
     fileParallelism: !process.env.CI,
     // The command tests launch Chromium, record a video and render it.
+    // Serialized on CI, the slowest takes 27 s (#44).
     testTimeout: 120_000,
     hookTimeout: 120_000,
   },
