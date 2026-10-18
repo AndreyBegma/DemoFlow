@@ -98,7 +98,10 @@ describe('demoflow record against the fixture', () => {
     const scenario = await readScenario(root, 'customers');
     expect(scenario.name).toBe('customers');
     expect(scenario.viewport).toEqual({ width: 1280, height: 720 });
-    expect(scenario.steps).toEqual([
+    expect(
+      scenario.steps,
+      `recorded steps: ${JSON.stringify(scenario.steps, null, 2)}`,
+    ).toEqual([
       // The start and the typed URL fold into one navigation.
       { action: 'navigate', path: '/login' },
       { action: 'click', target: { role: 'link', name: 'Customers' } },

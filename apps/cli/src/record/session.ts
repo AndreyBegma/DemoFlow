@@ -99,11 +99,12 @@ export async function openRecorder(
       .catch(() => {});
   }
 
-  function push(step: StepInput, warning?: string): void {
-    steps = appendStep(
-      steps,
-      warning === undefined ? { step } : { step, warning },
-    );
+  function push(step: StepInput, warning?: string, field?: string): void {
+    steps = appendStep(steps, {
+      step,
+      ...(warning === undefined ? {} : { warning }),
+      ...(field === undefined ? {} : { field }),
+    });
     notice = undefined;
     render();
   }
@@ -166,6 +167,7 @@ export async function openRecorder(
             ? { action: 'fill', target, valueFrom: { env: secretEnv } }
             : { action: 'fill', target, value: event.value ?? '' },
           chosen.warning,
+          event.field,
         );
         return;
       }
