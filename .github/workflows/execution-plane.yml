@@ -34,7 +34,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: execution-plane-${{ github.ref }}
+  # Spike dispatches for different capture modes run side by side.
+  group: execution-plane-${{ github.ref }}-${{ inputs.capture }}
   cancel-in-progress: true
 
 jobs:
