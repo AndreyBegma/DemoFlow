@@ -221,6 +221,13 @@ describe('the customers flow', () => {
     }
   });
 
+  it('records a sync mark held for three frames and cleared before the first event', () => {
+    const mark = outcome.syncMark;
+    expect(mark?.colour).toBe('#ff00ff');
+    expect(mark?.offMs).toBeGreaterThanOrEqual((mark?.onMs ?? 0) + 120);
+    expect(mark?.offMs).toBeLessThanOrEqual(outcome.events[0]?.startMs ?? 0);
+  });
+
   it('moves the real pointer before every click, from the viewport centre', () => {
     const clicks = outcome.events.filter((event) => event.action === 'click');
     expect(clicks).toHaveLength(2);

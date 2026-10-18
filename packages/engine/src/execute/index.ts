@@ -25,3 +25,8 @@ export {
   recordingOptions,
   toContextOptions,
 } from './recording.ts';
+export {
+  SYNC_MARK_COLOUR,
+  SYNC_MARK_HOLD_MS,
+  type SyncMark,
+} from './sync-mark.ts';

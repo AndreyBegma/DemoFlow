@@ -120,11 +120,39 @@ export const TimelineEventSchema = z
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>;
 
 /** `timeline.json`, written by the engine beside the source video. */
-export const TimelineSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  viewport: ViewportSchema,
-  deviceScaleFactor: z.number().positive(),
-  videoFile: NonEmptyStringSchema,
-  events: z.array(TimelineEventSchema),
-});
+export const TimelineSchema = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    viewport: ViewportSchema,
+    deviceScaleFactor: z.number().positive(),
+    videoFile: NonEmptyStringSchema,
+    events: z.array(TimelineEventSchema),
+    // Painted at clock zero, cleared before step 0; the renderer measures the
+    // video/clock offset from it (#19).
+    syncMark: z
+      .strictObject({
+        colour: z.string().regex(/^#[0-9a-f]{6}$/),
+        onMs: msSchema,
+        offMs: msSchema,
+      })
+      .refine((mark) => mark.offMs > mark.onMs, {
+        message: 'expected offMs to be after onMs',
+        path: ['offMs'],
+      })
+      .optional(),
+  })
+  .refine(
+    (timeline) => {
+      const first = timeline.events[0];
+      return (
+        timeline.syncMark === undefined ||
+        first === undefined ||
+        timeline.syncMark.offMs <= first.startMs
+      );
+    },
+    {
+      message: 'expected the sync mark to be cleared before the first event',
+      path: ['syncMark', 'offMs'],
+    },
+  );
 export type Timeline = z.infer<typeof TimelineSchema>;

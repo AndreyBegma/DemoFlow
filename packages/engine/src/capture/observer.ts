@@ -66,6 +66,9 @@ export function createCaptureObserver(options: CaptureOptions): EngineObserver {
           deviceScaleFactor: recording.deviceScaleFactor,
           videoFile: RUN_FILES.video,
           events: outcome.events,
+          ...(outcome.syncMark === undefined
+            ? {}
+            : { syncMark: outcome.syncMark }),
         });
         await writeJson(path.join(runDir, RUN_FILES.timeline), timeline);
       }
