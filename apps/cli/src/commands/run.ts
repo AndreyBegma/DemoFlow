@@ -16,11 +16,11 @@ import {
   runDir as runDirFor,
   scenarioId,
 } from '../config/index.ts';
-import { EXIT_STAGE_FAILED } from './errors.ts';
+import { CommandError, EXIT_STAGE_FAILED } from './errors.ts';
 import { exitCodeFor } from './exit.ts';
 import type { Io } from './io.ts';
 import { formatJson, formatSummary } from './output.ts';
-import { generateRunId } from './run-id.ts';
+import { assertSafeRunId, generateRunId } from './run-id.ts';
 import { loadScenario } from './scenario-file.ts';
 import { settleRun } from './settle.ts';
 
@@ -29,6 +29,8 @@ export interface RunFlags {
   out?: string;
   headed?: boolean;
   json?: boolean;
+  /** Hidden: names the run directory so a caller knows it before the start. */
+  runId?: string;
 }
 
 export interface RunDeps {
@@ -68,8 +70,15 @@ export async function runCommand(
     io.stderr(`warning ${warning.path}: ${warning.message}\n`);
   }
 
-  const runId = deps.runId();
+  const runId = flags.runId ?? deps.runId();
+  if (flags.runId !== undefined) assertSafeRunId(flags.runId);
   const runDir = runDirFor(home, runId, host.platform);
+  if (flags.runId !== undefined && existsSync(runDir)) {
+    throw new CommandError(
+      'invalid-run-id',
+      `run directory already exists: ${runDir}`,
+    );
+  }
   io.stderr(`Running ${scenarioId(root, file)} (${runId})\n`);
 
   // Secrets come from the process environment only (spec 5).

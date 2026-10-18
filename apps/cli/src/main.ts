@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, Option } from 'commander';
 import {
   describeError,
   EXIT_STAGE_FAILED,
@@ -44,6 +44,7 @@ export async function main(
     .option('--out <dir>', 'artifacts directory (the home of runs/)')
     .option('--headed', 'show the browser window')
     .option('--json', 'print the result as one JSON object on stdout')
+    .addOption(new Option('--run-id <id>', 'name the run directory').hideHelp())
     .action(
       async (
         scenario: string,
@@ -52,6 +53,7 @@ export async function main(
           out?: string;
           headed?: boolean;
           json?: boolean;
+          runId?: string;
         },
       ) => {
         exitCode = await runCommand(scenario, flags, io);

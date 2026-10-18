@@ -3,9 +3,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { RunResult } from '@demoflow/core';
 import { afterEach, describe, expect, it } from 'vitest';
+import { CommandError } from '../../src/commands/errors.ts';
 import { exitCodeFor } from '../../src/commands/exit.ts';
 import { formatJson, formatSummary } from '../../src/commands/output.ts';
-import { generateRunId } from '../../src/commands/run-id.ts';
+import { assertSafeRunId, generateRunId } from '../../src/commands/run-id.ts';
 import { settleRun } from '../../src/commands/settle.ts';
 
 type StageStatus = RunResult['stages']['readiness']['status'];
@@ -52,6 +53,40 @@ describe('generateRunId', () => {
 
   it('matches the documented shape for real randomness', () => {
     expect(generateRunId()).toMatch(/^\d{8}-\d{6}-[a-z2-7]{6}$/);
+  });
+});
+
+describe('assertSafeRunId', () => {
+  it.each([
+    'task-1',
+    '20261017-123456-abcdef',
+    'a.b_c',
+    '3f2b8c1e-0d4a-4e6f-9a7b-1c2d3e4f5a6b',
+  ])('accepts %s', (id) => {
+    expect(() => assertSafeRunId(id)).not.toThrow();
+  });
+
+  it.each([
+    '',
+    '.',
+    '..',
+    '../x',
+    'a/b',
+    'a\\b',
+    '/abs',
+    'C:\\x',
+    '.hidden',
+    'a b',
+    'a\0b',
+    'a\nb',
+  ])('rejects %j as an input error', (id) => {
+    expect(() => assertSafeRunId(id)).toThrow(CommandError);
+    try {
+      assertSafeRunId(id);
+    } catch (error) {
+      expect((error as CommandError).exitCode).toBe(2);
+      expect((error as CommandError).code).toBe('invalid-run-id');
+    }
   });
 });
 

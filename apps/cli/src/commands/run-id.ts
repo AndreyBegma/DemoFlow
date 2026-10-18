@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { CommandError } from './errors.ts';
 
 const BASE32 = 'abcdefghijklmnopqrstuvwxyz234567';
 
@@ -16,4 +17,19 @@ export function generateRunId(
   // 256 is a multiple of 32, so `% 32` is uniform.
   const suffix = Array.from(random(6), (byte) => BASE32[byte % 32]).join('');
   return `${date}-${time}-${suffix}`;
+}
+
+const SAFE_RUN_ID = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
+
+/**
+ * A caller-chosen run id becomes a directory name: letters, digits, `_`, `.`
+ * and `-`, not starting with a dot. No separators, no `.` or `..`, not empty.
+ */
+export function assertSafeRunId(id: string): void {
+  if (!SAFE_RUN_ID.test(id)) {
+    throw new CommandError(
+      'invalid-run-id',
+      `--run-id must be a plain directory name (letters, digits, "_", ".", "-"): ${JSON.stringify(id)}`,
+    );
+  }
 }
