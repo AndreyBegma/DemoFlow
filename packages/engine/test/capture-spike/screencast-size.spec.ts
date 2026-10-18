@@ -6,10 +6,11 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { DEVICE_SCALE_FACTOR } from '../../src/index.ts';
 
 /**
- * Spike #82, opt-in: what frame size a CDP screencast delivers when the page
- * is emulated at `deviceScaleFactor: 2`, next to what a screenshot delivers,
- * and how fast each produces frames. Evidence for the report, run per OS by
- * the execution-plane workflow's `cdp-spike` job; skipped everywhere else.
+ * Spike #82, opt-in: a CDP screencast of a page emulated at
+ * `deviceScaleFactor: 2` delivers CSS-pixel frames, while a screenshot
+ * delivers device pixels; it also records how fast each produces frames.
+ * Evidence for `docs/research/82-cdp-capture-spike.md`, run per OS by the
+ * execution-plane workflow's `cdp-spike` job; skipped everywhere else.
  */
 const ENABLED = process.env.DEMOFLOW_CDP_SPIKE === '1';
 
@@ -198,8 +199,16 @@ describe.runIf(ENABLED)('CDP screencast at deviceScaleFactor 2 (#82)', () => {
       try {
         const report = await probe(mode, browser);
         reports.push(report);
-        // Evidence, not a verdict: the page is at 2×; the frame sizes are what the report records.
+        // The page is at 2× and a screenshot has the pixels, but the
+        // screencast is sized in CSS pixels at most: the spike's premise does
+        // not hold. At most, not exactly: new headless on macOS sent 1280×633.
         expect(report.devicePixelRatio).toBe(DEVICE_SCALE_FACTOR);
+        expect(report.screencastFrame.width).toBeLessThanOrEqual(
+          VIEWPORT.width,
+        );
+        expect(report.screencastFrame.height).toBeLessThanOrEqual(
+          VIEWPORT.height,
+        );
         expect(report.screenshot).toEqual({
           width: VIEWPORT.width * DEVICE_SCALE_FACTOR,
           height: VIEWPORT.height * DEVICE_SCALE_FACTOR,
