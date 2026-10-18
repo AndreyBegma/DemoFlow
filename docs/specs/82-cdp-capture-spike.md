@@ -1,5 +1,8 @@
 # Spike — record the source at device pixels through a CDP screencast
 
+> **Outcome: rejected, see the [report](../research/82-cdp-capture-spike.md);
+> premise disproved (screencast frames are DIP-sized).**
+
 Issue: [#82](https://github.com/AndreyBegma/DemoFlow/issues/82) · Phase 4, step 1 (started early, owner's choice) ·
 Decisions: [ADR-0004](../adr/0004-recording-is-separate-from-rendering.md) §1,
 [roadmap.md](../product/roadmap.md) (Phase 4), spec [47](47-restore-viewport-recording.md)
