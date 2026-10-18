@@ -19,6 +19,7 @@ export async function mcpCommand(io: Io): Promise<number> {
     spawn: spawnRun,
     readResult,
     removeFile: (file) => rm(file, { force: true }),
+    log: (line) => io.stderr(`demoflow mcp: ${line}\n`),
   });
   const server = createMcpServer({
     queue,

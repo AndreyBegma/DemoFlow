@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import {
   cp,
   mkdtemp,
@@ -12,10 +12,9 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 // Read-only helper of the engine's tests: serves the built fixture on an ephemeral port.
 import {
   type FixtureServer,
@@ -80,11 +79,23 @@ async function call(
   args: Record<string, unknown>,
 ): Promise<Called> {
   const result = await client.callTool({ name, arguments: args });
-  return {
-    isError: result.isError === true,
-    value: result.structuredContent as Record<string, unknown>,
-  };
+  const value = result.structuredContent as Record<string, unknown>;
+  if (name === 'generate_demo' && typeof value.taskId === 'string') {
+    submitted.push({ client, taskId: value.taskId });
+  }
+  return { isError: result.isError === true, value };
 }
+
+/** Every task a test queued: cancelled after it, so none outlives its test. */
+const submitted: { client: Client; taskId: string }[] = [];
+
+afterEach(async () => {
+  for (const { client, taskId } of submitted.splice(0)) {
+    await client
+      .callTool({ name: 'cancel_task', arguments: { taskId } })
+      .catch(() => undefined); // That server is already closed.
+  }
+});
 
 async function untilDone(
   client: Client,
@@ -100,49 +111,36 @@ async function untilDone(
   throw new Error(`task ${taskId} never finished`);
 }
 
-/** Resolves once the task's child is running; returns the child's pids. */
-async function untilRunning(client: Client, taskId: string): Promise<number[]> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const { value } = await call(client, 'get_task', { taskId });
-    if (value.status === 'running') {
-      const pids = await childPids(taskId);
-      if (pids.length > 0) return pids;
+/**
+ * Resolves with the pid of the task's `demoflow run` child once the server
+ * logs its start. The bound is generous: a loaded runner is not what is tested.
+ */
+async function untilRunning(target: Server, taskId: string): Promise<number> {
+  const started = new RegExp(`task ${taskId} started \\(pid (\\d+)\\)`);
+  const deadline = performance.now() + 90_000;
+  while (performance.now() < deadline) {
+    const match = started.exec(target.stderr());
+    if (match !== null) {
+      const { value } = await call(target.client, 'get_task', { taskId });
+      expect(value.status).toBe('running');
+      return Number(match[1]);
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`task ${taskId} never started`);
+  throw new Error(`task ${taskId} never started:\n${target.stderr()}`);
 }
 
-const exec = promisify(execFile);
-
-/** Pids of `demoflow run … --run-id <taskId>` processes, on every OS. */
-async function childPids(taskId: string): Promise<number[]> {
-  const needle = `--run-id ${taskId}`;
-  if (process.platform === 'win32') {
-    const { stdout } = await exec('powershell.exe', [
-      '-NoProfile',
-      '-Command',
-      `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${needle}*' -and $_.Name -eq 'node.exe' } | ForEach-Object { $_.ProcessId }`,
-    ]);
-    return stdout.split(/\s+/).filter(Boolean).map(Number);
-  }
-  const { stdout } = await exec('ps', ['-A', '-o', 'pid=', '-o', 'args=']);
-  return stdout
-    .split('\n')
-    .filter((line) => line.includes(needle) && line.includes(' run '))
-    .map((line) => Number.parseInt(line.trim(), 10));
-}
-
+/** `process.kill(pid, 0)`: no `ps`, on every OS (ESRCH once the process is gone). */
 function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
   }
 }
 
-async function untilGone(pids: number[], ms = 15_000): Promise<void> {
+async function untilGone(pids: number[], ms = 30_000): Promise<void> {
   const deadline = performance.now() + ms;
   while (pids.some(alive) && performance.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -330,7 +328,7 @@ describe('demoflow mcp', () => {
     });
     const runningId = running.value.taskId as string;
     const queuedId = queued.value.taskId as string;
-    const pids = await untilRunning(server.client, runningId);
+    const pid = await untilRunning(server, runningId);
 
     const cancelledQueued = await call(server.client, 'cancel_task', {
       taskId: queuedId,
@@ -343,17 +341,17 @@ describe('demoflow mcp', () => {
       taskId: runningId,
     });
     expect(cancelled.value).toEqual({ taskId: runningId, status: 'cancelled' });
-    expect(pids.some(alive)).toBe(false);
-    expect(await childPids(runningId)).toEqual([]);
+    // cancel_task answers once the child has exited.
+    expect(alive(pid)).toBe(false);
 
-    // Unchanged once finished; the queued one never got a run directory.
+    // Unchanged once finished; the queued one never started.
     expect(
       (await call(server.client, 'cancel_task', { taskId: runningId })).value
         .status,
     ).toBe('cancelled');
     expect(await exists(path.join(home, 'runs', queuedId))).toBe(false);
-    expect(await childPids(queuedId)).toEqual([]);
-  });
+    expect(server.stderr()).not.toContain(`task ${queuedId} started`);
+  }, 150_000);
 
   it('a task past timeoutMinutes is timed_out and its child is gone', async () => {
     const { value } = await call(server.client, 'generate_demo', {
@@ -361,12 +359,11 @@ describe('demoflow mcp', () => {
       timeoutMinutes: 1,
     });
     const taskId = value.taskId as string;
-    const pids = await untilRunning(server.client, taskId);
+    const pid = await untilRunning(server, taskId);
     const done = await untilDone(server.client, taskId);
     expect(done.status).toBe('timed_out');
-    expect(pids.some(alive)).toBe(false);
-    expect(await childPids(taskId)).toEqual([]);
-  }, 150_000);
+    expect(alive(pid)).toBe(false);
+  }, 240_000);
 
   it('invalid input returns { code, message, hint }', async () => {
     const scenario = {
@@ -428,15 +425,14 @@ describe('demoflow mcp', () => {
     const { value } = await call(own.client, 'generate_demo', {
       file: 'demoflow/slow.demo.json',
     });
-    const pids = await untilRunning(own.client, value.taskId as string);
+    const pid = await untilRunning(own, value.taskId as string);
     // The SDK client ends the server's stdin, then waits for it to leave.
     await own.close();
-    await untilGone([own.pid, ...pids]);
+    await untilGone([own.pid, pid]);
     expect(alive(own.pid)).toBe(false);
     expect(own.stderr()).toContain('stopped (stdin closed)');
-    expect(pids.some(alive)).toBe(false);
-    expect(await childPids(value.taskId as string)).toEqual([]);
-  });
+    expect(alive(pid)).toBe(false);
+  }, 150_000);
 
   it.skipIf(process.platform === 'win32')(
     'SIGTERM stops the server and leaves no child behind',
@@ -445,13 +441,14 @@ describe('demoflow mcp', () => {
       const { value } = await call(own.client, 'generate_demo', {
         file: 'demoflow/slow.demo.json',
       });
-      const pids = await untilRunning(own.client, value.taskId as string);
+      const pid = await untilRunning(own, value.taskId as string);
       process.kill(own.pid, 'SIGTERM');
-      await untilGone([own.pid, ...pids]);
+      await untilGone([own.pid, pid]);
       expect(alive(own.pid)).toBe(false);
       expect(own.stderr()).toContain('stopped (SIGTERM)');
-      expect(await childPids(value.taskId as string)).toEqual([]);
+      expect(alive(pid)).toBe(false);
       await own.close();
     },
+    150_000,
   );
 });

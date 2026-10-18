@@ -39,6 +39,8 @@ export interface TaskQueueDeps {
   spawn: SpawnRun;
   readResult: (runDir: string) => Promise<RunResult>;
   removeFile: (file: string) => Promise<void>;
+  /** One line per task start and end, for the server's stderr log. */
+  log?: (line: string) => void;
 }
 
 interface Running {
@@ -147,6 +149,7 @@ export class TaskQueue {
       ],
       spec.root,
     );
+    this.deps.log?.(`task ${spec.taskId} started (pid ${child.pid ?? '?'})`);
     const timer = setTimeout(() => {
       void this.stop(running, 'timed_out');
     }, spec.timeoutMs);
@@ -198,6 +201,7 @@ export class TaskQueue {
 
   private end(task: Task, status: TaskStatus): void {
     task.status = status;
+    this.deps.log?.(`task ${task.spec.taskId} ${status}`);
     if (task.spec.staged !== undefined) {
       this.deps.removeFile(task.spec.staged).catch(() => undefined);
     }
