@@ -1,7 +1,12 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { BASELINES_DIR, baselinePath } from './baselines.ts';
 import { encodePng } from './png.ts';
-import { renderScene, SCENES, syntheticSource } from './scenes.ts';
+import {
+  renderScene,
+  renderSwatches,
+  SCENES,
+  syntheticSource,
+} from './scenes.ts';
 
 /** Regenerates every baseline PNG: `bun run --filter @demoflow/renderer test:update-baselines`. */
 const source = syntheticSource();
@@ -13,3 +18,8 @@ for (const scene of SCENES) {
   );
   console.info(`wrote ${baselinePath(scene.name)}`);
 }
+await writeFile(
+  baselinePath('background-swatches'),
+  encodePng(renderSwatches(source)),
+);
+console.info(`wrote ${baselinePath('background-swatches')}`);

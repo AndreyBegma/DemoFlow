@@ -91,6 +91,96 @@
             }
           },
           "additionalProperties": false
+        },
+        "frame": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "default": true,
+              "type": "boolean"
+            },
+            "marginRatio": {
+              "default": 0.06,
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 0.25
+            },
+            "radius": {
+              "default": 12,
+              "type": "number",
+              "minimum": 0
+            },
+            "shadow": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "background": {
+          "default": {
+            "preset": "ocean"
+          },
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "preset": {
+                  "type": "string",
+                  "enum": [
+                    "ocean",
+                    "sunset",
+                    "forest",
+                    "dusk",
+                    "graphite",
+                    "paper"
+                  ]
+                }
+              },
+              "required": ["preset"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "color": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "required": ["color"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "gradient": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string",
+                      "pattern": "^#[0-9a-fA-F]{6}$"
+                    },
+                    "to": {
+                      "type": "string",
+                      "pattern": "^#[0-9a-fA-F]{6}$"
+                    },
+                    "angle": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 360,
+                      "description": "Degrees, as in CSS linear-gradient: 0 runs towards the top, clockwise (90 towards the right)."
+                    }
+                  },
+                  "required": ["from", "to", "angle"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["gradient"],
+              "additionalProperties": false
+            }
+          ]
         }
       },
       "additionalProperties": false

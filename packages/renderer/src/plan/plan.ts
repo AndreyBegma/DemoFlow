@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   type Box,
+  FrameConfigSchema,
   type RunResult,
   RunResultSchema,
   type StepAction,
@@ -9,6 +10,7 @@ import {
   type TimelineEvent,
   TimelineSchema,
 } from '@demoflow/core';
+import { resolveBackground } from './background.ts';
 import { probeVideo } from './ffmpeg.ts';
 import { findSyncClear, syncOffset } from './sync-mark.ts';
 import { buildTimeMap, idleStretches, toOutputMs } from './time-map.ts';
@@ -18,6 +20,7 @@ import type {
   ClickRing,
   CursorMove,
   FailureSpec,
+  FrameSpec,
   Interval,
   KeyBadge,
   MaskSpan,
@@ -163,6 +166,21 @@ export function planRender(
     fps: options.output?.fps ?? DEFAULTS.output.fps,
   };
   const viewport = timeline.viewport;
+  const frameConfig = FrameConfigSchema.parse(options.frame ?? {});
+  // The radius and margin are given at 1080p and follow the output height.
+  const frame: FrameSpec | undefined = frameConfig.enabled
+    ? {
+        radius: (frameConfig.radius * output.height) / 1080,
+        shadow: frameConfig.shadow,
+        background: resolveBackground(
+          options.background ?? { preset: 'ocean' },
+        ),
+      }
+    : undefined;
+  const fit =
+    frame === undefined
+      ? fitInto(viewport, output)
+      : fitWindow(viewport, output, frameConfig.marginRatio * output.height);
   const sourceScale = source.width / viewport.width;
   const maxZoom =
     options.zoom ??
@@ -220,7 +238,8 @@ export function planRender(
       scale: sourceScale,
     },
     viewport,
-    fit: fitInto(viewport, output),
+    fit,
+    ...(frame === undefined ? {} : { frame }),
     offsetMs,
     offsetMeasured,
     maskLeadMs,
@@ -308,6 +327,26 @@ function fitInto(
   return {
     x: (output.width - viewport.width * scale) / 2,
     y: (output.height - viewport.height * scale) / 2,
+    scale,
+  };
+}
+
+/**
+ * The window: the viewport fitted into the output less `margin` on every
+ * side, centred, its corner on a whole pixel so its straight edges stay sharp.
+ */
+function fitWindow(
+  viewport: { width: number; height: number },
+  output: { width: number; height: number },
+  margin: number,
+): RenderPlan['fit'] {
+  const scale = Math.min(
+    (output.width - 2 * margin) / viewport.width,
+    (output.height - 2 * margin) / viewport.height,
+  );
+  return {
+    x: Math.round((output.width - viewport.width * scale) / 2),
+    y: Math.round((output.height - viewport.height * scale) / 2),
     scale,
   };
 }

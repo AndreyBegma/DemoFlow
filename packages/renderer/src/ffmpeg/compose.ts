@@ -1,5 +1,5 @@
 import type { Box } from '@demoflow/core';
-import type { FrameState, OutputSpec } from '../plan/types.ts';
+import type { FrameState, OutputSpec, RenderPlan } from '../plan/types.ts';
 import {
   capHeight,
   descent,
@@ -12,10 +12,13 @@ import {
 import {
   blurBox,
   type Colour,
+  createPicture,
   drawScaled,
+  drawScaledRounded,
   edge,
   fill,
   fillBox,
+  fillGradient,
   hex,
   type Mask,
   mergeMasks,
@@ -68,6 +71,8 @@ export const LOOK = {
     maxWidth: 1600,
     text: { fontPx: 48, weight: 'regular' },
   },
+  /** Under the window (spec 100), in output pixels at 1080p, scaled with the output height. */
+  shadow: { colour: BLACK, alpha: 0.4, offsetY: 14, sigma: 28 },
 } as const;
 
 /**
@@ -99,10 +104,72 @@ export interface Compositor {
   compose(target: Picture, state: FrameState, source?: Picture): void;
 }
 
-export function createCompositor(output: OutputSpec): Compositor {
+/**
+ * The stage of a framed plan (spec 100): the background with the window's
+ * shadow on it, drawn once — the camera then shows part of it on each frame.
+ * `undefined` when the frame is off.
+ */
+export function renderStage(plan: RenderPlan): Picture | undefined {
+  const { frame, output, fit, viewport } = plan;
+  if (frame === undefined) return undefined;
+  const stage = createPicture(output.width, output.height);
+  const { background } = frame;
+  fillGradient(
+    stage,
+    hex(background.from),
+    hex(background.to),
+    background.angle,
+  );
+  if (frame.shadow) {
+    const unit = output.height / 1080;
+    const { colour, alpha, offsetY, sigma } = LOOK.shadow;
+    const spread = sigma * unit;
+    const window: Box = {
+      x: fit.x,
+      y: fit.y + offsetY * unit,
+      width: viewport.width * fit.scale,
+      height: viewport.height * fit.scale,
+    };
+    const radius = Math.min(frame.radius, window.width / 2, window.height / 2);
+    const reach = 3 * spread;
+    paint(
+      stage,
+      {
+        x: window.x - reach,
+        y: window.y - reach,
+        width: window.width + 2 * reach,
+        height: window.height + 2 * reach,
+      },
+      colour,
+      alpha,
+      // A logistic edge: close to a Gaussian blur of the window's shape.
+      (x, y) =>
+        1 /
+        (1 +
+          Math.exp((1.7 * roundRectDistance(window, radius, x, y)) / spread)),
+    );
+  }
+  return stage;
+}
+
+/**
+ * `stage` is the plan's `renderStage`: frames whose state carries `frame`
+ * draw the page in the window on it; without it the page fills the frame on
+ * black, as before spec 100.
+ */
+export function createCompositor(
+  output: OutputSpec,
+  stage?: Picture,
+): Compositor {
   const captions = new Map<string, Laid>();
   const cards = new Map<string, Laid>();
   const badge = layBadge(output);
+  const screen: Box = {
+    x: 0,
+    y: 0,
+    width: output.width,
+    height: output.height,
+  };
 
   return {
     compose(target, state, source) {
@@ -113,9 +180,32 @@ export function createCompositor(output: OutputSpec): Compositor {
         );
         paintMask(target, card.mask, WHITE);
       } else {
-        fill(target, BLACK);
-        if (source !== undefined) {
-          drawScaled(target, source, state.crop, state.content);
+        if (state.frame !== undefined) {
+          if (stage === undefined) {
+            throw new Error(
+              'a framed frame needs the stage: renderStage(plan)',
+            );
+          }
+          const { view, radius } = state.frame;
+          if (sameBox(view, screen)) {
+            target.data.set(stage.data);
+          } else {
+            drawScaled(target, stage, view, screen);
+          }
+          if (source !== undefined) {
+            drawScaledRounded(
+              target,
+              source,
+              state.crop,
+              state.content,
+              radius,
+            );
+          }
+        } else {
+          fill(target, BLACK);
+          if (source !== undefined) {
+            drawScaled(target, source, state.crop, state.content);
+          }
         }
         for (const box of state.masks) {
           blurBox(target, box, LOOK.mask.sigma);
@@ -136,7 +226,12 @@ export function createCompositor(output: OutputSpec): Compositor {
           paintMask(target, caption.mask, WHITE);
         }
         if (state.key !== undefined) {
-          const laid = layKey(state.key.text, state.key.anchor, state.content);
+          // Inside the part of the window on the frame.
+          const laid = layKey(
+            state.key.text,
+            state.key.anchor,
+            intersect(state.content, screen),
+          );
           drawPanel(
             target,
             laid.panel,
@@ -152,6 +247,23 @@ export function createCompositor(output: OutputSpec): Compositor {
       }
     },
   };
+}
+
+function sameBox(a: Box, b: Box): boolean {
+  return (
+    a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+  );
+}
+
+/** The overlap of two boxes; `a` itself when they do not overlap, so a badge still has somewhere to go. */
+function intersect(a: Box, b: Box): Box {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const right = Math.min(a.x + a.width, b.x + b.width);
+  const bottom = Math.min(a.y + a.height, b.y + b.height);
+  return right > x && bottom > y
+    ? { x, y, width: right - x, height: bottom - y }
+    : a;
 }
 
 function cached(

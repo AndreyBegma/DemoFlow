@@ -111,6 +111,66 @@ function paddingShare(
   return largest / grey.length;
 }
 
+/** The mean difference per channel allowed between the frame's margin and the stage it should show: H.264 noise, not a page. */
+export const MAX_BACKGROUND_DELTA = 6;
+
+export interface FramedLayoutReport extends LayoutReport {
+  /** The mean absolute difference per channel between the frame and the stage outside the window. */
+  backgroundDelta: number;
+}
+
+/**
+ * The layout of a framed frame at zoom 1 (spec 100): `checkLayout` inside
+ * `window` — page content in each of its quadrants, no block of padding — and
+ * outside it, the stage (the background with the shadow) as drawn.
+ */
+export function checkFramedLayout(
+  frame: Uint8Array,
+  width: number,
+  height: number,
+  window: { x: number; y: number; width: number; height: number },
+  stage: Uint8Array,
+): FramedLayoutReport {
+  // Whole pixels inside the window, and a 2 px band around it left out of either check.
+  const x0 = Math.ceil(window.x);
+  const y0 = Math.ceil(window.y);
+  const x1 = Math.floor(window.x + window.width);
+  const y1 = Math.floor(window.y + window.height);
+  const inner = new Uint8Array((x1 - x0) * (y1 - y0) * 3);
+  for (let y = y0; y < y1; y++) {
+    const from = (y * width + x0) * 3;
+    inner.set(
+      frame.subarray(from, from + (x1 - x0) * 3),
+      (y - y0) * (x1 - x0) * 3,
+    );
+  }
+  const report = checkLayout(inner, x1 - x0, y1 - y0);
+
+  let total = 0;
+  let count = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (x >= x0 - 2 && x < x1 + 2 && y >= y0 - 2 && y < y1 + 2) continue;
+      const at = (y * width + x) * 3;
+      for (let c = 0; c < 3; c++)
+        total += Math.abs(frame[at + c] - stage[at + c]);
+      count += 3;
+    }
+  }
+  const backgroundDelta = count === 0 ? 0 : total / count;
+  const problems = report.problems.map(
+    (problem) => `in the window: ${problem}`,
+  );
+  if (count === 0) {
+    problems.push('the window leaves no background on the frame');
+  } else if (backgroundDelta > MAX_BACKGROUND_DELTA) {
+    problems.push(
+      `outside the window the frame is not the background (mean difference ${backgroundDelta.toFixed(1)}, max ${MAX_BACKGROUND_DELTA})`,
+    );
+  }
+  return { ...report, problems, backgroundDelta };
+}
+
 /** Checks that `frame` shows page content in every quadrant and no large block of padding. */
 export function checkLayout(
   frame: Uint8Array,

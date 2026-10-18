@@ -10,6 +10,54 @@ const OriginSchema = HttpUrlSchema.refine(
   'expected an origin such as https://example.com, without a path',
 );
 
+/** The built-in backgrounds (spec 100, Decision 2); the renderer holds their colours. */
+export const BACKGROUND_PRESETS = [
+  'ocean',
+  'sunset',
+  'forest',
+  'dusk',
+  'graphite',
+  'paper',
+] as const;
+export type BackgroundPreset = (typeof BACKGROUND_PRESETS)[number];
+
+const ColourSchema = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'expected a colour such as #1e3a5f');
+
+/** A built-in preset, a solid colour, or a two-stop gradient — never an image (spec 100). */
+export const BackgroundConfigSchema = z.union([
+  z.strictObject({ preset: z.enum(BACKGROUND_PRESETS) }),
+  z.strictObject({ color: ColourSchema }),
+  z.strictObject({
+    gradient: z.strictObject({
+      from: ColourSchema,
+      to: ColourSchema,
+      angle: z.number().min(0).max(360).meta({
+        description:
+          'Degrees, as in CSS linear-gradient: 0 runs towards the top, clockwise (90 towards the right).',
+      }),
+    }),
+  }),
+]);
+export type BackgroundConfig = z.infer<typeof BackgroundConfigSchema>;
+
+/**
+ * The page in a rounded, shadowed window on the background (spec 100).
+ * `enabled: false` renders the page full-bleed, as before.
+ */
+export const FrameConfigSchema = z
+  .strictObject({
+    enabled: z.boolean().default(true),
+    /** The margin on every side, as a share of the output height. */
+    marginRatio: z.number().min(0).lt(0.25).default(0.06),
+    /** Corner radius in output pixels at 1080p, scaled with the output height. */
+    radius: z.number().nonnegative().default(12),
+    shadow: z.boolean().default(true),
+  })
+  .prefault({});
+export type FrameConfig = z.infer<typeof FrameConfigSchema>;
+
 /** Render defaults per ADR-0004 §5–6: 1920×1080, 30 fps, idle 1 s → 400 ms. */
 export const RenderConfigSchema = z
   .strictObject({
@@ -22,6 +70,8 @@ export const RenderConfigSchema = z
         compressToMs: z.number().int().nonnegative().default(400),
       })
       .prefault({}),
+    frame: FrameConfigSchema,
+    background: BackgroundConfigSchema.default({ preset: 'ocean' }),
   })
   .prefault({});
 export type RenderConfig = z.infer<typeof RenderConfigSchema>;
