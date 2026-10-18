@@ -16,6 +16,34 @@ import {
 } from '../../src/index.ts';
 import { hasFfmpeg, recordFixtureRun } from './fixture-runs.ts';
 
+/** The largest luma change between consecutive frames of a still picture. */
+const CODEC_NOISE = 11;
+
+/** Per frame, when it is shown and the largest luma change from the one before. */
+async function frameChanges(
+  file: string,
+): Promise<{ atMs: number; change: number }[]> {
+  const { stderr } = await runFfmpeg([
+    '-i',
+    file,
+    '-map',
+    '0:v:0',
+    '-vf',
+    'tblend=all_mode=difference,signalstats,metadata=mode=print:key=lavfi.signalstats.YMAX',
+    '-f',
+    'null',
+    '-',
+  ]);
+  return [
+    ...stderr.matchAll(
+      /pts_time:([\d.]+)\s*\n[^\n]*lavfi\.signalstats\.YMAX=(\d+)/g,
+    ),
+  ].map((match) => ({
+    atMs: Number(match[1]) * 1000,
+    change: Number(match[2]),
+  }));
+}
+
 if (!hasFfmpeg) {
   console.warn('no usable FFmpeg: skipping the render plan integration tests');
 }
@@ -160,12 +188,35 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     const { freezes } = await probeVideo(path.join(tour, plan.source.file), {
       freezes: { minMs: 1_000 },
     });
+    // The renderer may only compress what the source does not change. Motion
+    // is measured here, apart from the renderer's idle rule: per frame, the
+    // largest luma change from the previous one, with codec noise (peaks at 11
+    // luma levels) as the floor. A slow runner can deliver no frames at all
+    // for a stretch of the wait (a stalled screencast); compressing that is
+    // correct, so it is reported, not failed.
+    const motion = await frameChanges(path.join(tour, plan.source.file));
+    expect(motion.length, 'no frame changes read from FFmpeg').toBeGreaterThan(
+      10,
+    );
     for (const segment of plan.timeMap) {
       if (segment.sourceEndMs <= from || segment.sourceStartMs >= to) continue;
+      const compressed =
+        segment.outputEndMs - segment.outputStartMs <
+        segment.sourceEndMs - segment.sourceStartMs - 1;
+      if (!compressed) continue;
+      const moved = motion.filter(
+        (frame) =>
+          frame.atMs > segment.sourceStartMs &&
+          frame.atMs <= segment.sourceEndMs &&
+          frame.change > CODEC_NOISE,
+      );
       expect(
-        segment.outputEndMs - segment.outputStartMs,
-        `segment ${JSON.stringify(segment)} inside the spinner; source freezes ${JSON.stringify(freezes)}`,
-      ).toBeCloseTo(segment.sourceEndMs - segment.sourceStartMs);
+        moved,
+        `segment ${JSON.stringify(segment)} inside the spinner was compressed although the source moves; source freezes ${JSON.stringify(freezes)}`,
+      ).toEqual([]);
+      console.warn(
+        `the source stalls inside the spinner wait (no change over ${JSON.stringify(segment)}; renderer freezes ${JSON.stringify(freezes)}): the screencast delivered no new frames`,
+      );
     }
   });
 
