@@ -49,5 +49,11 @@ decisions live in [../adr/](../adr/README.md).
 |---|---|---|
 | [#73](https://github.com/AndreyBegma/DemoFlow/issues/73) | [Visual baselines](73-visual-baselines.md) | — |
 
+## Phase 4 — Video quality
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#82](https://github.com/AndreyBegma/DemoFlow/issues/82) | [Spike: CDP capture at device pixels](82-cdp-capture-spike.md) | — |
+
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.
