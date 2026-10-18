@@ -1,37 +1,137 @@
+<div align="center">
+
 # DemoFlow
 
-## Requirements
+**Verified, polished demo videos of the features you ship — from one JSON scenario.**
 
-- [Bun](https://bun.sh) 1.4.0+
-- Node.js 24+
-- Docker (for PostgreSQL)
+[![npm](https://img.shields.io/npm/v/demoflow?color=2b86c5)](https://www.npmjs.com/package/demoflow)
+[![execution plane](https://github.com/AndreyBegma/DemoFlow/actions/workflows/execution-plane.yml/badge.svg?branch=develop)](https://github.com/AndreyBegma/DemoFlow/actions/workflows/execution-plane.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![docs: wiki](https://img.shields.io/badge/docs-wiki-0b2e4f)](https://github.com/AndreyBegma/DemoFlow/wiki)
 
-## Getting started
+[Getting started](https://github.com/AndreyBegma/DemoFlow/wiki/Getting-Started) ·
+[Wiki](https://github.com/AndreyBegma/DemoFlow/wiki) ·
+[CLI reference](https://github.com/AndreyBegma/DemoFlow/wiki/CLI-Reference) ·
+[MCP server](https://github.com/AndreyBegma/DemoFlow/wiki/MCP-Server) ·
+[Roadmap](https://github.com/AndreyBegma/DemoFlow/wiki/Status-and-Roadmap)
 
-```bash
-bun install
-bun run db:setup     # PostgreSQL on :5470, migrations, seed
-bun run start:dev    # api → http://localhost:8370  ·  web → http://localhost:3670
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
+  <img alt="A JSON scenario becomes a verified browser run, then a polished demo video" src="docs/assets/hero-light.svg" width="100%">
+</picture>
+
+</div>
+
+DemoFlow drives your web app in Chromium through a short scenario — navigate,
+click, fill, assert — and records it. If an assertion fails, the run fails and
+the video says so; a demo that shows a broken feature never looks like a
+working one.
+
+The recording is then rendered into an MP4 with a smooth drawn cursor, click
+rings, camera zoom on the action, captions, idle time compressed, and the page
+in a rounded window on a background. Passwords come from environment
+variables, never touch disk or logs, and are blurred in the video.
+
+Everything runs on your machine. Run it from the command line, from CI, or let
+an AI agent such as Claude Code ask for a demo over MCP.
+
+## Features
+
+| Feature | What it does |
+|---|---|
+| **[Scenarios](https://github.com/AndreyBegma/DemoFlow/wiki/Scenarios)** | A JSON file with up to 200 steps and accessible-role locators, validated by a JSON Schema. |
+| **[Running demos](https://github.com/AndreyBegma/DemoFlow/wiki/Running-Demos)** | `demoflow run` checks readiness, starts your app if configured, runs the steps and renders the video. |
+| **[Recording scenarios](https://github.com/AndreyBegma/DemoFlow/wiki/Recording-Scenarios)** | `demoflow record` writes the scenario while you click through the app in a browser. |
+| **[Rendering and effects](https://github.com/AndreyBegma/DemoFlow/wiki/Rendering-and-Effects)** | An FFmpeg compositor adds cursor, rings, zoom, captions, key badges, a window frame and a background. |
+| **[Secrets and masking](https://github.com/AndreyBegma/DemoFlow/wiki/Secrets-and-Masking)** | `valueFrom.env` keeps secrets out of files and logs; their fields are blurred in the video. |
+| **[Run artifacts](https://github.com/AndreyBegma/DemoFlow/wiki/Run-Artifacts)** | Every run leaves the video, a timeline and a `result.json` with per-stage status and exit codes for CI. |
+| **[MCP server](https://github.com/AndreyBegma/DemoFlow/wiki/MCP-Server)** | `demoflow mcp` lets Claude Code generate a demo, poll the task and get the video path back. |
+
+> [!NOTE]
+> `demoflow@0.1.0` on npm has `run`, `validate`, `setup` and `mcp`. `record`,
+> the `press` step, starting the app from `devCommand`, key badges and the
+> window frame are on `develop` and ship in the next release. Cards,
+> transitions, GIF/WebM/9:16 export, the website and Runner pairing are **not
+> built yet** — see [Status and Roadmap](https://github.com/AndreyBegma/DemoFlow/wiki/Status-and-Roadmap).
+
+## How a demo flows
+
+```mermaid
+flowchart LR
+  S["scenario.demo.json"] --> RD["readiness<br/>origins · env secrets"]
+  RD --> EX["execution<br/>Chromium runs the steps"]
+  EX --> VE["verification<br/>assertions"]
+  VE --> RC["recording<br/>source.webm + timeline"]
+  RC --> RN["rendering<br/>FFmpeg compositor"]
+  RN --> MP4["render/ffmpeg.mp4<br/>result.json"]
 ```
 
-Health check: `curl http://localhost:8370/health`
+## Architecture
 
-On a fresh clone, create the git-ignored env files first: copy `docker/.env.example` to `docker/.env` and `apps/api/.env.example` to `apps/api/.env`, and set the same database password in `POSTGRES_PASSWORD` and `DATABASE_URL`. `db:setup` stops with an error if `docker/.env` is missing.
+```mermaid
+flowchart TB
+  CC["Claude Code"] -->|"MCP · stdio"| CLI
+  YOU["You / CI"] --> CLI["demoflow CLI"]
+  CLI --> ENG["engine<br/>Playwright"] --> REN["renderer<br/>FFmpeg"]
+  CORE["core<br/>zod contracts"] -.-> CLI
+  CORE -.-> ENG
+  CORE -.-> REN
+```
 
-## Workspaces
+- **Recording is separate from rendering** — the source stays a faithful capture; every effect is applied afterwards from the timeline ([ADR-0004](docs/adr/0004-recording-is-separate-from-rendering.md), [ADR-0005](docs/adr/0005-renderer-chosen-by-spike.md)).
+- **Scenarios and config are data, never code** — JSON an agent can write and a person can review ([ADR-0003](docs/adr/0003-scenario-format-and-project-config.md)).
+- **Local first** — the browser, your app and your secrets stay on your machine ([ADR-0001](docs/adr/0001-control-plane-execution-plane-one-package.md), [ADR-0008](docs/adr/0008-cloud-boundary.md)).
 
-| Path | Package | Stack |
-|---|---|---|
-| `apps/api` | `@demoflow/api` | NestJS 11, Prisma 7, PostgreSQL |
-| `apps/web` | `@demoflow/web` | Next.js 16, React 19, Tailwind CSS 4 |
-| `packages/shared` | `@demoflow/shared` | shared TypeScript |
+More in [Architecture](https://github.com/AndreyBegma/DemoFlow/wiki/Architecture).
 
-See `CLAUDE.md` for all commands and conventions.
+## Quick start
 
-## Branches and deployment
+Needs Node.js 20+. Create `demoflow.config.json` in your project:
 
-`main` holds releases; every pull request targets `develop`. A merge into
-`develop` deploys https://demoflow-app.luna-realm.com through Woodpecker —
-see [deploy/README.md](deploy/README.md).
+```json
+{ "baseUrl": "http://localhost:3000" }
+```
 
-The product vision lives in [docs/product/vision.md](docs/product/vision.md).
+Write `demoflow/first.demo.json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "Open the settings",
+  "steps": [
+    { "action": "navigate", "path": "/" },
+    { "action": "click", "target": { "role": "link", "name": "Settings" }, "caption": "Open the settings" },
+    { "action": "assertVisible", "target": { "role": "heading", "name": "Settings" } }
+  ]
+}
+```
+
+With your app running:
+
+```sh
+npx demoflow run demoflow/first.demo.json
+```
+
+Chromium is downloaded on first use. The summary prints the path of the video.
+To connect Claude Code instead: `claude mcp add demoflow -- npx demoflow mcp`.
+
+## Documentation
+
+| Where | What |
+|---|---|
+| [Wiki](https://github.com/AndreyBegma/DemoFlow/wiki) | How to use and operate DemoFlow: one page per feature, configuration, CLI and MCP reference, FAQ |
+| [`docs/adr/`](docs/adr/README.md) | Architecture decisions, one per record, superseded never rewritten |
+| [`docs/specs/`](docs/specs/README.md) | One specification per issue |
+| [`docs/product/`](docs/product/roadmap.md) | Product vision and roadmap |
+| [`apps/cli/README.md`](apps/cli/README.md) | The README shipped in the npm package |
+| [`deploy/README.md`](deploy/README.md) | Staging deploy and npm release, for maintainers |
+
+## Contributing
+
+Bun workspaces and Turborepo; `bun install`, then `bun run check` and
+`bun run test`. Pull requests target `develop`. Local setup (Docker, env files) is in
+[Contributing](https://github.com/AndreyBegma/DemoFlow/wiki/Contributing) and [`CLAUDE.md`](CLAUDE.md).
+
+## License
+
+[MIT](LICENSE). The bundled Inter fonts are under the SIL Open Font License 1.1.
