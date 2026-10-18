@@ -3,7 +3,7 @@ import type { Writable } from 'node:stream';
 import { resolveFfmpeg } from '../plan/ffmpeg.ts';
 import { frameAt, frameCount } from '../plan/frame.ts';
 import type { RenderPlan, SourceSpec } from '../plan/types.ts';
-import { createCompositor } from './compose.ts';
+import { createCompositor, renderStage } from './compose.ts';
 import { createPicture, type Picture } from './raster.ts';
 
 /**
@@ -17,7 +17,7 @@ export async function drawPlan(
   out: string,
 ): Promise<void> {
   const { output } = plan;
-  const compositor = createCompositor(output);
+  const compositor = createCompositor(output, renderStage(plan));
   const source = openSource(sourceFile, plan.source);
   const encoder = startEncoder(plan, out);
   // Two pictures: one is drawn while FFmpeg still reads the other.

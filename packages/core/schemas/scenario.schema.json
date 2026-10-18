@@ -656,6 +656,115 @@
             "properties": {
               "action": {
                 "type": "string",
+                "const": "press"
+              },
+              "key": {
+                "type": "string"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              }
+            },
+            "required": ["action", "key"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
                 "const": "scroll"
               },
               "to": {

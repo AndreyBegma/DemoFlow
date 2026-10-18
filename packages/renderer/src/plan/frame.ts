@@ -28,24 +28,15 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
   const atMs = (frame * 1000) / plan.output.fps;
   const card = plan.failure?.endCard;
   const onCard = card !== undefined && atMs >= card.startMs;
-  const view = cameraAt(plan, onCard ? card.startMs : atMs);
-  const { fit, viewport, source } = plan;
-  const content: Box = {
-    x: fit.x,
-    y: fit.y,
-    width: viewport.width * fit.scale,
-    height: viewport.height * fit.scale,
-  };
-  const scale = content.width / view.width;
-  const toOutput = (point: Point): Point => ({
-    x: content.x + (point.x - view.x) * scale,
-    y: content.y + (point.y - view.y) * scale,
-  });
-  const crop: Box = {
-    x: view.x * source.scale,
-    y: view.y * source.scale,
-    width: view.width * source.scale,
-    height: view.height * source.scale,
+  const { crop, content, scale, toOutput, stage } = geometryAt(
+    plan,
+    onCard ? card.startMs : atMs,
+  );
+  const screen: Box = {
+    x: 0,
+    y: 0,
+    width: plan.output.width,
+    height: plan.output.height,
   };
   const watermark = plan.failure !== undefined;
 
@@ -55,6 +46,7 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
       crop,
       content,
       scale,
+      ...(stage === undefined ? {} : { frame: stage }),
       rings: [],
       masks: [],
       watermark,
@@ -73,7 +65,7 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
     if (atMs < mask.startMs || atMs >= mask.endMs) return [];
     const box = maskBoxAt(mask, atMs);
     const corner = toOutput(box);
-    const clipped = intersect(
+    const inWindow = intersect(
       {
         x: corner.x,
         y: corner.y,
@@ -82,22 +74,114 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
       },
       content,
     );
+    const clipped = inWindow && intersect(inWindow, screen);
     return clipped === undefined ? [] : [clipped];
   });
   const caption = plan.captions.find(
     (entry) => atMs >= entry.startMs && atMs < entry.endMs,
   )?.text;
+  const badge = plan.keys.find(
+    (entry) => atMs >= entry.startMs && atMs < entry.endMs,
+  );
 
   return {
     sourceMs: toSourceMs(plan.timeMap, atMs),
     crop,
     content,
     scale,
+    ...(stage === undefined ? {} : { frame: stage }),
     ...(cursor === undefined ? {} : { cursor: toOutput(cursor) }),
     rings,
     masks,
     ...(caption === undefined ? {} : { caption }),
+    ...(badge === undefined
+      ? {}
+      : { key: { text: badge.text, anchor: toOutput(badge.anchor) } }),
     watermark,
+  };
+}
+
+interface Geometry {
+  crop: Box;
+  content: Box;
+  scale: number;
+  /** Viewport CSS pixels → output pixels on this frame. */
+  toOutput: (point: Point) => Point;
+  stage?: { view: Box; radius: number };
+}
+
+/**
+ * Where the page lands on the frame at `atMs` (spec 100, Decision 3).
+ * Without a frame the camera crops the viewport and the crop fills
+ * `plan.fit`. With one it moves over the stage — the background and the
+ * window at `plan.fit` — so the whole source is drawn into the window and
+ * everything mapped through `toOutput` moves and scales with it.
+ */
+function geometryAt(plan: RenderPlan, atMs: number): Geometry {
+  const { fit, viewport, source } = plan;
+  if (plan.frame === undefined) {
+    const view = cameraAt(plan, atMs);
+    const content: Box = {
+      x: fit.x,
+      y: fit.y,
+      width: viewport.width * fit.scale,
+      height: viewport.height * fit.scale,
+    };
+    const scale = content.width / view.width;
+    return {
+      crop: {
+        x: view.x * source.scale,
+        y: view.y * source.scale,
+        width: view.width * source.scale,
+        height: view.height * source.scale,
+      },
+      content,
+      scale,
+      toOutput: (point) => ({
+        x: content.x + (point.x - view.x) * scale,
+        y: content.y + (point.y - view.y) * scale,
+      }),
+    };
+  }
+  const view = stageViewAt(plan, atMs);
+  // Output pixels per stage pixel: the camera's zoom.
+  const zoom = plan.output.width / view.width;
+  const scale = fit.scale * zoom;
+  const toOutput = (point: Point): Point => ({
+    x: (fit.x + point.x * fit.scale - view.x) * zoom,
+    y: (fit.y + point.y * fit.scale - view.y) * zoom,
+  });
+  return {
+    crop: { x: 0, y: 0, width: source.width, height: source.height },
+    content: {
+      ...toOutput({ x: 0, y: 0 }),
+      width: viewport.width * scale,
+      height: viewport.height * scale,
+    },
+    scale,
+    toOutput,
+    stage: { view, radius: plan.frame.radius * zoom },
+  };
+}
+
+/**
+ * The part of the stage the camera shows at `atMs`, in stage pixels: zoom 1
+ * is the whole stage, a zoom centres the target as far as the stage's edges
+ * allow, so the background may leave the frame.
+ */
+export function stageViewAt(plan: RenderPlan, atMs: number): Box {
+  const { centre, zoom } = cameraStateAt(plan.camera, atMs);
+  const { width: sw, height: sh } = plan.output;
+  const { fit } = plan;
+  const width = sw / zoom;
+  const height = sh / zoom;
+  const x = fit.x + centre.x * fit.scale;
+  const y = fit.y + centre.y * fit.scale;
+  return {
+    x: Math.min(sw - width, Math.max(0, x - width / 2)),
+    y: Math.min(sh - height, Math.max(0, y - height / 2)),
+    width,
+    height,
   };
 }
 

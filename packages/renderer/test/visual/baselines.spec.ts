@@ -1,11 +1,17 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
+import { renderStage } from '../../src/ffmpeg/compose.ts';
 import { createPicture, type Picture } from '../../src/ffmpeg/raster.ts';
 import { baselinePath, failurePath } from './baselines.ts';
 import { comparePictures, type Tolerance } from './compare.ts';
-import { checkLayout } from './layout.ts';
+import { checkFramedLayout, checkLayout } from './layout.ts';
 import { decodePng, encodePng } from './png.ts';
-import { renderScene, SCENES, syntheticSource } from './scenes.ts';
+import {
+  renderScene,
+  renderSwatches,
+  SCENES,
+  syntheticSource,
+} from './scenes.ts';
 
 /**
  * Set from measurement (spec 73, decision 3): just above the largest
@@ -16,30 +22,35 @@ const TOLERANCE: Tolerance = { pixel: 2, share: 0.0005 };
 
 const SOURCE = syntheticSource();
 
+/** Compares `actual` with the baseline `name`, writing the actual and diff images on a failure. */
+async function expectBaseline(name: string, actual: Picture): Promise<void> {
+  const expected = decodePng(await readFile(baselinePath(name)));
+  const result = comparePictures(actual, expected, TOLERANCE);
+  console.info(
+    `baseline ${name}: max delta ${result.maxDelta}, ` +
+      `${result.differing} px over ${TOLERANCE.pixel} ` +
+      `(${(result.share * 100).toFixed(4)} %, allowed ${TOLERANCE.share * 100} %)`,
+  );
+  if (!result.ok && result.diff !== undefined) {
+    await writeFile(failurePath(name, 'actual'), encodePng(actual));
+    await writeFile(failurePath(name, 'diff'), encodePng(result.diff));
+  }
+  expect(
+    result.ok,
+    `${name} differs from its baseline; see ${failurePath(name, 'diff')}`,
+  ).toBe(true);
+}
+
 describe('golden images of the compositor', () => {
   for (const scene of SCENES) {
     it(`draws the ${scene.name} as its baseline`, async () => {
-      const actual = renderScene(scene, SOURCE);
-      const expected = decodePng(await readFile(baselinePath(scene.name)));
-      const result = comparePictures(actual, expected, TOLERANCE);
-      console.info(
-        `baseline ${scene.name}: max delta ${result.maxDelta}, ` +
-          `${result.differing} px over ${TOLERANCE.pixel} ` +
-          `(${(result.share * 100).toFixed(4)} %, allowed ${TOLERANCE.share * 100} %)`,
-      );
-      if (!result.ok && result.diff !== undefined) {
-        await writeFile(failurePath(scene.name, 'actual'), encodePng(actual));
-        await writeFile(
-          failurePath(scene.name, 'diff'),
-          encodePng(result.diff),
-        );
-      }
-      expect(
-        result.ok,
-        `${scene.name} differs from its baseline; see ${failurePath(scene.name, 'diff')}`,
-      ).toBe(true);
+      await expectBaseline(scene.name, renderScene(scene, SOURCE));
     });
   }
+
+  it('draws every background — the presets, a colour, a gradient — as its baseline', async () => {
+    await expectBaseline('background-swatches', renderSwatches(SOURCE));
+  });
 
   it('fails on a one-pixel-wide change in the cursor colour, with a diff image', async () => {
     const scene = SCENES.find((s) => s.name === 'cursor');
@@ -138,5 +149,58 @@ describe('the layout check (#47)', () => {
       height,
     );
     expect(report.problems.length).toBe(4);
+  });
+});
+
+describe('the framed layout check (spec 100)', () => {
+  const { width, height } = { width: 1920, height: 1080 };
+  const scene = SCENES.find((s) => s.name === 'framed-window');
+  if (scene?.plan === undefined) throw new Error('no framed-window scene');
+  const window = scene.frame.content;
+  const stage = renderStage(scene.plan)?.data ?? new Uint8Array(0);
+
+  it('passes the page in the window on the background', () => {
+    const report = checkFramedLayout(
+      renderScene(scene, SOURCE).data,
+      width,
+      height,
+      window,
+      stage,
+    );
+    expect(report.problems).toEqual([]);
+    expect(report.backgroundDelta).toBe(0);
+  });
+
+  it('fails a page that fills the frame: no background outside the window', () => {
+    const fullBleed = renderScene(
+      {
+        name: 'full',
+        frame: SCENES[0].frame,
+        region: { x: 0, y: 0, width, height },
+      },
+      SOURCE,
+    ).data;
+    const report = checkFramedLayout(fullBleed, width, height, window, stage);
+    expect(report.problems.join('\n')).toMatch(/not the background/);
+  });
+
+  it('fails the #47 shape inside the window', () => {
+    const frame = renderScene(scene, SOURCE).data;
+    // The page kept in the window's top-left quarter, as checkFramedLayout splits it.
+    const x0 = Math.ceil(window.x);
+    const y0 = Math.ceil(window.y);
+    const right = x0 + ((Math.floor(window.x + window.width) - x0) >> 1);
+    const bottom = y0 + ((Math.floor(window.y + window.height) - y0) >> 1);
+    for (let y = Math.floor(window.y); y < window.y + window.height; y++) {
+      for (let x = Math.floor(window.x); x < window.x + window.width; x++) {
+        if (x < right && y < bottom) continue;
+        frame.set([127, 125, 129], (y * width + x) * 3);
+      }
+    }
+    const report = checkFramedLayout(frame, width, height, window, stage);
+    expect(report.problems.join('\n')).toMatch(
+      /in the window: the bottom-right quadrant is uniform/,
+    );
+    expect(report.problems.join('\n')).toMatch(/in the window: padding grey/);
   });
 });

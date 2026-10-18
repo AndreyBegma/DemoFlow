@@ -86,6 +86,8 @@ export const TimelineEventSchema = z
     assertion: z
       .strictObject({ passed: z.boolean(), message: z.string().optional() })
       .optional(),
+    // The key a `press` sent, as written in the scenario.
+    key: NonEmptyStringSchema.optional(),
     // Relative to the run directory.
     screenshot: NonEmptyStringSchema.optional(),
     marker: z
@@ -110,6 +112,10 @@ export const TimelineEventSchema = z
       path: ['value'],
     },
   )
+  .refine((event) => event.key === undefined || event.action === 'press', {
+    message: 'expected key only on a press event',
+    path: ['key'],
+  })
   .refine(
     (event) => event.maskVisibility === undefined || event.masked === true,
     {

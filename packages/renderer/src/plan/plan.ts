@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   type Box,
+  FrameConfigSchema,
   type RunResult,
   RunResultSchema,
   type StepAction,
@@ -9,6 +10,7 @@ import {
   type TimelineEvent,
   TimelineSchema,
 } from '@demoflow/core';
+import { resolveBackground } from './background.ts';
 import { probeVideo } from './ffmpeg.ts';
 import { findSyncClear, syncOffset } from './sync-mark.ts';
 import { buildTimeMap, idleStretches, toOutputMs } from './time-map.ts';
@@ -18,7 +20,9 @@ import type {
   ClickRing,
   CursorMove,
   FailureSpec,
+  FrameSpec,
   Interval,
+  KeyBadge,
   MaskSpan,
   Point,
   RenderPlan,
@@ -51,6 +55,8 @@ const TIMING = {
   zoomInMs: 500,
   zoomOutMs: 400,
   captionTailMs: 800,
+  /** A key badge stays this long after the press step ends. */
+  keyTailMs: 600,
   endCardMs: 3_000,
   /** A target whose centre is closer than this to the previous one keeps the zoom and pans. */
   keepZoomWithinPx: 400,
@@ -75,6 +81,7 @@ const ACTIVE: ReadonlySet<StepAction> = new Set([
   'navigate',
   'click',
   'hover',
+  'press',
   'fill',
   'select',
   'scroll',
@@ -159,6 +166,21 @@ export function planRender(
     fps: options.output?.fps ?? DEFAULTS.output.fps,
   };
   const viewport = timeline.viewport;
+  const frameConfig = FrameConfigSchema.parse(options.frame ?? {});
+  // The radius and margin are given at 1080p and follow the output height.
+  const frame: FrameSpec | undefined = frameConfig.enabled
+    ? {
+        radius: (frameConfig.radius * output.height) / 1080,
+        shadow: frameConfig.shadow,
+        background: resolveBackground(
+          options.background ?? { preset: 'ocean' },
+        ),
+      }
+    : undefined;
+  const fit =
+    frame === undefined
+      ? fitInto(viewport, output)
+      : fitWindow(viewport, output, frameConfig.marginRatio * output.height);
   const sourceScale = source.width / viewport.width;
   const maxZoom =
     options.zoom ??
@@ -216,7 +238,8 @@ export function planRender(
       scale: sourceScale,
     },
     viewport,
-    fit: fitInto(viewport, output),
+    fit,
+    ...(frame === undefined ? {} : { frame }),
     offsetMs,
     offsetMeasured,
     maskLeadMs,
@@ -231,6 +254,7 @@ export function planRender(
       trailMs: maskTrailMs,
     }),
     captions: captions(events, out, videoEndMs),
+    keys: keyBadges(events, out, videoEndMs, viewport),
     ...(failureSpec === undefined ? {} : { failure: failureSpec }),
   };
 }
@@ -303,6 +327,26 @@ function fitInto(
   return {
     x: (output.width - viewport.width * scale) / 2,
     y: (output.height - viewport.height * scale) / 2,
+    scale,
+  };
+}
+
+/**
+ * The window: the viewport fitted into the output less `margin` on every
+ * side, centred, its corner on a whole pixel so its straight edges stay sharp.
+ */
+function fitWindow(
+  viewport: { width: number; height: number },
+  output: { width: number; height: number },
+  margin: number,
+): RenderPlan['fit'] {
+  const scale = Math.min(
+    (output.width - 2 * margin) / viewport.width,
+    (output.height - 2 * margin) / viewport.height,
+  );
+  return {
+    x: Math.round((output.width - viewport.width * scale) / 2),
+    y: Math.round((output.height - viewport.height * scale) / 2),
     scale,
   };
 }
@@ -563,6 +607,44 @@ function overlaps(
     box.x + box.width > 0 &&
     box.y + box.height > 0
   );
+}
+
+/**
+ * A badge naming the key of every `press`, hanging below its target — or, for
+ * a press on the focused element, below where the pointer last rested (the
+ * middle of the viewport before the first move). It shows from the step's
+ * start until 600 ms after its end; a later badge cuts an earlier one.
+ */
+function keyBadges(
+  events: readonly TimelineEvent[],
+  out: (timelineMs: number) => number,
+  videoEndMs: number,
+  viewport: { width: number; height: number },
+): KeyBadge[] {
+  let rest: Point = { x: viewport.width / 2, y: viewport.height / 2 };
+  const list: KeyBadge[] = [];
+  for (const event of events) {
+    if (event.pointer !== undefined) rest = event.pointer.to;
+    if (event.action !== 'press' || event.key === undefined) continue;
+    const anchor =
+      event.target === undefined
+        ? rest
+        : {
+            x: event.target.box.x + event.target.box.width / 2,
+            y: event.target.box.y + event.target.box.height,
+          };
+    list.push({
+      startMs: out(event.startMs),
+      endMs: Math.min(videoEndMs, out(event.endMs) + TIMING.keyTailMs),
+      text: event.key.split('+').join(' + '),
+      anchor,
+    });
+  }
+  for (const [index, badge] of list.entries()) {
+    const next = list[index + 1];
+    if (next !== undefined) badge.endMs = Math.min(badge.endMs, next.startMs);
+  }
+  return list.filter((badge) => badge.endMs > badge.startMs);
 }
 
 /**

@@ -1,4 +1,9 @@
-import type { Box, Viewport } from '@demoflow/core';
+import type {
+  BackgroundConfig,
+  Box,
+  FrameConfig,
+  Viewport,
+} from '@demoflow/core';
 
 export interface Point {
   x: number;
@@ -41,6 +46,31 @@ export interface RenderPlanOptions {
   /** Camera zoom on a target. Default 1.6 on a 2× source, 1.25 below. */
   zoom?: number;
   output?: { width?: number; height?: number; fps?: number };
+  /** The window around the page (spec 100). Default: on, as in `FrameConfigSchema`. */
+  frame?: Partial<FrameConfig>;
+  /** Behind the window. Default: the `ocean` preset. */
+  background?: BackgroundConfig;
+}
+
+/** A two-stop linear gradient; a solid colour has `from` equal to `to`. */
+export interface GradientSpec {
+  /** `#rrggbb` */
+  from: string;
+  /** `#rrggbb` */
+  to: string;
+  /** Degrees, as in CSS `linear-gradient`: 0 runs towards the top, clockwise. */
+  angle: number;
+}
+
+/**
+ * The page in a rounded window on a background (spec 100). The stage is the
+ * output frame at zoom 1: the background, and the window at `RenderPlan.fit`.
+ */
+export interface FrameSpec {
+  /** Corner radius of the window, in stage pixels. */
+  radius: number;
+  shadow: boolean;
+  background: GradientSpec;
 }
 
 export interface OutputSpec {
@@ -110,6 +140,15 @@ export interface Caption {
   text: string;
 }
 
+/** A key badge, e.g. `Enter`, shown just below `anchor` (viewport CSS pixels). */
+export interface KeyBadge {
+  startMs: number;
+  endMs: number;
+  text: string;
+  /** Where the badge hangs from: the bottom-centre of the target, or the pointer. */
+  anchor: Point;
+}
+
 export interface FailureSpec {
   stage: 'readiness' | 'execution' | 'verification' | 'recording';
   /** 1-based, as a person counts steps; absent when the failure has no step. */
@@ -130,8 +169,13 @@ export interface RenderPlan {
   output: OutputSpec;
   source: SourceSpec;
   viewport: Viewport;
-  /** Where the viewport lands in the output frame (letterboxed, centred). */
+  /**
+   * Where the viewport lands in the output frame at zoom 1: letterboxed and
+   * centred, or — with `frame` — the window inside the margin.
+   */
   fit: { x: number; y: number; scale: number };
+  /** Absent when the frame is off: the page fills the output as before. */
+  frame?: FrameSpec;
   offsetMs: number;
   /** Whether `offsetMs` was measured on the run's sync mark (#19). */
   offsetMeasured: boolean;
@@ -148,6 +192,7 @@ export interface RenderPlan {
   camera: CameraKeyframe[];
   masks: MaskSpan[];
   captions: Caption[];
+  keys: KeyBadge[];
   failure?: FailureSpec;
 }
 
@@ -157,16 +202,20 @@ export interface FrameState {
   sourceMs: number | null;
   /** The part of the source frame to show, in source pixels. */
   crop: Box;
-  /** Where that crop is drawn in the output frame. */
+  /** Where that crop is drawn in the output frame; with a frame, the window, which may run past the frame's edge. */
   content: Box;
   /** Output pixels per viewport CSS pixel on this frame, for sizing the cursor and rings. */
   scale: number;
+  /** With a frame: what of the stage the camera shows, and the window's corner radius in output pixels. */
+  frame?: { view: Box; radius: number };
   cursor?: Point;
   /** `progress` runs from 0 to 1 over the ring's life. */
   rings: { point: Point; progress: number }[];
-  /** Clipped to `content`. */
+  /** Clipped to `content` and to the output frame. */
   masks: Box[];
   caption?: string;
+  /** The key badge to draw, hanging from `anchor` in output pixels. */
+  key?: { text: string; anchor: Point };
   watermark: boolean;
   endCard?: string;
 }

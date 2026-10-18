@@ -1,11 +1,15 @@
 import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { RunResult } from '@demoflow/core';
 import {
   createCaptureObserver,
   RUN_FILES,
   runScenario,
 } from '@demoflow/engine';
 import { buildRenderPlan, ffmpegRenderer } from '@demoflow/renderer';
+import { AppStartError, type RunningApp, startApp } from '../app/dev-server.ts';
+import { outputTail } from '../app/output-tail.ts';
 import {
   currentHost,
   findProjectRoot,
@@ -88,56 +92,166 @@ export async function runCommand(
       `run directory already exists: ${runDir}`,
     );
   }
-  // After every input check: a bad scenario never costs a browser download.
-  if ((await ensureChromium(io, deps.browser)) === 'failed') {
-    return EXIT_STAGE_FAILED;
-  }
-  io.stderr(`Running ${scenarioId(root, file)} (${runId})\n`);
-
-  // Secrets come from the process environment only (spec 5).
-  await runScenario(scenario, {
-    runDir,
-    baseUrl: flags.baseUrl ?? config.baseUrl,
-    allowedOrigins: config.allowedOrigins,
-    env: host.env,
-    headless: flags.headed !== true,
-    observers: [
-      createCaptureObserver({ scenarioId: scenarioId(root, file), runId }),
-    ],
-  });
-
-  // A recorded run is rendered whatever the verdict: the video of a failed
-  // verification is the evidence (ADR-0004 §4).
-  let renderError: unknown;
-  if (existsSync(path.join(runDir, RUN_FILES.video))) {
-    io.stderr('Rendering\n');
-    try {
-      const plan = await buildRenderPlan(runDir, {
-        idle: config.render.idle,
-        output: {
-          width: config.render.width,
-          height: config.render.height,
-          fps: config.render.fps,
-        },
-      });
-      await ffmpegRenderer.render(runDir, plan);
-    } catch (error) {
-      renderError = error;
-    }
-  }
-
-  const result = await settleRun(runDir);
-  if (renderError !== undefined) {
-    const reason =
-      renderError instanceof Error ? renderError.message : String(renderError);
-    io.stderr(`rendering failed: ${reason}\n`);
-  }
-  io.stdout(
-    flags.json === true
-      ? formatJson(result, runDir)
-      : formatSummary(result, runDir),
+  // After every input check: a bad scenario never costs a browser download
+  // or an app start. The start overlaps with the download; the app's output
+  // is kept and shown only if the start fails.
+  const tail = outputTail();
+  const starting: Promise<Started> = startApp(config, root, {
+    log: (text) => tail.push(text),
+  }).then(
+    (app) => ({ app }),
+    (error: unknown) => ({ error }),
   );
-  const code = exitCodeFor(result);
-  // A render crash before the stage was recorded must not read as success.
-  return code === 0 && renderError !== undefined ? EXIT_STAGE_FAILED : code;
+  const stopApp = async (): Promise<void> => {
+    const started = await starting;
+    if ('app' in started) await started.app.stop();
+  };
+  const onSignal = (code: number) => () => {
+    void stopApp().finally(() => process.exit(code));
+  };
+  const onInterrupt = onSignal(130);
+  const onTerminate = onSignal(143);
+  process.on('SIGINT', onInterrupt);
+  process.on('SIGTERM', onTerminate);
+  try {
+    if ((await ensureChromium(io, deps.browser)) === 'failed') {
+      return EXIT_STAGE_FAILED;
+    }
+    const started = await starting;
+    if ('error' in started) {
+      if (!(started.error instanceof AppStartError)) throw started.error;
+      return await reportAppNotReady({
+        error: started.error,
+        output: tail.lines(),
+        scenarioName: scenario.name,
+        scenarioFile: scenarioId(root, file),
+        runId,
+        runDir,
+        json: flags.json === true,
+        io,
+      });
+    }
+    return await execute();
+  } finally {
+    process.off('SIGINT', onInterrupt);
+    process.off('SIGTERM', onTerminate);
+    await stopApp();
+  }
+
+  async function execute(): Promise<number> {
+    io.stderr(`Running ${scenarioId(root, file)} (${runId})\n`);
+    // Secrets come from the process environment only (spec 5).
+    await runScenario(scenario, {
+      runDir,
+      baseUrl: flags.baseUrl ?? config.baseUrl,
+      allowedOrigins: config.allowedOrigins,
+      env: host.env,
+      headless: flags.headed !== true,
+      observers: [
+        createCaptureObserver({ scenarioId: scenarioId(root, file), runId }),
+      ],
+    });
+
+    // A recorded run is rendered whatever the verdict: the video of a failed
+    // verification is the evidence (ADR-0004 §4).
+    let renderError: unknown;
+    if (existsSync(path.join(runDir, RUN_FILES.video))) {
+      io.stderr('Rendering\n');
+      try {
+        const plan = await buildRenderPlan(runDir, {
+          idle: config.render.idle,
+          output: {
+            width: config.render.width,
+            height: config.render.height,
+            fps: config.render.fps,
+          },
+          frame: config.render.frame,
+          background: config.render.background,
+        });
+        await ffmpegRenderer.render(runDir, plan);
+      } catch (error) {
+        renderError = error;
+      }
+    }
+
+    const result = await settleRun(runDir);
+    if (renderError !== undefined) {
+      const reason =
+        renderError instanceof Error
+          ? renderError.message
+          : String(renderError);
+      io.stderr(`rendering failed: ${reason}\n`);
+    }
+    io.stdout(
+      flags.json === true
+        ? formatJson(result, runDir)
+        : formatSummary(result, runDir),
+    );
+    const code = exitCodeFor(result);
+    // A render crash before the stage was recorded must not read as success.
+    return code === 0 && renderError !== undefined ? EXIT_STAGE_FAILED : code;
+  }
+}
+
+type Started = { app: RunningApp } | { error: unknown };
+
+/**
+ * The app never answered, so the engine never ran: the CLI writes the run's
+ * `result.json` itself — readiness failed with the app's last output, the
+ * other stages skipped (spec 5) — and prints it like any finished run.
+ */
+async function reportAppNotReady(input: {
+  error: AppStartError;
+  output: string[];
+  scenarioName: string;
+  scenarioFile: string;
+  runId: string;
+  runDir: string;
+  json: boolean;
+  io: Io;
+}): Promise<number> {
+  const { error, output, runDir, io } = input;
+  const message =
+    output.length === 0
+      ? error.message
+      : `${error.message}\nLast output of devCommand:\n${output.join('\n')}`;
+  if (output.length > 0) io.stderr(`${output.join('\n')}\n`);
+  const now = new Date().toISOString();
+  const skipped = { status: 'skipped' } as const;
+  const pending = { status: 'pending' } as const;
+  const stages: RunResult['stages'] = {
+    readiness: {
+      status: 'failed',
+      startedAt: now,
+      finishedAt: now,
+      error: { message },
+    },
+    execution: skipped,
+    verification: skipped,
+    recording: skipped,
+    rendering: pending,
+    storage: pending,
+  };
+  const unsettled: RunResult = {
+    schemaVersion: 1,
+    runId: input.runId,
+    scenarioId: input.scenarioFile,
+    scenarioName: input.scenarioName,
+    startedAt: now,
+    finishedAt: now,
+    status: 'failed',
+    stages,
+    renders: [],
+    warnings: [],
+  };
+  await mkdir(runDir, { recursive: true });
+  await writeFile(
+    path.join(runDir, RUN_FILES.result),
+    `${JSON.stringify(unsettled, null, 2)}\n`,
+  );
+  const result = await settleRun(runDir);
+  io.stdout(
+    input.json ? formatJson(result, runDir) : formatSummary(result, runDir),
+  );
+  return exitCodeFor(result);
 }

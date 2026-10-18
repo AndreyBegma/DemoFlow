@@ -12,6 +12,12 @@ import { runCommand } from './commands/run.ts';
 import { setupCommand } from './commands/setup.ts';
 import { validateCommand } from './commands/validate.ts';
 import { mcpCommand } from './mcp/command.ts';
+import {
+  DEFAULT_NAME,
+  DEFAULT_VIEWPORT,
+  type RecordFlags,
+  recordCommand,
+} from './record/command.ts';
 import { packageVersion } from './version.ts';
 
 /**
@@ -65,6 +71,26 @@ export async function main(
         exitCode = await runCommand(scenario, flags, io);
       },
     );
+
+  program
+    .command('record')
+    .description('Record a scenario by using the app in a browser')
+    .argument(
+      '[name]',
+      'the scenario name; the file is demoflow/<name>.demo.json',
+      DEFAULT_NAME,
+    )
+    .option('--force', 'overwrite an existing scenario file')
+    .option('--no-run', 'do not offer to run the scenario after saving it')
+    .option(
+      '--viewport <WxH>',
+      'the browser viewport, written into the scenario',
+      DEFAULT_VIEWPORT,
+    )
+    .addOption(new Option('--project <dir>', 'the project root').hideHelp())
+    .action(async (name: string, flags: RecordFlags) => {
+      exitCode = await recordCommand(name, flags, io);
+    });
 
   program
     .command('setup')

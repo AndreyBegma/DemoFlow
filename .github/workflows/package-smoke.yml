@@ -73,6 +73,25 @@ jobs:
         if: runner.os == 'Linux'
         run: bunx playwright install-deps chromium
 
+      # `demoflow record` (spec #79) opens headed windows: Linux gets a virtual
+      # display, macOS and Windows have their own. DEMOFLOW_RECORD_HEADED makes
+      # the tests fail rather than fall back to headless. The browser goes to
+      # Playwright's default cache, not the smoke test's empty one.
+      - name: Chromium for the record tests
+        run: bunx playwright install chromium
+
+      - name: Record tests (headed)
+        working-directory: apps/cli
+        env:
+          DEMOFLOW_RECORD_HEADED: '1'
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            command -v xvfb-run >/dev/null || sudo apt-get install -y xvfb
+            xvfb-run -a npx vitest run test/record
+          else
+            npx vitest run test/record
+          fi
+
       - name: Start the fixture preview
         run: node .github/scripts/serve-fixture.mjs start
 

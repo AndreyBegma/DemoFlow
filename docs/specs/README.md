@@ -42,6 +42,10 @@ decisions live in [../adr/](../adr/README.md).
 | [#69](https://github.com/AndreyBegma/DemoFlow/issues/69) | [Validate scenarios, list demos, check the project](69-mcp-read-only-tools.md) | #68 |
 | [#75](https://github.com/AndreyBegma/DemoFlow/issues/75) | [Publish to npm through Woodpecker](75-npm-release.md) | #68, #69 |
 | [#79](https://github.com/AndreyBegma/DemoFlow/issues/79) | [`demoflow record`](79-demoflow-record.md) | #75 |
+| [#90](https://github.com/AndreyBegma/DemoFlow/issues/90) | [`run` starts the app from `devCommand`](90-run-starts-app.md) | — |
+| [#92](https://github.com/AndreyBegma/DemoFlow/issues/92) | [MCP: terminal only after cleanup](92-mcp-staged-cleanup.md) | — |
+| [#91](https://github.com/AndreyBegma/DemoFlow/issues/91) | [A `press` step](91-press-step.md) | #85 |
+| [#103](https://github.com/AndreyBegma/DemoFlow/issues/103) | [`record`: no extra step on a slow runner](103-record-extra-step.md) | — |
 
 ## Before Phase 4 (roadmap)
 
@@ -55,6 +59,8 @@ decisions live in [../adr/](../adr/README.md).
 |---|---|---|
 | [#82](https://github.com/AndreyBegma/DemoFlow/issues/82) | [Spike: CDP capture at device pixels](82-cdp-capture-spike.md) — rejected | — |
 | [#85](https://github.com/AndreyBegma/DemoFlow/issues/85) | [Spike: pipelined screenshots or a zoomed large viewport](85-device-pixel-capture-spike.md) | #82 |
+| [#100](https://github.com/AndreyBegma/DemoFlow/issues/100) | [The page in a rounded window on a background](100-window-frame-background.md) | #91 |
+| [#108](https://github.com/AndreyBegma/DemoFlow/issues/108) | [Intro, scene and outro cards](108-cards.md) | #100 |
 
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.

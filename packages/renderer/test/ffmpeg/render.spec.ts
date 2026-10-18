@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { RunResultSchema, type TimelineEvent } from '@demoflow/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { LOOK } from '../../src/ffmpeg/compose.ts';
+import { LOOK, renderStage } from '../../src/ffmpeg/compose.ts';
 import { wrapText } from '../../src/ffmpeg/font.ts';
 import { drawPlan } from '../../src/ffmpeg/pipeline.ts';
 import {
@@ -18,7 +18,11 @@ import {
   toOutputMs,
 } from '../../src/index.ts';
 import { hasFfmpeg, recordFixtureRun } from '../plan/fixture-runs.ts';
-import { checkLayout } from '../visual/layout.ts';
+import {
+  checkFramedLayout,
+  checkLayout,
+  type LayoutReport,
+} from '../visual/layout.ts';
 import { countFrames, sampleFrames } from './sample-frames.ts';
 
 if (!hasFfmpeg) {
@@ -57,6 +61,24 @@ async function extractFrames(
   return numbers.map((_, i) => data.subarray(i * size, (i + 1) * size));
 }
 
+/** The frame nearest `around` on which the camera shows the whole stage. */
+function unzoomedNear(plan: RenderPlan, around: number): number {
+  const frames = frameCount(plan);
+  for (let distance = 0; distance < frames; distance++) {
+    for (const frame of [around - distance, around + distance]) {
+      if (frame < 0 || frame >= frames) continue;
+      const view = frameAt(plan, frame).frame?.view;
+      if (
+        view?.width === plan.output.width &&
+        frameAt(plan, frame).sourceMs !== null
+      ) {
+        return frame;
+      }
+    }
+  }
+  throw new Error('the camera never shows the whole stage');
+}
+
 function rgb(frame: Uint8Array, width: number, x: number, y: number): number[] {
   const at = (y * width + x) * 3;
   return [frame[at], frame[at + 1], frame[at + 2]];
@@ -86,10 +108,16 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
     await rm(parent, { recursive: true, force: true });
   });
 
+  // `customers` renders the default, framed look; `failing` turns the frame
+  // off, so the full-bleed path stays covered end to end.
   for (const scenario of ['customers', 'failing'] as const) {
     it(`renders the ${scenario} run to a 1920×1080, 30 fps H.264 MP4 listed in renders[]`, async () => {
       const runDir = await recordFixtureRun(scenario, parent);
-      const plan = await buildRenderPlan(runDir);
+      const plan = await buildRenderPlan(
+        runDir,
+        scenario === 'failing' ? { frame: { enabled: false } } : {},
+      );
+      expect(plan.frame === undefined).toBe(scenario === 'failing');
       const output = await ffmpegRenderer.render(runDir, plan);
 
       expect(output).toMatchObject({
@@ -142,18 +170,32 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
       }
 
       // The layout (#47): a mid-run frame has page content in every quadrant
-      // and no large block of the recorder's padding grey.
-      const [middle] = await extractFrames(
-        file,
-        [Math.floor(frameCount(plan) / 2)],
-        plan,
-      );
-      const layout = checkLayout(middle, plan.output.width, plan.output.height);
+      // and no large block of the recorder's padding grey — of the window
+      // when framed, with the background outside it (spec 100).
+      const stage = renderStage(plan);
+      const middleFrame =
+        stage === undefined
+          ? Math.floor(frameCount(plan) / 2)
+          : unzoomedNear(plan, Math.floor(frameCount(plan) / 2));
+      const [middle] = await extractFrames(file, [middleFrame], plan);
+      const layout: LayoutReport & { backgroundDelta?: number } =
+        stage === undefined
+          ? checkLayout(middle, plan.output.width, plan.output.height)
+          : checkFramedLayout(
+              middle,
+              plan.output.width,
+              plan.output.height,
+              frameAt(plan, middleFrame).content,
+              stage.data,
+            );
       console.info(
         `layout ${scenario}: quadrant ranges ${layout.quadrantRanges.join('/')}, ` +
-          `padding ${(layout.paddingShare * 100).toFixed(1)} %`,
+          `padding ${(layout.paddingShare * 100).toFixed(1)} %` +
+          (layout.backgroundDelta === undefined
+            ? ''
+            : `, background delta ${layout.backgroundDelta.toFixed(2)}`),
       );
-      expect(layout.problems, `${scenario}: a mid-run frame`).toEqual([]);
+      expect(layout.problems, `${scenario}: frame ${middleFrame}`).toEqual([]);
 
       if (scenario !== 'failing') return;
       // The watermark on the first and the last frame; the last is the end card.
@@ -249,21 +291,34 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
     const masked = await extractFrames(maskedFile, numbers, plan);
     const unmasked = await extractFrames(unmaskedFile, numbers, plan);
     const { width } = plan.output;
+    // The default plan is framed (spec 100): the field moves with the window.
+    expect(plan.frame).toBeDefined();
+    const { height } = plan.output;
     numbers.forEach((n, i) => {
       const state = frameAt(plan, n);
       const viewX = state.crop.x / plan.source.scale;
       const viewY = state.crop.y / plan.source.scale;
-      // The field in output pixels, a few pixels inside its edge.
-      const x0 = Math.ceil(state.content.x + (box.x - viewX) * state.scale) + 3;
-      const y0 = Math.ceil(state.content.y + (box.y - viewY) * state.scale) + 3;
-      const x1 =
+      // The field in output pixels, a few pixels inside its edge, on the frame.
+      const x0 = Math.max(
+        0,
+        Math.ceil(state.content.x + (box.x - viewX) * state.scale) + 3,
+      );
+      const y0 = Math.max(
+        0,
+        Math.ceil(state.content.y + (box.y - viewY) * state.scale) + 3,
+      );
+      const x1 = Math.min(
+        width,
         Math.floor(
           state.content.x + (box.x + box.width - viewX) * state.scale,
-        ) - 3;
-      const y1 =
+        ) - 3,
+      );
+      const y1 = Math.min(
+        height,
         Math.floor(
           state.content.y + (box.y + box.height - viewY) * state.scale,
-        ) - 3;
+        ) - 3,
+      );
       expect(x1 > x0 && y1 > y0, `frame ${n}: the box is on screen`).toBe(true);
       let difference = 0;
       for (let y = y0; y < y1; y++) {

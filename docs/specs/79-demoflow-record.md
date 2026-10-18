@@ -10,7 +10,7 @@ Depends on #75
 ## Summary
 
 Writing a `*.demo.json` by hand is the main barrier to a first demo. `demoflow
-record` starts the project's application exactly as `demoflow run` does, opens
+record` starts the project's application from `devCommand` / `readyUrl`, opens
 it in a browser together with a separate step-panel window, turns the person's
 clicks and typing into scenario steps with stable locators, lets them add
 captions, scenes and assertions from the panel, and on stop writes a validated
@@ -23,6 +23,12 @@ scenario file and offers to run it.
 - `demoflow record [name]` in a project (found as the CLI finds it): starts the
   app from `devCommand` / `readyUrl` in `demoflow.config.json` (ADR-0008 §4),
   opens a headed Chromium on `baseUrl` with the scenario viewport.
+  *Amended in #93, orchestrator decision: `devCommand` had no
+  implementation — the summary said "exactly as `demoflow run` does", but `run`
+  never starts the app. Starting it is a shared module
+  (`apps/cli/src/app/dev-server.ts`, `startApp(config, root) → { stop() }`, a
+  no-op without `devCommand` or when `readyUrl` already answers) that `record`
+  uses now and `run` adopts in a follow-up.*
 - **Step panel in a separate window** (owner's choice): the live step list,
   buttons for caption, scene marker, wait, "pick an element" and stop; delete or
   reorder a step. Nothing is injected into the application's page except the

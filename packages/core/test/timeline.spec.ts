@@ -138,6 +138,31 @@ describe('TimelineSchema', () => {
   });
 });
 
+describe('key', () => {
+  const press = {
+    stepIndex: 0,
+    action: 'press',
+    startMs: 0,
+    endMs: 300,
+    key: 'Enter',
+  };
+  const parse = (event: Record<string, unknown>) =>
+    TimelineSchema.safeParse({ ...timeline, events: [event] });
+
+  it('accepts a key on a press event', () => {
+    expect(parse(press).success).toBe(true);
+  });
+
+  it('rejects a key on any other event, at the key', () => {
+    const parsed = parse({ ...press, action: 'click' });
+    expect(parsed.error?.issues[0]?.path).toEqual(['events', 0, 'key']);
+  });
+
+  it('rejects an empty key', () => {
+    expect(parse({ ...press, key: '' }).success).toBe(false);
+  });
+});
+
 describe('maskVisibility', () => {
   const box = { x: 100, y: 260, width: 300, height: 32 };
   const moved = { x: 100, y: 420, width: 300, height: 32 };
