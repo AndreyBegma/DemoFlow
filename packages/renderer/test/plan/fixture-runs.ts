@@ -2,7 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { parseScenario } from '@demoflow/core';
-import { createCaptureObserver, runScenario } from '@demoflow/engine';
+import {
+  createCaptureObserver,
+  type EngineObserver,
+  runScenario,
+} from '@demoflow/engine';
 import { startFixtureServer } from '../../../engine/test/execute/fixture-server.ts';
 import { resolveFfmpeg } from '../../src/plan/ffmpeg.ts';
 
@@ -35,10 +39,12 @@ const FIXTURE_ROOT = path.dirname(
  * Records `scenario` through the engine into `<parentDir>/<scenario>`, against
  * the fixture served on an ephemeral port, and returns that run directory. It
  * holds `source.webm`, `timeline.json` and `result.json`, as a CLI run does.
+ * `observers` run before the capture observer.
  */
 export async function recordFixtureRun(
   scenario: FixtureScenario,
   parentDir: string,
+  observers: readonly EngineObserver[] = [],
 ): Promise<string> {
   const file = path.join(FIXTURE_ROOT, 'demoflow', `${scenario}.demo.json`);
   const parsed = parseScenario(JSON.parse(await readFile(file, 'utf8')));
@@ -53,6 +59,7 @@ export async function recordFixtureRun(
       allowedOrigins: [fixture.origin],
       env: { FIXTURE_PASSWORD },
       observers: [
+        ...observers,
         createCaptureObserver({
           scenarioId: `demoflow/${scenario}.demo.json`,
         }),

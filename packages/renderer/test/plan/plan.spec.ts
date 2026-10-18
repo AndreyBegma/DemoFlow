@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   cameraAt,
+  DEFAULT_OFFSET_MS,
   frameAt,
   frameCount,
   type Interval,
@@ -242,6 +243,108 @@ describe('time map', () => {
       },
     });
     expect(rendered.offsetMs).toBe(-100);
+  });
+});
+
+describe('sync mark', () => {
+  const password = { x: 264, y: 230, width: 384, height: 28 };
+  const events = [
+    event({ action: 'navigate', startMs: 180, endMs: 600 }),
+    event({
+      action: 'fill',
+      startMs: 1000,
+      endMs: 1600,
+      target: { box: password },
+      masked: true,
+      value: '***',
+      maskVisibility: [{ startMs: 600, box: password }],
+    }),
+    event({ action: 'wait', startMs: 1600, endMs: 3000 }),
+  ];
+  const mark = { colour: '#ff00ff', onMs: 25, offMs: 180 };
+
+  /** No `offsetMs` option: the plan picks the offset itself. */
+  function planWith(
+    syncMark: typeof mark | undefined,
+    syncClearMs: number | undefined,
+  ): RenderPlan {
+    return planRender({
+      timeline: {
+        ...timeline(events),
+        ...(syncMark === undefined ? {} : { syncMark }),
+      },
+      result: result(),
+      source: {
+        width: 1280,
+        height: 720,
+        fps: 25,
+        durationMs: 5000,
+        codec: 'vp9',
+        freezes: [],
+      },
+      ...(syncClearMs === undefined ? {} : { syncClearMs }),
+    });
+  }
+
+  it('measures the offset on the clear and pads masks by one source frame', () => {
+    const rendered = planWith(mark, 120);
+    expect(rendered.offsetMs).toBe(120 - 180);
+    expect(rendered.offsetMeasured).toBe(true);
+    expect(rendered.maskLeadMs).toBe(40);
+    // The output starts on the first frame after the mark (Decision 6).
+    expect(rendered.timeMap[0].sourceStartMs).toBe(120);
+    expect(frameAt(rendered, 0).sourceMs).toBe(120);
+    // Field on the page at 600 → source 540 → output 420; less one frame.
+    expect(rendered.masks[0].startMs).toBeCloseTo(540 - 120 - 40);
+  });
+
+  it('keeps the defaults without a sync mark', () => {
+    const rendered = planWith(undefined, 120);
+    expect(rendered.offsetMs).toBe(DEFAULT_OFFSET_MS);
+    expect(rendered.offsetMeasured).toBe(false);
+    expect(rendered.maskLeadMs).toBe(200);
+    expect(rendered.timeMap[0].sourceStartMs).toBe(0);
+    expect(rendered.masks[0].startMs).toBeCloseTo(
+      600 + DEFAULT_OFFSET_MS - 200,
+    );
+  });
+
+  it('keeps the defaults, and the whole video, when the mark was not found', () => {
+    const rendered = planWith(mark, undefined);
+    expect(rendered.offsetMs).toBe(DEFAULT_OFFSET_MS);
+    expect(rendered.offsetMeasured).toBe(false);
+    expect(rendered.maskLeadMs).toBe(200);
+    expect(rendered.timeMap[0].sourceStartMs).toBe(0);
+  });
+
+  it('keeps the defaults when the measured offset is implausible', () => {
+    const rendered = planWith(mark, 2_000);
+    expect(rendered.offsetMs).toBe(DEFAULT_OFFSET_MS);
+    expect(rendered.maskLeadMs).toBe(200);
+    expect(rendered.timeMap[0].sourceStartMs).toBe(0);
+  });
+
+  it('lets an explicit offset win, with the 200 ms lead, and still trims the mark', () => {
+    const rendered = planRender(
+      {
+        timeline: { ...timeline(events), syncMark: mark },
+        result: result(),
+        source: {
+          width: 1280,
+          height: 720,
+          fps: 25,
+          durationMs: 5000,
+          codec: 'vp9',
+          freezes: [],
+        },
+        syncClearMs: 120,
+      },
+      { offsetMs: -100 },
+    );
+    expect(rendered.offsetMs).toBe(-100);
+    expect(rendered.offsetMeasured).toBe(false);
+    expect(rendered.maskLeadMs).toBe(200);
+    expect(rendered.timeMap[0].sourceStartMs).toBe(120);
   });
 });
 

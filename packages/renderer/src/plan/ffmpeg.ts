@@ -40,7 +40,17 @@ export interface FfmpegOutput {
 }
 
 /** Runs FFmpeg with an argument array — never a shell string — and rejects on a non-zero exit. */
-export function runFfmpeg(args: readonly string[]): Promise<FfmpegOutput> {
+export async function runFfmpeg(
+  args: readonly string[],
+): Promise<FfmpegOutput> {
+  const { stdout, stderr } = await runFfmpegRaw(args);
+  return { stdout: stdout.toString('utf8'), stderr };
+}
+
+/** `runFfmpeg`, with stdout kept as bytes: raw video frames. */
+export function runFfmpegRaw(
+  args: readonly string[],
+): Promise<{ stdout: Buffer; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       resolveFfmpeg(),
@@ -50,10 +60,10 @@ export function runFfmpeg(args: readonly string[]): Promise<FfmpegOutput> {
         windowsHide: true,
       },
     );
-    let stdout = '';
+    const stdout: Buffer[] = [];
     let stderr = '';
-    child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
-      stdout += chunk;
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout.push(chunk);
     });
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
       stderr += chunk;
@@ -61,7 +71,7 @@ export function runFfmpeg(args: readonly string[]): Promise<FfmpegOutput> {
     child.on('error', reject);
     child.on('close', (code) => {
       if (code === 0) {
-        resolve({ stdout, stderr });
+        resolve({ stdout: Buffer.concat(stdout), stderr });
       } else {
         const tail = stderr.trim().split('\n').slice(-5).join('\n');
         reject(new Error(`ffmpeg exited with ${code}: ${tail}`));

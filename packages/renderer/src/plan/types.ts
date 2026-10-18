@@ -29,6 +29,7 @@ export interface RenderPlanOptions {
   /**
    * Timeline time → source time: `sourceMs = timelineMs + offsetMs`. The
    * Playwright video leads the engine clock (#3, measured −90…−123 ms).
+   * Default: measured on the timeline's sync mark, else `DEFAULT_OFFSET_MS`.
    */
   offsetMs?: number;
   idle?: {
@@ -132,9 +133,13 @@ export interface RenderPlan {
   /** Where the viewport lands in the output frame (letterboxed, centred). */
   fit: { x: number; y: number; scale: number };
   offsetMs: number;
+  /** Whether `offsetMs` was measured on the run's sync mark (#19). */
+  offsetMeasured: boolean;
+  /** Masks start this long before the field is on the page: one source frame when measured, else 200. */
+  maskLeadMs: number;
   /** The whole video, end card included. */
   durationMs: number;
-  /** Contiguous from output 0 to the end of the source part. */
+  /** Contiguous from output 0 to the end of the source part; it starts after the sync mark when one was found. */
   timeMap: TimeSegment[];
   cursor: CursorMove[];
   clicks: ClickRing[];

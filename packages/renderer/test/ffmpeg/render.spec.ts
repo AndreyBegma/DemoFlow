@@ -126,6 +126,22 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
       expect(result.renders).toContainEqual(output);
       expect(result.stages.rendering.status).toBe('passed');
 
+      // The sync mark is trimmed (#19): the first output frames hold none of its magenta.
+      const opening = await extractFrames(
+        file,
+        Array.from({ length: 10 }, (_, n) => n),
+        plan,
+      );
+      for (const [n, frame] of opening.entries()) {
+        let magenta = 0;
+        for (let at = 0; at < frame.length; at += 3) {
+          if (frame[at] > 200 && frame[at + 1] < 100 && frame[at + 2] > 200) {
+            magenta++;
+          }
+        }
+        expect(magenta, `output frame ${n}`).toBe(0);
+      }
+
       if (scenario !== 'failing') return;
       // The watermark on the first and the last frame; the last is the end card.
       const last = frameCount(plan) - 1;
