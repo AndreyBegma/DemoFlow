@@ -53,7 +53,8 @@ decisions live in [../adr/](../adr/README.md).
 
 | Issue | Spec | Depends on |
 |---|---|---|
-| [#82](https://github.com/AndreyBegma/DemoFlow/issues/82) | [Spike: CDP capture at device pixels](82-cdp-capture-spike.md) | — |
+| [#82](https://github.com/AndreyBegma/DemoFlow/issues/82) | [Spike: CDP capture at device pixels](82-cdp-capture-spike.md) — rejected | — |
+| [#85](https://github.com/AndreyBegma/DemoFlow/issues/85) | [Spike: pipelined screenshots or a zoomed large viewport](85-device-pixel-capture-spike.md) | #82 |
 
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.

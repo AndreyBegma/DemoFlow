@@ -62,7 +62,12 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
      decides on the spike by criteria fixed in its spec: sharp text at the 1.6×
      zoom, 25 fps without dropped frames on all three OSes, CI no more than 2×
      slower. If they are not met, the source stays 1×;
-  2. frame and background;
+  2. frame and background — these, the cards, transitions and GIF/WebM do
+     not depend on source sharpness and proceed on the 1× source while the
+     capture question is open; #82 rejected the CDP screencast (frames are
+     CSS-sized), #85 measures pipelined screenshots and a zoomed large
+     viewport, and if both fail a new ADR keeps the source at 1×. Only the
+     9:16 follow-camera waits for that answer;
   3. cards and transitions;
   4. export formats.
 
