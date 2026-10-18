@@ -32,6 +32,9 @@ pipeline, the release branch flow, the GitHub Action, `demoflow record`.
 - Renderer tests compare frames of the rendered output against committed
   reference images with a tolerance. The #47 regression (the page in a quarter
   of the frame) would have failed such a test.
+- An intended change to the look regenerates the baselines in the same pull
+  request (a `test:update-baselines` script), with a before/after comparison in
+  the PR body; the orchestrator reviews it at merge.
 
 ## Phase 4 — Video quality
 
@@ -95,8 +98,9 @@ All four, in this order:
   Version PR. Merging the Version PR publishes `demoflow` with npm provenance
   and a generated changelog. The orchestrator merges it when CI is green — the
   owner chose no person gate.
-- **Release branch flow**: `develop` → `main` as a regular release, verified on
-  staging.
+- **Release branch flow**: when a phase is complete and staging is green, the
+  orchestrator opens `develop` → `main` with the change list and merges it once
+  CI is green (owner's choice).
 - **GitHub Action**: runs every `demoflow/**/*.demo.json` of a project on each
   pull request, posts GIF previews in a PR comment and uploads the MP4s as
   artifacts. A failed verification fails the check.
