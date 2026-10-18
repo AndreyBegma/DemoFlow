@@ -56,16 +56,17 @@ function mergeSorted(intervals: Interval[]): Interval[] {
 }
 
 /**
- * The time map: source `[0, endMs]` in order, real time except the idle
- * stretches, which each play in `compressToMs`.
+ * The time map: source `[startMs, endMs]` in order, real time except the idle
+ * stretches, which each play in `compressToMs`. Output 0 is source `startMs`.
  */
 export function buildTimeMap(
   idle: readonly Interval[],
   endMs: number,
   compressToMs: number,
+  startMs = 0,
 ): TimeSegment[] {
   const segments: TimeSegment[] = [];
-  let source = 0;
+  let source = startMs;
   let output = 0;
   const push = (sourceEndMs: number, outputLength: number): void => {
     if (sourceEndMs <= source) return;
@@ -80,9 +81,10 @@ export function buildTimeMap(
   };
   for (const stretch of idle) {
     if (stretch.startMs >= endMs) break;
-    push(stretch.startMs, stretch.startMs - source);
+    const stretchStart = Math.max(stretch.startMs, source);
+    push(stretchStart, stretchStart - source);
     const stretchEnd = Math.min(stretch.endMs, endMs);
-    push(stretchEnd, Math.min(compressToMs, stretchEnd - stretch.startMs));
+    push(stretchEnd, Math.min(compressToMs, stretchEnd - stretchStart));
   }
   push(endMs, endMs - source);
   return segments;

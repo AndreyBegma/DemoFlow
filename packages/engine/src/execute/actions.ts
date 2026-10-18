@@ -107,17 +107,30 @@ export async function runAction(
       const value = masked ? ctx.secret : step.value;
       if (value === undefined) {
         // Readiness resolves every `valueFrom` before the browser starts.
-        throw new StepFailure('execution', 'fill has no value');
+        throw new StepFailure(
+          'execution',
+          'fill has no value',
+          masked ? { masked: true, value: MASKED_VALUE } : {},
+        );
       }
-      await target.fill('', { timeout: step.timeoutMs });
-      const box = await measure(target);
-      await target.pressSequentially(value, {
-        delay: TYPING_DELAY_MS,
-        timeout: step.timeoutMs + value.length * TYPING_DELAY_MS,
-      });
-      return masked
-        ? { ...withBox(box), masked: true, value: MASKED_VALUE }
-        : { ...withBox(box), value };
+      if (!masked) {
+        await target.fill('', { timeout: step.timeoutMs });
+        const box = await measure(target);
+        await type(target, value, step.timeoutMs);
+        return { ...withBox(box), value };
+      }
+      // #42: a failure part-way leaves typed characters on screen, so the
+      // failed step's event is masked too, with whatever box was measured.
+      let box: Box | null = null;
+      try {
+        await target.fill('', { timeout: step.timeoutMs });
+        box = await measure(target);
+        await type(target, value, step.timeoutMs);
+      } catch (error) {
+        box ??= await measure(target);
+        throw maskedFailure(error, withBox(box));
+      }
+      return { ...withBox(box), masked: true, value: MASKED_VALUE };
     }
     case 'select': {
       const target = locate(ctx, step.target);
@@ -171,6 +184,37 @@ async function measure(target: PlaywrightLocator): Promise<Box | null> {
 
 function withBox(box: Box | null): Pick<ActionResult, 'target'> {
   return box === null ? {} : { target: { box } };
+}
+
+async function type(
+  target: PlaywrightLocator,
+  value: string,
+  timeoutMs: number,
+): Promise<void> {
+  await target.pressSequentially(value, {
+    delay: TYPING_DELAY_MS,
+    timeout: timeoutMs + value.length * TYPING_DELAY_MS,
+  });
+}
+
+/**
+ * A masked fill's failure (#42, Decision 3). Playwright's call log prints the
+ * resolved element with its attributes, which can hold the partial secret a
+ * page mirrors into `value`; only the first line of the message is kept.
+ */
+function maskedFailure(
+  error: unknown,
+  target: Pick<ActionResult, 'target'>,
+): StepFailure {
+  const detail = { ...target, masked: true, value: MASKED_VALUE };
+  if (error instanceof StepFailure) {
+    return new StepFailure(error.stage, error.message, {
+      ...error.detail,
+      ...detail,
+    });
+  }
+  const [firstLine = ''] = errorMessage(error).split('\n');
+  return new StepFailure('execution', firstLine, detail);
 }
 
 /**

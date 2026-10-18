@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   cameraAt,
+  DEFAULT_OFFSET_MS,
   frameAt,
   frameCount,
   type Interval,
@@ -245,6 +246,108 @@ describe('time map', () => {
   });
 });
 
+describe('sync mark', () => {
+  const password = { x: 264, y: 230, width: 384, height: 28 };
+  const events = [
+    event({ action: 'navigate', startMs: 180, endMs: 600 }),
+    event({
+      action: 'fill',
+      startMs: 1000,
+      endMs: 1600,
+      target: { box: password },
+      masked: true,
+      value: '***',
+      maskVisibility: [{ startMs: 600, box: password }],
+    }),
+    event({ action: 'wait', startMs: 1600, endMs: 3000 }),
+  ];
+  const mark = { colour: '#ff00ff', onMs: 25, offMs: 180 };
+
+  /** No `offsetMs` option: the plan picks the offset itself. */
+  function planWith(
+    syncMark: typeof mark | undefined,
+    syncClearMs: number | undefined,
+  ): RenderPlan {
+    return planRender({
+      timeline: {
+        ...timeline(events),
+        ...(syncMark === undefined ? {} : { syncMark }),
+      },
+      result: result(),
+      source: {
+        width: 1280,
+        height: 720,
+        fps: 25,
+        durationMs: 5000,
+        codec: 'vp9',
+        freezes: [],
+      },
+      ...(syncClearMs === undefined ? {} : { syncClearMs }),
+    });
+  }
+
+  it('measures the offset on the clear and pads masks by one source frame', () => {
+    const rendered = planWith(mark, 120);
+    expect(rendered.offsetMs).toBe(120 - 180);
+    expect(rendered.offsetMeasured).toBe(true);
+    expect(rendered.maskLeadMs).toBe(40);
+    // The output starts on the first frame after the mark (Decision 6).
+    expect(rendered.timeMap[0].sourceStartMs).toBe(120);
+    expect(frameAt(rendered, 0).sourceMs).toBe(120);
+    // Field on the page at 600 → source 540 → output 420; less one frame.
+    expect(rendered.masks[0].startMs).toBeCloseTo(540 - 120 - 40);
+  });
+
+  it('keeps the defaults without a sync mark', () => {
+    const rendered = planWith(undefined, 120);
+    expect(rendered.offsetMs).toBe(DEFAULT_OFFSET_MS);
+    expect(rendered.offsetMeasured).toBe(false);
+    expect(rendered.maskLeadMs).toBe(200);
+    expect(rendered.timeMap[0].sourceStartMs).toBe(0);
+    expect(rendered.masks[0].startMs).toBeCloseTo(
+      600 + DEFAULT_OFFSET_MS - 200,
+    );
+  });
+
+  it('keeps the defaults, and the whole video, when the mark was not found', () => {
+    const rendered = planWith(mark, undefined);
+    expect(rendered.offsetMs).toBe(DEFAULT_OFFSET_MS);
+    expect(rendered.offsetMeasured).toBe(false);
+    expect(rendered.maskLeadMs).toBe(200);
+    expect(rendered.timeMap[0].sourceStartMs).toBe(0);
+  });
+
+  it('keeps the defaults when the measured offset is implausible', () => {
+    const rendered = planWith(mark, 2_000);
+    expect(rendered.offsetMs).toBe(DEFAULT_OFFSET_MS);
+    expect(rendered.maskLeadMs).toBe(200);
+    expect(rendered.timeMap[0].sourceStartMs).toBe(0);
+  });
+
+  it('lets an explicit offset win, with the 200 ms lead, and still trims the mark', () => {
+    const rendered = planRender(
+      {
+        timeline: { ...timeline(events), syncMark: mark },
+        result: result(),
+        source: {
+          width: 1280,
+          height: 720,
+          fps: 25,
+          durationMs: 5000,
+          codec: 'vp9',
+          freezes: [],
+        },
+        syncClearMs: 120,
+      },
+      { offsetMs: -100 },
+    );
+    expect(rendered.offsetMs).toBe(-100);
+    expect(rendered.offsetMeasured).toBe(false);
+    expect(rendered.maskLeadMs).toBe(200);
+    expect(rendered.timeMap[0].sourceStartMs).toBe(120);
+  });
+});
+
 describe('camera', () => {
   it('keeps one continuous zoom over two clicks 200 px apart', () => {
     const rendered = plan(
@@ -415,6 +518,161 @@ describe('masks', () => {
       [],
     );
     expect(rendered.masks[0].endMs).toBe(rendered.durationMs);
+  });
+
+  // #42: a masked fill whose field could not be measured has no box to blur.
+  it('masks the whole viewport from its start, past a navigation, when the masked event has no box', () => {
+    const { target: _, ...unmeasured } = masked;
+    const rendered = plan(
+      [
+        unmeasured,
+        event({ action: 'navigate', startMs: 1400, endMs: 1800 }),
+        event({ action: 'wait', startMs: 1800, endMs: 3000 }),
+      ],
+      [],
+    );
+    expect(rendered.masks).toHaveLength(1);
+    const [mask] = rendered.masks;
+    expect(mask.startMs).toBe(600);
+    expect(mask.endMs).toBe(rendered.durationMs);
+    for (const { box } of mask.keys) {
+      expect(box.x).toBeLessThanOrEqual(0);
+      expect(box.y).toBeLessThanOrEqual(0);
+      expect(box.x + box.width).toBeGreaterThanOrEqual(VIEWPORT.width);
+      expect(box.y + box.height).toBeGreaterThanOrEqual(VIEWPORT.height);
+    }
+    const [frame] = frames(rendered, 800, 900);
+    const state = frameAt(rendered, frame);
+    expect(state.masks).toHaveLength(1);
+    const [box] = state.masks;
+    expect(box.x).toBeLessThanOrEqual(state.content.x);
+    expect(box.y).toBeLessThanOrEqual(state.content.y);
+    expect(box.x + box.width).toBeGreaterThanOrEqual(
+      state.content.x + VIEWPORT.width * state.scale,
+    );
+    expect(box.y + box.height).toBeGreaterThanOrEqual(
+      state.content.y + VIEWPORT.height * state.scale,
+    );
+  });
+
+  describe('with maskVisibility', () => {
+    const withVisibility = (
+      maskVisibility: NonNullable<TimelineEvent['maskVisibility']>,
+    ): TimelineEvent => ({ ...masked, maskVisibility });
+
+    it('ends the mask with the interval, so none is active after the sign-in click', () => {
+      const rendered = plan(
+        [
+          event({ action: 'navigate', startMs: 0, endMs: 100 }),
+          withVisibility([{ startMs: 800, endMs: 1800, box: password }]),
+          click(1400, 1800, { x: 456, y: 284 }),
+          event({ action: 'wait', startMs: 1800, endMs: 3000 }),
+        ],
+        [],
+      );
+      expect(rendered.masks).toHaveLength(1);
+      expect(rendered.masks[0]).toMatchObject({ startMs: 600, endMs: 1800 });
+      expect(
+        frameAt(rendered, frames(rendered, 1700, 1800)[0]).masks,
+      ).toHaveLength(1);
+      for (const frame of frames(rendered, 1800, rendered.durationMs)) {
+        expect(frameAt(rendered, frame).masks, `frame ${frame}`).toEqual([]);
+      }
+    });
+
+    it('runs an open interval to the end of the video', () => {
+      const rendered = plan(
+        [
+          withVisibility([{ startMs: 800, box: password }]),
+          event({ action: 'wait', startMs: 1400, endMs: 2000 }),
+        ],
+        [],
+      );
+      expect(rendered.masks).toHaveLength(1);
+      expect(rendered.masks[0].endMs).toBe(rendered.durationMs);
+    });
+
+    it('emits a span per interval, each with its own box', () => {
+      const back = { x: 100, y: 400, width: 300, height: 28 };
+      const rendered = plan(
+        [
+          withVisibility([
+            { startMs: 800, endMs: 1500, box: password },
+            { startMs: 2000, box: back },
+          ]),
+          event({ action: 'wait', startMs: 1400, endMs: 3000 }),
+        ],
+        [],
+      );
+      expect(rendered.masks).toHaveLength(2);
+      expect(rendered.masks[0]).toMatchObject({ startMs: 600, endMs: 1500 });
+      expect(rendered.masks[1]).toMatchObject({
+        startMs: 1800,
+        endMs: rendered.durationMs,
+      });
+      expect(rendered.masks[1].keys[0].box).toEqual({
+        x: back.x - 4,
+        y: back.y - 4,
+        width: back.width + 8,
+        height: back.height + 8,
+      });
+      expect(frameAt(rendered, frames(rendered, 1600, 1700)[0]).masks).toEqual(
+        [],
+      );
+    });
+
+    it('masks both boxes while two intervals overlap', () => {
+      const moved = { x: 300, y: 300, width: 384, height: 28 };
+      const rendered = plan(
+        [
+          withVisibility([
+            { startMs: 800, endMs: 2000, box: password },
+            { startMs: 1800, box: moved },
+          ]),
+          event({ action: 'wait', startMs: 2000, endMs: 3000 }),
+        ],
+        [],
+      );
+      expect(rendered.masks).toHaveLength(2);
+      expect(
+        frameAt(rendered, frames(rendered, 1900, 1950)[0]).masks,
+      ).toHaveLength(2);
+    });
+
+    it('follows a page scroll inside an interval and keeps the span when the box leaves the viewport', () => {
+      const rendered = plan(
+        [
+          withVisibility([{ startMs: 800, box: password }]),
+          event({
+            action: 'scroll',
+            startMs: 1400,
+            endMs: 2400,
+            scroll: { before: { x: 0, y: 0 }, after: { x: 0, y: 2000 } },
+          }),
+          event({ action: 'wait', startMs: 2400, endMs: 4000 }),
+        ],
+        [],
+      );
+      const [mask] = rendered.masks;
+      expect(mask.endMs).toBe(rendered.durationMs);
+      expect(mask.keys.at(-1)?.box.y).toBe(password.y - 4 - 2000);
+    });
+
+    it('ignores a scroll that starts after the interval closed', () => {
+      const rendered = plan(
+        [
+          withVisibility([{ startMs: 800, endMs: 1400, box: password }]),
+          event({
+            action: 'scroll',
+            startMs: 1500,
+            endMs: 2400,
+            scroll: { before: { x: 0, y: 0 }, after: { x: 0, y: 200 } },
+          }),
+        ],
+        [],
+      );
+      expect(rendered.masks[0].keys).toHaveLength(1);
+    });
   });
 });
 

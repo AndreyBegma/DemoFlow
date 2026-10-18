@@ -14,6 +14,7 @@ import {
   StepFailure,
 } from './execute/actions.ts';
 import { type Clock, startClock } from './execute/clock.ts';
+import { MaskTracker } from './execute/mask.ts';
 import type { EngineObserver, RunOutcome } from './execute/observer.ts';
 import { type Point, viewportCentre } from './execute/pointer.ts';
 import {
@@ -22,6 +23,7 @@ import {
   originNotAllowed,
 } from './execute/readiness.ts';
 import { recordingOptions, toContextOptions } from './execute/recording.ts';
+import { recordSyncMark, type SyncMark } from './execute/sync-mark.ts';
 
 export interface RunOptions {
   /** Absolute; created when missing. The caller names it after the run id. */
@@ -107,6 +109,7 @@ export async function runScenario(
     const page = await context.newPage();
     const clock = startClock();
     await emit('onPageCreated', { page, recording });
+    const syncMark = await recordSyncMark(page, clock);
 
     const events: TimelineEvent[] = [];
     const hasAssertions = scenario.steps.some((step) =>
@@ -128,6 +131,7 @@ export async function runScenario(
       observers,
       events,
       navigation,
+      masks: new MaskTracker(page),
       scrub,
       emit,
     });
@@ -164,7 +168,7 @@ export async function runScenario(
       });
     }
 
-    const outcome = conclude(startedAt, stages, events, videoPath);
+    const outcome = conclude(startedAt, stages, events, videoPath, syncMark);
     await emit('onRunFinished', { outcome, video });
     return outcome;
   } finally {
@@ -183,6 +187,7 @@ interface ExecuteInput {
   observers: readonly EngineObserver[];
   events: TimelineEvent[];
   navigation: NavigationWatch;
+  masks: MaskTracker;
   scrub: (message: string) => string;
   emit: <K extends keyof EngineObserver>(
     hook: K,
@@ -235,11 +240,16 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
       failure = new StepFailure('execution', originNotAllowed(foreign));
     }
 
+    // Before endMs is stamped, so a masked field seen gone is gone by then.
+    const sightings = await input.masks.look();
+    const endMs = Math.max(startMs, clock.now());
+    input.masks.record(sightings, startMs, endMs);
+
     const event: TimelineEvent = {
       stepIndex,
       action: step.action,
       startMs,
-      endMs: Math.max(startMs, clock.now()),
+      endMs,
       ...result,
       ...(failure === undefined ? {} : failure.detail),
       ...(step.caption === undefined ? {} : { caption: step.caption }),
@@ -252,6 +262,10 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
         ...event.assertion,
         message: scrub(event.assertion.message),
       };
+    }
+    // A failed masked fill is tracked too (#42): its interval stays open to the end.
+    if (step.action === 'fill') {
+      input.masks.track(event, step.target);
     }
     input.events.push(event);
     await emit('onStepFinished', { stepIndex, step, event });
@@ -336,6 +350,7 @@ function conclude(
   stages: Stages,
   events: TimelineEvent[],
   videoPath?: string,
+  syncMark?: SyncMark,
 ): RunOutcome {
   const warnings: string[] = [];
   return {
@@ -345,6 +360,7 @@ function conclude(
     stages,
     events,
     warnings,
+    ...(syncMark === undefined ? {} : { syncMark }),
     ...(videoPath === undefined ? {} : { videoPath }),
   };
 }

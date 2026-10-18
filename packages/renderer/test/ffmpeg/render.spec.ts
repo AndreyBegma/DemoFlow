@@ -18,6 +18,7 @@ import {
   toOutputMs,
 } from '../../src/index.ts';
 import { hasFfmpeg, recordFixtureRun } from '../plan/fixture-runs.ts';
+import { countFrames, sampleFrames } from './sample-frames.ts';
 
 if (!hasFfmpeg) {
   console.warn('no usable FFmpeg: skipping the FFmpeg compositor tests');
@@ -48,7 +49,10 @@ async function extractFrames(
   const data = await readFile(raw);
   await rm(raw);
   const size = plan.output.width * plan.output.height * 3;
-  expect(data.length).toBe(size * numbers.length);
+  expect(
+    data.length,
+    `${path.basename(file)}: frames ${numbers.join(',')} of ${frameCount(plan)}`,
+  ).toBe(size * numbers.length);
   return numbers.map((_, i) => data.subarray(i * size, (i + 1) * size));
 }
 
@@ -119,6 +123,22 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
       const result = await readResult(runDir);
       expect(result.renders).toContainEqual(output);
       expect(result.stages.rendering.status).toBe('passed');
+
+      // The sync mark is trimmed (#19): the first output frames hold none of its magenta.
+      const opening = await extractFrames(
+        file,
+        Array.from({ length: 10 }, (_, n) => n),
+        plan,
+      );
+      for (const [n, frame] of opening.entries()) {
+        let magenta = 0;
+        for (let at = 0; at < frame.length; at += 3) {
+          if (frame[at] > 200 && frame[at + 1] < 100 && frame[at + 2] > 200) {
+            magenta++;
+          }
+        }
+        expect(magenta, `output frame ${n}`).toBe(0);
+      }
 
       if (scenario !== 'failing') return;
       // The watermark on the first and the last frame; the last is the end card.
@@ -199,18 +219,19 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
           1000,
       );
     const from = toFrame(password.startMs);
-    const to = toFrame(navigation.endMs);
+    // A slow runner can deliver a video that ends before the timeline does
+    // (the same run measures shorter than its events); only frames the
+    // rendered file has can be checked.
+    const maskedFile = renderPath(runDir, 'ffmpeg');
+    const to = Math.min(
+      toFrame(navigation.endMs),
+      await countFrames(maskedFile),
+    );
     // A frame every 500 ms (15 at 30 fps), and the last one before the navigation.
-    const numbers: number[] = [];
-    for (let n = from; n < to; n += plan.output.fps / 2) numbers.push(n);
-    numbers.push(to - 1);
+    const numbers = sampleFrames(from, to, plan.output.fps / 2);
     expect(numbers.length).toBeGreaterThan(2);
 
-    const masked = await extractFrames(
-      renderPath(runDir, 'ffmpeg'),
-      numbers,
-      plan,
-    );
+    const masked = await extractFrames(maskedFile, numbers, plan);
     const unmasked = await extractFrames(unmaskedFile, numbers, plan);
     const { width } = plan.output;
     numbers.forEach((n, i) => {

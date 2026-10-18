@@ -86,9 +86,156 @@ describe('TimelineSchema', () => {
     );
   });
 
+  describe('syncMark', () => {
+    const mark = { colour: '#ff00ff', onMs: 40, offMs: 200 };
+    const withMark = (syncMark: unknown, events = timeline.events) => ({
+      ...timeline,
+      events,
+      syncMark,
+    });
+
+    it('accepts a timeline without one', () => {
+      expect(TimelineSchema.safeParse(timeline).success).toBe(true);
+    });
+
+    it('accepts a mark cleared at or before the first event', () => {
+      for (const startMs of [200, 300]) {
+        const events = [{ ...timeline.events[0], startMs, endMs: 400 }];
+        expect(
+          TimelineSchema.safeParse(withMark(mark, events as never)).success,
+        ).toBe(true);
+      }
+    });
+
+    it('rejects offMs at or before onMs', () => {
+      for (const offMs of [40, 10]) {
+        const parsed = TimelineSchema.safeParse(withMark({ ...mark, offMs }));
+        expect(parsed.error?.issues[0]?.path).toEqual(['syncMark', 'offMs']);
+      }
+    });
+
+    it('rejects a malformed colour', () => {
+      for (const colour of ['ff00ff', '#FF00FF', '#f0f', 'magenta']) {
+        const parsed = TimelineSchema.safeParse(withMark({ ...mark, colour }));
+        expect(parsed.error?.issues[0]?.path).toEqual(['syncMark', 'colour']);
+      }
+    });
+
+    it('rejects offMs after the first event starts', () => {
+      const late = TimelineSchema.safeParse(
+        withMark({ ...mark, offMs: 500 }, [
+          { ...timeline.events[0], startMs: 100, endMs: 200 },
+        ] as never),
+      );
+      expect(late.error?.issues[0]?.path).toEqual(['syncMark', 'offMs']);
+    });
+  });
+
   it('rejects an unknown field', () => {
     expect(TimelineSchema.safeParse({ ...timeline, fps: 30 }).success).toBe(
       false,
     );
+  });
+});
+
+describe('maskVisibility', () => {
+  const box = { x: 100, y: 260, width: 300, height: 32 };
+  const moved = { x: 100, y: 420, width: 300, height: 32 };
+
+  function parse(
+    maskVisibility: unknown,
+    fill: Record<string, unknown> = timeline.events[2],
+  ) {
+    const event = { ...fill, maskVisibility };
+    return TimelineSchema.safeParse({ ...timeline, events: [event] });
+  }
+
+  it('accepts one closed interval', () => {
+    expect(parse([{ startMs: 1400, endMs: 3000, box }]).success).toBe(true);
+  });
+
+  it('accepts one open interval', () => {
+    expect(parse([{ startMs: 1400, box }]).success).toBe(true);
+  });
+
+  it('accepts a field that leaves and comes back elsewhere', () => {
+    const intervals = [
+      { startMs: 1400, endMs: 3000, box },
+      { startMs: 4000, box: moved },
+    ];
+    expect(parse(intervals).success).toBe(true);
+  });
+
+  it('accepts a new interval that starts before a closed one ends', () => {
+    // A step that navigates to a page showing the same field: the old box
+    // ends at the step's endMs, the new one starts at its startMs.
+    const intervals = [
+      { startMs: 1400, endMs: 3000, box },
+      { startMs: 2600, endMs: 5000, box: moved },
+    ];
+    expect(parse(intervals).success).toBe(true);
+  });
+
+  it('rejects maskVisibility on an event that is not masked', () => {
+    const { masked: _, value: __, ...plain } = timeline.events[2];
+    for (const fill of [plain, { ...plain, masked: false }]) {
+      const parsed = parse([{ startMs: 1400, box }], fill);
+      expect(parsed.error?.issues[0]?.path).toEqual([
+        'events',
+        0,
+        'maskVisibility',
+      ]);
+    }
+  });
+
+  it('rejects an interval that ends before it starts', () => {
+    const parsed = parse([{ startMs: 1400, endMs: 1000, box }]);
+    expect(parsed.error?.issues[0]?.path).toEqual([
+      'events',
+      0,
+      'maskVisibility',
+      0,
+      'endMs',
+    ]);
+  });
+
+  it('rejects unordered intervals', () => {
+    const parsed = parse([
+      { startMs: 4000, endMs: 5000, box },
+      { startMs: 1400, endMs: 3000, box: moved },
+    ]);
+    expect(parsed.error?.issues[0]?.path).toEqual([
+      'events',
+      0,
+      'maskVisibility',
+      1,
+      'startMs',
+    ]);
+  });
+
+  it('rejects an interval that overlaps an open one', () => {
+    const parsed = parse([
+      { startMs: 1400, box },
+      { startMs: 2000, endMs: 3000, box: moved },
+    ]);
+    expect(parsed.success).toBe(false);
+  });
+
+  it('rejects an open interval that is not the last', () => {
+    const parsed = parse([
+      { startMs: 1400, box },
+      { startMs: 4000, box: moved },
+    ]);
+    expect(parsed.error?.issues[0]?.path).toEqual([
+      'events',
+      0,
+      'maskVisibility',
+      0,
+      'endMs',
+    ]);
+  });
+
+  it('rejects an interval without a box', () => {
+    expect(parse([{ startMs: 1400 }]).success).toBe(false);
   });
 });

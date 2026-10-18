@@ -21,6 +21,14 @@ decisions live in [../adr/](../adr/README.md).
 | Issue | Spec | Depends on |
 |---|---|---|
 | [#25](https://github.com/AndreyBegma/DemoFlow/issues/25) | [Real font rendering](25-compositor-fonts.md) | #24 |
+| [#17](https://github.com/AndreyBegma/DemoFlow/issues/17) | [Source video at device pixels](17-source-video-device-pixels.md) | — |
+| [#18](https://github.com/AndreyBegma/DemoFlow/issues/18) | [Masked field visibility](18-mask-visibility.md) | #31 |
+| [#31](https://github.com/AndreyBegma/DemoFlow/issues/31) | [Process exits after a run](31-process-exits-after-run.md) | — |
+| [#19](https://github.com/AndreyBegma/DemoFlow/issues/19) | [Clock sync mark](19-clock-sync-mark.md) | #18 |
+| [#47](https://github.com/AndreyBegma/DemoFlow/issues/47) | [Restore viewport-sized recording](47-restore-viewport-recording.md) — supersedes spec 17's premise | — |
+| [#42](https://github.com/AndreyBegma/DemoFlow/issues/42) | [Masked fill failure still masks](42-masked-fill-failure.md) | #47 |
+| [#44](https://github.com/AndreyBegma/DemoFlow/issues/44) | [Stable real-run tests on CI](44-ci-real-run-stability.md) | #47 |
+| [#48](https://github.com/AndreyBegma/DemoFlow/issues/48) | [Sync mark: always recorded, unbiased](48-sync-mark-reliability.md) | #42, #44 |
 
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.

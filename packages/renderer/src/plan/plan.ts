@@ -10,6 +10,7 @@ import {
   TimelineSchema,
 } from '@demoflow/core';
 import { probeVideo } from './ffmpeg.ts';
+import { findSyncClear, syncOffset } from './sync-mark.ts';
 import { buildTimeMap, idleStretches, toOutputMs } from './time-map.ts';
 import type {
   CameraKeyframe,
@@ -57,7 +58,7 @@ const TIMING = {
   minPanMs: 400,
   /** The engine waits up to this long for a navigation after the press. */
   pressToEndMs: 100,
-  /** Masks start this early, to absorb the residual clock offset. */
+  /** Masks start this early, to absorb the residual clock offset; one source frame when it is measured. */
   maskLeadMs: 200,
   /** Masks overhang the field's box by this much on every side. */
   maskMarginPx: 4,
@@ -83,11 +84,14 @@ export interface PlanInput {
   result: RunResult;
   /** The source video, probed for frozen stretches at the idle threshold. */
   source: VideoProbe;
+  /** The source time of the first frame after `timeline.syncMark`, when it was found. */
+  syncClearMs?: number;
 }
 
 /**
- * Reads a run directory and plans its video: `timeline.json`, `result.json`
- * and one FFmpeg pass over the source (size, frame rate, frozen stretches).
+ * Reads a run directory and plans its video: `timeline.json`, `result.json`,
+ * one FFmpeg pass over the source (size, frame rate, frozen stretches) and,
+ * when the timeline has a sync mark, one over its start to find the mark.
  */
 export async function buildRenderPlan(
   runDir: string,
@@ -99,12 +103,25 @@ export async function buildRenderPlan(
   const result = RunResultSchema.parse(
     await readJson(path.join(runDir, PLAN_INPUTS.result)),
   );
-  const source = await probeVideo(path.join(runDir, timeline.videoFile), {
+  const videoFile = path.join(runDir, timeline.videoFile);
+  const source = await probeVideo(videoFile, {
     freezes: {
       minMs: options.idle?.thresholdMs ?? DEFAULTS.idleThresholdMs,
     },
   });
-  return planRender({ timeline, result, source }, options);
+  const syncClearMs =
+    timeline.syncMark === undefined
+      ? undefined
+      : await findSyncClear(videoFile, source.fps, timeline.syncMark);
+  return planRender(
+    {
+      timeline,
+      result,
+      source,
+      ...(syncClearMs === undefined ? {} : { syncClearMs }),
+    },
+    options,
+  );
 }
 
 async function readJson(file: string): Promise<unknown> {
@@ -117,7 +134,20 @@ export function planRender(
   options: RenderPlanOptions = {},
 ): RenderPlan {
   const { timeline, result, source } = input;
-  const offsetMs = options.offsetMs ?? DEFAULT_OFFSET_MS;
+  // Measured on the sync mark when it was found (#19); otherwise the defaults.
+  const measuredMs =
+    timeline.syncMark === undefined
+      ? undefined
+      : syncOffset(timeline.syncMark, input.syncClearMs);
+  const offsetMs = options.offsetMs ?? measuredMs ?? DEFAULT_OFFSET_MS;
+  const offsetMeasured =
+    options.offsetMs === undefined && measuredMs !== undefined;
+  const maskLeadMs = offsetMeasured ? 1000 / source.fps : TIMING.maskLeadMs;
+  // The output starts on the first frame after the mark, so none shows it (Decision 6).
+  const startMs =
+    measuredMs === undefined
+      ? 0
+      : clamp(input.syncClearMs ?? 0, 0, source.durationMs);
   const thresholdMs = options.idle?.thresholdMs ?? DEFAULTS.idleThresholdMs;
   const compressToMs = options.idle?.compressToMs ?? DEFAULTS.idleCompressToMs;
   const output = {
@@ -156,7 +186,7 @@ export function planRender(
       endMs: toSource(event.endMs),
     }));
   const idle = idleStretches(source.freezes, active, thresholdMs, sourceEndMs);
-  const timeMap = buildTimeMap(idle, sourceEndMs, compressToMs);
+  const timeMap = buildTimeMap(idle, sourceEndMs, compressToMs, startMs);
   const out = (timelineMs: number): number =>
     toOutputMs(timeMap, toSource(timelineMs));
   const videoEndMs = timeMap.at(-1)?.outputEndMs ?? 0;
@@ -185,12 +215,14 @@ export function planRender(
     viewport,
     fit: fitInto(viewport, output),
     offsetMs,
+    offsetMeasured,
+    maskLeadMs,
     durationMs: videoEndMs + (failureSpec?.endCard.durationMs ?? 0),
     timeMap,
     cursor: cursorMoves(events, out),
     clicks: clickRings(events, out),
     camera: cameraKeyframes(events, out, viewport, maxZoom),
-    masks: maskSpans(events, out, viewport, videoEndMs),
+    masks: maskSpans(events, out, viewport, videoEndMs, maskLeadMs),
     captions: captions(events, out, videoEndMs),
     ...(failureSpec === undefined ? {} : { failure: failureSpec }),
   };
@@ -399,22 +431,70 @@ function distance(a: Point, b: Point): number {
 }
 
 /**
- * A blurred box over every masked field, from its event's start until a
- * `navigate` ends, a page scroll takes the box fully out of the viewport, or
- * the video ends. The timeline does not say which click navigated, so a mask
- * outlives such a click: covering too long is safe, too short is a leak.
+ * A blurred box over every masked field while it is on the page.
+ *
+ * A masked event that carries `maskVisibility` gets one span per interval: from
+ * the interval's start (less the lead) to its end, or to the video's end when
+ * the interval is open. Intervals may overlap for one step (a navigation that
+ * leaves the field on screen); both boxes are masked then. Page scrolls that
+ * start inside an interval move its box; the span does not end when the box
+ * leaves the viewport, since the field is still on the page and may scroll back.
+ *
+ * A timeline from before `maskVisibility` has no intervals, so the old rule
+ * stays: the mask runs from the event's start until a `navigate` ends, a page
+ * scroll takes the box fully out of the viewport, or the video ends. It cannot
+ * tell which click navigated, so covering too long is safe, too short a leak.
+ *
+ * A masked event with no box (its field could not be measured, #42) masks the
+ * whole viewport from its start to the end of the video.
  */
 function maskSpans(
   events: readonly TimelineEvent[],
   out: (timelineMs: number) => number,
   viewport: { width: number; height: number },
   videoEndMs: number,
+  leadMs: number,
 ): MaskSpan[] {
   const spans: MaskSpan[] = [];
   for (const [index, event] of events.entries()) {
-    if (event.masked !== true || event.target === undefined) continue;
+    if (event.masked !== true) continue;
+    if (event.maskVisibility !== undefined) {
+      for (const interval of event.maskVisibility) {
+        const startMs = Math.max(0, out(interval.startMs) - leadMs);
+        const endMs =
+          interval.endMs === undefined
+            ? videoEndMs
+            : Math.min(out(interval.endMs), videoEndMs);
+        let box = grow(interval.box, TIMING.maskMarginPx);
+        const keys: MaskSpan['keys'] = [{ atMs: startMs, box }];
+        for (const later of events.slice(index + 1)) {
+          const scroll = later.scroll;
+          if (scroll === undefined || scroll.container !== undefined) continue;
+          if (
+            later.startMs < interval.startMs ||
+            (interval.endMs !== undefined && later.startMs >= interval.endMs)
+          ) {
+            continue;
+          }
+          keys.push({ atMs: Math.min(out(later.startMs), endMs), box });
+          box = {
+            ...box,
+            x: box.x - (scroll.after.x - scroll.before.x),
+            y: box.y - (scroll.after.y - scroll.before.y),
+          };
+          keys.push({ atMs: Math.min(out(later.endMs), endMs), box });
+        }
+        spans.push({ startMs, endMs, keys });
+      }
+      continue;
+    }
+    if (event.target === undefined) {
+      // #42: a field that could not be measured; the whole viewport, to the end.
+      spans.push(wholeViewport(event, out, viewport, videoEndMs, leadMs));
+      continue;
+    }
     let box = grow(event.target.box, TIMING.maskMarginPx);
-    const startMs = Math.max(0, out(event.startMs) - TIMING.maskLeadMs);
+    const startMs = Math.max(0, out(event.startMs) - leadMs);
     const keys: MaskSpan['keys'] = [{ atMs: startMs, box }];
     let endMs = videoEndMs;
     for (const later of events.slice(index + 1)) {
@@ -440,6 +520,21 @@ function maskSpans(
     spans.push({ startMs, endMs: Math.min(endMs, videoEndMs), keys });
   }
   return spans;
+}
+
+function wholeViewport(
+  event: TimelineEvent,
+  out: (timelineMs: number) => number,
+  viewport: { width: number; height: number },
+  videoEndMs: number,
+  leadMs: number,
+): MaskSpan {
+  const startMs = Math.max(0, out(event.startMs) - leadMs);
+  const box = grow(
+    { x: 0, y: 0, width: viewport.width, height: viewport.height },
+    TIMING.maskMarginPx,
+  );
+  return { startMs, endMs: videoEndMs, keys: [{ atMs: startMs, box }] };
 }
 
 function grow(box: Box, by: number): Box {

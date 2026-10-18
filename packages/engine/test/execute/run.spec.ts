@@ -221,6 +221,13 @@ describe('the customers flow', () => {
     }
   });
 
+  it('records a sync mark held for three frames and cleared before the first event', () => {
+    const mark = outcome.syncMark;
+    expect(mark?.colour).toBe('#ff00ff');
+    expect(mark?.offMs).toBeGreaterThanOrEqual((mark?.onMs ?? 0) + 120);
+    expect(mark?.offMs).toBeLessThanOrEqual(outcome.events[0]?.startMs ?? 0);
+  });
+
   it('moves the real pointer before every click, from the viewport centre', () => {
     const clicks = outcome.events.filter((event) => event.action === 'click');
     expect(clicks).toHaveLength(2);
@@ -280,6 +287,10 @@ describe('failures', () => {
     const outcome = await runScenario(
       scenario([
         { action: 'navigate', path: '/customers' },
+        // The assertion's short timeout also bounds its wait for the heading;
+        // on a slow runner (video recording on macOS) that wait alone
+        // exceeded 500 ms, so the page is waited for with the default timeout.
+        { action: 'waitFor', target: { role: 'heading', name: 'Customers' } },
         {
           action: 'assertText',
           target: { role: 'heading', name: 'Customers' },
@@ -290,20 +301,26 @@ describe('failures', () => {
       ]),
       await options({ observers: [observer] }),
     );
+    // First, so a step that failed before the assertion shows its own error.
+    expect(
+      outcome.stages.execution,
+      `execution stage: ${JSON.stringify(outcome.stages.execution)}`,
+    ).toMatchObject({
+      status: 'skipped',
+    });
     expect(outcome.stages.verification).toMatchObject({
       status: 'failed',
       error: {
-        stepIndex: 1,
+        stepIndex: 2,
         message:
           'expected {"role":"heading","name":"Customers"} to contain "Invoices", got "Customers"',
       },
     });
-    expect(outcome.stages.execution.status).toBe('skipped');
     expect(outcome.stages.recording.status).toBe('passed');
     expect(outcome.status).toBe('failed');
-    expect(outcome.events.map((event) => event.stepIndex)).toEqual([0, 1]);
-    expect(outcome.events[1].assertion?.passed).toBe(false);
-    expect(observer.calls).not.toContain('stepStarted 2');
+    expect(outcome.events.map((event) => event.stepIndex)).toEqual([0, 1, 2]);
+    expect(outcome.events[2].assertion?.passed).toBe(false);
+    expect(observer.calls).not.toContain('stepStarted 3');
     expect((await stat(outcome.videoPath as string)).size).toBeGreaterThan(0);
   });
 
