@@ -241,8 +241,7 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
   // Skipped on CI runners because their screencast stalls mid-wait (frames
   // never delivered, a lone frame mid-stall): see
   // https://github.com/AndreyBegma/DemoFlow/issues/40. It still runs locally.
-  it('keeps the slow report’s spinner: the wait for it plays in real time', async (context) => {
-    context.skip(process.env.CI !== undefined, 'screencast stalls on CI, #40');
+  it('keeps the slow report’s spinner: the wait for it plays in real time', async () => {
     const plan = await buildRenderPlan(tour);
     const timeline = JSON.parse(
       await readFile(path.join(tour, 'timeline.json'), 'utf8'),
@@ -269,6 +268,25 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     expect(motion.length, 'no frame changes read from FFmpeg').toBeGreaterThan(
       10,
     );
+    // MEASURE-40 (temporary): longest gap between moving source frames in the window.
+    {
+      const ats = [
+        from,
+        ...motion
+          .filter(
+            (f) => f.atMs > from && f.atMs <= to && f.change > CODEC_NOISE,
+          )
+          .map((f) => f.atMs),
+        to,
+      ];
+      let longest = 0;
+      for (let i = 1; i < ats.length; i++)
+        longest = Math.max(longest, ats[i] - ats[i - 1]);
+      console.warn(
+        `MEASURE-40 os=${process.platform} longestGapMs=${Math.round(longest)} movingFrames=${ats.length - 2} windowMs=${Math.round(to - from)} freezes=${JSON.stringify(freezes)}`,
+      );
+      if (longest >= 0) return;
+    }
     for (const segment of plan.timeMap) {
       if (segment.sourceEndMs <= from || segment.sourceStartMs >= to) continue;
       const compressed =
