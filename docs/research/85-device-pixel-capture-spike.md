@@ -22,9 +22,17 @@ there.
 
 ## Method
 
+The prototypes, their harness and the job's `capture` input were removed
+before merge: the engine ends this spike as it started. They are at commit
+[81b7a6f](https://github.com/AndreyBegma/DemoFlow/commit/81b7a6f41952e2b6472022d926b5d2fad1a4568e)
+(the runs below were dispatched from it, or, for `zoomed`, from its parent
+[1e58401](https://github.com/AndreyBegma/DemoFlow/commit/1e58401bb98092cf10aabd72fda909f4e110ad04),
+which differs only in the workflow's concurrency group). The paths below
+refer to that commit.
+
 - **Switch:** `DEMOFLOW_CAPTURE=screenshots | zoomed` (`RunOptions.capture`
-  wins), engine-only. Without it, `recordingOptions` returns exactly what it
-  did before, and every default suite is unchanged. `screenshots` needs
+  wins), engine-only. Without it, `recordingOptions` returned exactly what it
+  did before, and every default suite was unchanged. `screenshots` needs
   `DEMOFLOW_FFMPEG`, an FFmpeg with libvpx, supplied by the caller. CI passes
   the renderer's `ffmpeg-static`. No dependency was added.
   - `screenshots` (`packages/engine/src/execute/screenshot-recorder.ts`): a
@@ -233,11 +241,7 @@ runs above.
 ## Findings worth keeping
 
 - **The 1× source already misses the frame-rate bar on a glass-heavy page.**
-  The animated block's measure gives `customers` at 1×, Playwright's
-  `recordVideo` at 1280×720, 18.1–23.6 effective fps, with 200–240 ms gaps
-  on Linux and Windows CI. Decision 1's "25 fps, no gap > 200 ms" is not met
-  by today's capture either. Any future candidate should be compared with
-  that figure, not with a nominal 25.
+  See the next section.
 - **A second CDP session's screenshot clears Playwright's emulation** when it
   uses a clip (above). Anything that takes screenshots behind Playwright's
   back has to account for it. The engine does not do that today.
@@ -249,6 +253,29 @@ runs above.
   classic scrollbars see the real viewport, not the zoomed one. That holds
   for any "render big, zoom the page" approach.
 
+## Today's 1× capture stalls on `customers`
+
+This is a side finding, for the recording-stall work, not a criterion here.
+Each mode job also recorded every scenario with today's default capture
+(Playwright's `recordVideo` at 1280×720, `deviceScaleFactor: 2`). With the
+animated block on the page, the 1× source shows:
+
+| OS | `customers` effective fps · longest gap | Other scenarios |
+|---|---|---|
+| Linux | 18.1–19.3 fps · 200–240 ms | 23.6–24.9 fps · 80–200 ms |
+| macOS | 22.6–23.6 fps · 120–160 ms | 20.9–24.8 fps · 80–320 ms (`tour`, once) |
+| Windows | 21.2–23.8 fps · 200–240 ms | 23.6–24.9 fps · 80–160 ms |
+
+These are ranges over the three mode jobs per OS (`video`, `screenshots`,
+`zoomed`). `customers` is the glass-heavy scenario: backdrop blur, a long
+table and a dialog. Not one `customers` run reaches 25 fps on any OS. On
+Linux and Windows its longest gap is 200–240 ms, and macOS had one 320 ms
+gap, on `tour`. The default capture does not meet "25 fps, no gap > 200 ms"
+either, so a future 2× candidate should be compared with these figures, not
+with a nominal 25 fps. The measure is the harness's: a frame counts when a
+block that moves every display frame has moved. It is in the
+`device-pixel-<mode>-<os>.json` artifacts, under each scenario's `baseline`.
+
 ## What follows
 
 - **A new ADR, the next free number, superseding ADR-0004 §1's "so zoom has
@@ -258,8 +285,10 @@ runs above.
   zoom upscales, and no capture path tried so far gives a 2× source on all
   three OSes. Per the spec, its text goes in a separate docs pull request
   after this one merges.
-- **What stays:** the `DEMOFLOW_CAPTURE` switch, both prototypes, the
-  harness and the `capture` input of the `cdp-spike` job, all opt-in, as a
-  cheap re-check on a future Chromium or Playwright. Remove the prototypes
-  instead if the ADR prefers no dormant code in `packages/engine/src`.
-  Nothing on the default path changed.
+- **What stays:** #82's probe (`screencast-size.spec.ts`), extended with
+  candidate 0 and the raw pipelined-screenshot measure, and the opt-in
+  `cdp-spike` job that runs it. If a future Chromium sends device-pixel
+  screencast frames, its size assertion fails and says so.
+- **What does not:** the `DEMOFLOW_CAPTURE` switch, both prototypes, the
+  device-pixel harness and the job's `capture` input were removed before
+  merge (commit above). `packages/engine/src` is unchanged by this spike.
