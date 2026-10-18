@@ -288,7 +288,7 @@ describe('failures', () => {
       scenario([
         { action: 'navigate', path: '/customers' },
         // The assertion's short timeout also bounds its wait for the heading;
-        // on a slow runner (2560×1440 recording on macOS) that wait alone
+        // on a slow runner (video recording on macOS) that wait alone
         // exceeded 500 ms, so the page is waited for with the default timeout.
         { action: 'waitFor', target: { role: 'heading', name: 'Customers' } },
         {

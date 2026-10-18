@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -24,6 +25,13 @@ import { webmFrameSize } from './webm.ts';
 
 const SCENARIO_DIR = path.join(FIXTURE_DIST, '..', 'demoflow');
 const PASSWORD = 'hunter2-correct-horse';
+/** Playwright's padding colour around a frame smaller than the canvas. */
+const PADDING_GREY = [127, 125, 129] as const;
+
+const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
+if (!hasFfmpeg) {
+  console.warn('ffmpeg is not on PATH: skipping the recording content test');
+}
 
 let fixture: FixtureServer;
 const runDirs: string[] = [];
@@ -115,10 +123,57 @@ describe('customers.demo.json', () => {
     expect([...head.subarray(0, 4)]).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
   });
 
-  it('records the video at viewport × deviceScaleFactor', async () => {
+  it('records the video at the viewport size', async () => {
     const file = await readFile(path.join(run.runDir, 'source.webm'));
-    expect(webmFrameSize(file)).toEqual({ width: 2560, height: 1440 });
+    expect(webmFrameSize(file)).toEqual({ width: 1280, height: 720 });
   });
+
+  // #47: a frame larger than the viewport is padded with grey around a
+  // viewport-sized picture, and the header alone cannot tell.
+  it.skipIf(!hasFfmpeg)(
+    'fills the whole frame with page content, not grey padding',
+    async () => {
+      const timeline = TimelineSchema.parse(
+        await readJson(run.runDir, 'timeline.json'),
+      );
+      const lastMs = Math.max(...timeline.events.map((event) => event.endMs));
+      const decoded = spawnSync(
+        'ffmpeg',
+        [
+          '-v',
+          'error',
+          '-ss',
+          String(lastMs / 2000),
+          '-i',
+          path.join(run.runDir, 'source.webm'),
+          '-frames:v',
+          '1',
+          '-vf',
+          'crop=iw/2:ih/2:iw/2:ih/2,scale=8:8',
+          '-f',
+          'rawvideo',
+          '-pix_fmt',
+          'rgb24',
+          '-',
+        ],
+        { maxBuffer: 1024 * 1024 },
+      );
+      expect(decoded.status).toBe(0);
+      const pixels = decoded.stdout;
+      expect(pixels.length).toBe(8 * 8 * 3);
+      const mean = [0, 1, 2].map((channel) => {
+        let sum = 0;
+        for (let at = channel; at < pixels.length; at += 3) {
+          sum += pixels[at] ?? 0;
+        }
+        return sum / (8 * 8);
+      });
+      const nearGrey = mean.every(
+        (value, channel) => Math.abs(value - PADDING_GREY[channel]) <= 6,
+      );
+      expect(nearGrey, `bottom-right mean ${mean.join(',')}`).toBe(false);
+    },
+  );
 
   it('writes a timeline valid against core', async () => {
     const timeline = TimelineSchema.parse(
