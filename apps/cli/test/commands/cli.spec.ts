@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { cp, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -312,5 +314,145 @@ describe('demoflow run', () => {
     } finally {
       await rm(lonely, { recursive: true, force: true });
     }
+  });
+});
+
+describe('demoflow run starts the app from devCommand', () => {
+  /** A project whose config carries `devCommand`; the scenarios run against the fixture. */
+  async function projectWith(
+    devCommand: Record<string, unknown>,
+  ): Promise<string> {
+    const dir = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-dev-'));
+    await writeFile(
+      path.join(dir, 'demoflow.config.json'),
+      JSON.stringify({ baseUrl: fixture.origin, devCommand }),
+    );
+    await cp(FIXTURE_SCENARIOS, path.join(dir, 'demoflow'), {
+      recursive: true,
+    });
+    return dir;
+  }
+
+  async function freePort(): Promise<number> {
+    const server = createServer();
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    return port;
+  }
+
+  const alive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** `node -e`: records its pid in `marker`, then listens on `port` after `delayMs`. */
+  const appScript = (port: number, marker: string, delayMs = 0) => ({
+    command: process.execPath,
+    args: [
+      '-e',
+      `require('node:fs').writeFileSync(${JSON.stringify(marker)}, String(process.pid));
+       setTimeout(() => require('node:http').createServer((q, s) => s.end('ok')).listen(${port}, '127.0.0.1'), ${delayMs})`,
+    ],
+  });
+
+  const dirs: string[] = [];
+  afterAll(async () => {
+    await Promise.all(
+      dirs.map((dir) => rm(dir, { recursive: true, force: true })),
+    );
+  });
+  const track = async (devCommand: Record<string, unknown>) => {
+    const dir = await projectWith(devCommand);
+    dirs.push(dir);
+    return dir;
+  };
+
+  it('starts the app, waits for readyUrl, runs and stops the process afterwards', async () => {
+    const port = await freePort();
+    const marker = path.join(out, `app-${port}.pid`);
+    const dir = await track({
+      ...appScript(port, marker, 500),
+      readyUrl: `http://127.0.0.1:${port}/`,
+    });
+    const result = await demoflow(
+      [
+        'run',
+        path.join(dir, 'demoflow/customers.demo.json'),
+        '--json',
+        '--out',
+        out,
+      ],
+      dir,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout.trim().split('\n')).toHaveLength(1);
+    expect(JSON.parse(result.stdout).status).toBe('completed');
+    const pid = Number(await readFile(marker, 'utf8'));
+    expect(alive(pid)).toBe(false);
+  });
+
+  it('starts nothing when readyUrl already answers', async () => {
+    const marker = path.join(out, 'never-started.pid');
+    const dir = await track({
+      ...appScript(1, marker),
+      readyUrl: `${fixture.origin}/`,
+    });
+    const result = await demoflow(
+      [
+        'run',
+        path.join(dir, 'demoflow/customers.demo.json'),
+        '--json',
+        '--out',
+        out,
+      ],
+      dir,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(await exists(marker)).toBe(false);
+  });
+
+  it('a devCommand that never becomes ready fails readiness with its last output, exit 2, nothing left behind', async () => {
+    const marker = path.join(out, 'never-ready.pid');
+    const dir = await track({
+      command: process.execPath,
+      args: [
+        '-e',
+        `require('node:fs').writeFileSync(${JSON.stringify(marker)}, String(process.pid));
+         for (let i = 1; i <= 30; i++) console.log('app line ' + i);
+         setInterval(() => {}, 1000)`,
+      ],
+      readyUrl: `http://127.0.0.1:${await freePort()}/`,
+      timeoutMs: 1500,
+    });
+    const result = await demoflow(
+      [
+        'run',
+        path.join(dir, 'demoflow/customers.demo.json'),
+        '--json',
+        '--out',
+        out,
+      ],
+      dir,
+    );
+    expect(result.code, result.stderr).toBe(2);
+    expect(result.stdout.trim().split('\n')).toHaveLength(1);
+    const json = JSON.parse(result.stdout);
+    expect(json.status).toBe('failed');
+    expect(json.stages.readiness.status).toBe('failed');
+    const message: string = json.stages.readiness.error.message;
+    expect(message).toContain('did not answer');
+    expect(message).toContain('app line 30');
+    expect(message).toContain('app line 11');
+    expect(message).not.toContain('app line 10\n');
+    expect(json.stages.execution.status).toBe('skipped');
+    expect(json.stages.rendering.status).toBe('skipped');
+    expect(alive(Number(await readFile(marker, 'utf8')))).toBe(false);
   });
 });
