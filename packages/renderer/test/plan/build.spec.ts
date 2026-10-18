@@ -174,7 +174,11 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     expect(frameAt(failingPlan, 0).watermark).toBe(true);
   });
 
-  it('keeps the slow report’s spinner: the wait for it plays in real time', async () => {
+  // Skipped on CI runners because their screencast stalls mid-wait (frames
+  // never delivered, a lone frame mid-stall): see
+  // https://github.com/AndreyBegma/DemoFlow/issues/40. It still runs locally.
+  it('keeps the slow report’s spinner: the wait for it plays in real time', async (context) => {
+    context.skip(process.env.CI !== undefined, 'screencast stalls on CI, #40');
     const plan = await buildRenderPlan(tour);
     const timeline = JSON.parse(
       await readFile(path.join(tour, 'timeline.json'), 'utf8'),
