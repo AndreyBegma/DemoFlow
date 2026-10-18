@@ -62,6 +62,10 @@ function externals(dependencies: Record<string, string>): Plugin {
     name: 'demoflow-externals',
     setup(build) {
       build.onResolve({ filter: /^[^./]/ }, (args) => {
+        // `D:\…` passes the filter on Windows: only bare imports are packages.
+        if (args.kind === 'entry-point' || path.isAbsolute(args.path)) {
+          return undefined;
+        }
         if (isBuiltin(args.path)) return { path: args.path, external: true };
         const name = packageName(args.path);
         if (name.startsWith(WORKSPACE_SCOPE)) return undefined;
