@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { pageToClockShift, toSyncMark } from '../../src/execute/sync-mark.ts';
+import {
+  pageToClockShift,
+  SYNC_MARK_HOLD_MS,
+  toSyncMark,
+} from '../../src/execute/sync-mark.ts';
 
 describe('pageToClockShift', () => {
   it('maps the page clock through the midpoint of the round-trip', () => {
@@ -40,8 +44,29 @@ describe('toSyncMark', () => {
     const mark = toSyncMark({ onMs: 26.8, offMs: 426.8 }, exchanges);
     expect(mark?.colour).toBe('#ff00ff');
     expect(mark?.onMs).toBe(0);
-    // Shift from the fastest exchange (1.43 ms): midpoint 428.08 − 454.9.
-    expect(mark?.offMs).toBeCloseTo(426.8 + 428.0786365 - 454.9, 6);
+    // #64: the clamp used to move `onMs` alone, so the hold shrank by the
+    // amount clamped (here 0.02 ms; 5.26 ms on Ubuntu CI).
+    expect((mark?.offMs ?? 0) - (mark?.onMs ?? 0)).toBeGreaterThanOrEqual(
+      SYNC_MARK_HOLD_MS,
+    );
+  });
+
+  it('keeps the hold whole however far before zero the first frame maps', () => {
+    // Page clock 1 000 ms ahead of the engine's; first frame at page 995.
+    const mark = toSyncMark({ onMs: 995, offMs: 1_395 }, [
+      { sentMs: 100, pageMs: 1_110, receivedMs: 120 },
+    ]);
+    expect(mark?.onMs).toBe(0);
+    expect((mark?.offMs ?? 0) - (mark?.onMs ?? 0)).toBeGreaterThanOrEqual(
+      SYNC_MARK_HOLD_MS,
+    );
+  });
+
+  it('does not move edges that already map after clock zero', () => {
+    const mark = toSyncMark({ onMs: 1_200, offMs: 1_600 }, [
+      { sentMs: 100, pageMs: 1_110, receivedMs: 120 },
+    ]);
+    expect(mark).toMatchObject({ onMs: 200, offMs: 600 });
   });
 
   it('gives no mark when the clear does not come after the paint', () => {

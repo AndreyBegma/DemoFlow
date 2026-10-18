@@ -80,18 +80,32 @@ export async function recordSyncMark(
  *
  * A frame's timestamp is when the frame began, which on a busy page can be
  * before the script that painted the mark ran — so `onMs` can map to a hair
- * before clock zero (−0.3 ms, measured under a loaded test run, #48). The mark
- * was not painted before the page existed: `onMs` is clamped to zero. The
- * renderer only reads `offMs`.
+ * before clock zero (−0.3 ms, measured under a loaded test run, #48). The
+ * timeline refuses a negative `onMs`, so it is raised to zero — and `offMs`
+ * moves up by the same amount, so the hold the page measured between the two
+ * frames (`holdMs` or more) survives the clamp (#64: clamping `onMs` alone
+ * recorded 394.74 ms of a 400 ms hold). `offMs` moves later only by the
+ * mapping error of the exchange, never earlier.
  */
 export function toSyncMark(
   edges: { onMs: number; offMs: number },
   exchanges: readonly ClockExchange[],
 ): SyncMark | undefined {
+  if (!(edges.offMs > edges.onMs)) return undefined;
   const shiftMs = pageToClockShift(exchanges);
-  const onMs = Math.max(0, edges.onMs + shiftMs);
-  const offMs = edges.offMs + shiftMs;
-  return offMs > onMs ? { colour: SYNC_MARK_COLOUR, onMs, offMs } : undefined;
+  const mappedOnMs = edges.onMs + shiftMs;
+  if (mappedOnMs >= 0) {
+    return {
+      colour: SYNC_MARK_COLOUR,
+      onMs: mappedOnMs,
+      offMs: edges.offMs + shiftMs,
+    };
+  }
+  return {
+    colour: SYNC_MARK_COLOUR,
+    onMs: 0,
+    offMs: edges.offMs - edges.onMs,
+  };
 }
 
 /**

@@ -225,10 +225,10 @@ describe('the customers flow', () => {
   it('records a sync mark held for its hold and cleared before the first event', () => {
     const mark = outcome.syncMark;
     expect(mark?.colour).toBe('#ff00ff');
-    // Both edges are page frame times moved by one shift, so the hold is exact
-    // but for an `onMs` clamped up to zero by a few tenths of a millisecond.
-    expect(mark?.offMs).toBeGreaterThanOrEqual(
-      (mark?.onMs ?? 0) + SYNC_MARK_HOLD_MS - 5,
+    // Both edges are the page frame times the hold loop compared, mapped with
+    // one shift, so the hold is whole (#64).
+    expect((mark?.offMs ?? 0) - (mark?.onMs ?? 0)).toBeGreaterThanOrEqual(
+      SYNC_MARK_HOLD_MS,
     );
     expect(mark?.offMs).toBeLessThanOrEqual(outcome.events[0]?.startMs ?? 0);
   });
