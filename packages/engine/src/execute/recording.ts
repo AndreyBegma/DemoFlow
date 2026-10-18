@@ -11,8 +11,10 @@ export interface RecordingOptions {
   /** Playwright writes `<guid>.webm` here; capture names the file. */
   videoDir: string;
   /**
-   * The video frame size. Set explicitly: Playwright's default scales the
-   * recording down to fit 800×800.
+   * The video frame size, in device pixels (`viewport × deviceScaleFactor`).
+   * Set explicitly: Playwright's default scales the recording down to fit
+   * 800×800, and a CSS-sized frame would leave the renderer's camera zoom
+   * with no source pixels behind it (ADR-0004 §1).
    */
   videoSize: Viewport;
 }
@@ -25,7 +27,10 @@ export function recordingOptions(
     viewport: scenario.viewport,
     deviceScaleFactor: DEVICE_SCALE_FACTOR,
     videoDir: runDir,
-    videoSize: scenario.viewport,
+    videoSize: {
+      width: scenario.viewport.width * DEVICE_SCALE_FACTOR,
+      height: scenario.viewport.height * DEVICE_SCALE_FACTOR,
+    },
   };
 }
 
