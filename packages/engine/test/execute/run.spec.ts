@@ -8,6 +8,7 @@ import {
   type EngineObserver,
   type RunOptions,
   runScenario,
+  SYNC_MARK_HOLD_MS,
 } from '../../src/index.ts';
 import { type FixtureServer, startFixtureServer } from './fixture-server.ts';
 import { scenario } from './scenario.ts';
@@ -221,10 +222,14 @@ describe('the customers flow', () => {
     }
   });
 
-  it('records a sync mark held for three frames and cleared before the first event', () => {
+  it('records a sync mark held for its hold and cleared before the first event', () => {
     const mark = outcome.syncMark;
     expect(mark?.colour).toBe('#ff00ff');
-    expect(mark?.offMs).toBeGreaterThanOrEqual((mark?.onMs ?? 0) + 120);
+    // Both edges are page frame times moved by one shift, so the hold is exact
+    // but for an `onMs` clamped up to zero by a few tenths of a millisecond.
+    expect(mark?.offMs).toBeGreaterThanOrEqual(
+      (mark?.onMs ?? 0) + SYNC_MARK_HOLD_MS - 5,
+    );
     expect(mark?.offMs).toBeLessThanOrEqual(outcome.events[0]?.startMs ?? 0);
   });
 

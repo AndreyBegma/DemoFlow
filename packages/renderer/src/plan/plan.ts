@@ -60,6 +60,8 @@ const TIMING = {
   pressToEndMs: 100,
   /** Masks start this early, to absorb the residual clock offset; one source frame when it is measured. */
   maskLeadMs: 200,
+  /** Masks end this late, for the same reason: an early end leaks, a late one is safe (#48). */
+  maskTrailMs: 200,
   /** Masks overhang the field's box by this much on every side. */
   maskMarginPx: 4,
   /** A successful run keeps this much video after its last event. */
@@ -143,6 +145,7 @@ export function planRender(
   const offsetMeasured =
     options.offsetMs === undefined && measuredMs !== undefined;
   const maskLeadMs = offsetMeasured ? 1000 / source.fps : TIMING.maskLeadMs;
+  const maskTrailMs = offsetMeasured ? 1000 / source.fps : TIMING.maskTrailMs;
   // The output starts on the first frame after the mark, so none shows it (Decision 6).
   const startMs =
     measuredMs === undefined
@@ -217,12 +220,16 @@ export function planRender(
     offsetMs,
     offsetMeasured,
     maskLeadMs,
+    maskTrailMs,
     durationMs: videoEndMs + (failureSpec?.endCard.durationMs ?? 0),
     timeMap,
     cursor: cursorMoves(events, out),
     clicks: clickRings(events, out),
     camera: cameraKeyframes(events, out, viewport, maxZoom),
-    masks: maskSpans(events, out, viewport, videoEndMs, maskLeadMs),
+    masks: maskSpans(events, out, viewport, videoEndMs, {
+      leadMs: maskLeadMs,
+      trailMs: maskTrailMs,
+    }),
     captions: captions(events, out, videoEndMs),
     ...(failureSpec === undefined ? {} : { failure: failureSpec }),
   };
@@ -434,8 +441,8 @@ function distance(a: Point, b: Point): number {
  * A blurred box over every masked field while it is on the page.
  *
  * A masked event that carries `maskVisibility` gets one span per interval: from
- * the interval's start (less the lead) to its end, or to the video's end when
- * the interval is open. Intervals may overlap for one step (a navigation that
+ * the interval's start (less the lead) to its end (plus the trail), or to the
+ * video's end when the interval is open. Intervals may overlap for one step (a navigation that
  * leaves the field on screen); both boxes are masked then. Page scrolls that
  * start inside an interval move its box; the span does not end when the box
  * leaves the viewport, since the field is still on the page and may scroll back.
@@ -453,7 +460,7 @@ function maskSpans(
   out: (timelineMs: number) => number,
   viewport: { width: number; height: number },
   videoEndMs: number,
-  leadMs: number,
+  { leadMs, trailMs }: { leadMs: number; trailMs: number },
 ): MaskSpan[] {
   const spans: MaskSpan[] = [];
   for (const [index, event] of events.entries()) {
@@ -464,7 +471,7 @@ function maskSpans(
         const endMs =
           interval.endMs === undefined
             ? videoEndMs
-            : Math.min(out(interval.endMs), videoEndMs);
+            : Math.min(out(interval.endMs) + trailMs, videoEndMs);
         let box = grow(interval.box, TIMING.maskMarginPx);
         const keys: MaskSpan['keys'] = [{ atMs: startMs, box }];
         for (const later of events.slice(index + 1)) {
@@ -499,7 +506,7 @@ function maskSpans(
     let endMs = videoEndMs;
     for (const later of events.slice(index + 1)) {
       if (later.action === 'navigate') {
-        endMs = out(later.endMs);
+        endMs = out(later.endMs) + trailMs;
         break;
       }
       const scroll = later.scroll;
@@ -513,7 +520,7 @@ function maskSpans(
       };
       keys.push({ atMs: out(later.endMs), box });
       if (!overlaps(box, viewport)) {
-        endMs = out(later.endMs);
+        endMs = out(later.endMs) + trailMs;
         break;
       }
     }

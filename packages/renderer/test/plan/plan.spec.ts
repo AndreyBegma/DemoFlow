@@ -298,6 +298,43 @@ describe('sync mark', () => {
     expect(rendered.masks[0].startMs).toBeCloseTo(540 - 120 - 40);
   });
 
+  // #48: an end padded like the start, so a field never shows for the last frame.
+  it('ends a mask one source frame after out(endMs) when the offset is measured, 200 ms when not', () => {
+    const closed = events.map((item) =>
+      item.masked === true
+        ? {
+            ...item,
+            maskVisibility: [{ startMs: 600, endMs: 2000, box: password }],
+          }
+        : item,
+    );
+    const render = (syncClearMs: number | undefined): RenderPlan =>
+      planRender({
+        timeline: { ...timeline(closed), syncMark: mark },
+        result: result(),
+        source: {
+          width: 1280,
+          height: 720,
+          fps: 25,
+          durationMs: 5000,
+          codec: 'vp9',
+          freezes: [],
+        },
+        ...(syncClearMs === undefined ? {} : { syncClearMs }),
+      });
+
+    const measured = render(120);
+    expect(measured.maskTrailMs).toBe(40);
+    // Off the page at 2000 → source 1940 → output 1820; plus one frame.
+    expect(measured.masks[0].endMs).toBeCloseTo(1940 - 120 + 40);
+
+    const unmeasured = render(undefined);
+    expect(unmeasured.maskTrailMs).toBe(200);
+    expect(unmeasured.masks[0].endMs).toBeCloseTo(
+      2000 + DEFAULT_OFFSET_MS + 200,
+    );
+  });
+
   it('keeps the defaults without a sync mark', () => {
     const rendered = planWith(undefined, 120);
     expect(rendered.offsetMs).toBe(DEFAULT_OFFSET_MS);
@@ -470,7 +507,8 @@ describe('masks', () => {
     expect(rendered.masks).toHaveLength(1);
     const [mask] = rendered.masks;
     expect(mask.startMs).toBe(600);
-    expect(mask.endMs).toBe(2100);
+    // The navigation ends at 2100; the 200 ms trail of an unmeasured offset (#48).
+    expect(mask.endMs).toBe(2300);
     for (const frame of frames(rendered, 800, 2100)) {
       const state = frameAt(rendered, frame);
       expect(state.masks, `frame ${frame}`).toHaveLength(1);
@@ -488,7 +526,7 @@ describe('masks', () => {
         top + password.height * state.scale,
       );
     }
-    expect(frameAt(rendered, frames(rendered, 2100, 2200)[0]).masks).toEqual(
+    expect(frameAt(rendered, frames(rendered, 2300, 2400)[0]).masks).toEqual(
       [],
     );
   });
@@ -508,7 +546,7 @@ describe('masks', () => {
       [],
     );
     const [mask] = rendered.masks;
-    expect(mask.endMs).toBe(2400);
+    expect(mask.endMs).toBe(2600);
     expect(mask.keys.at(-1)?.box.y).toBe(password.y - 4 - 2000);
   });
 
@@ -560,7 +598,7 @@ describe('masks', () => {
       maskVisibility: NonNullable<TimelineEvent['maskVisibility']>,
     ): TimelineEvent => ({ ...masked, maskVisibility });
 
-    it('ends the mask with the interval, so none is active after the sign-in click', () => {
+    it('ends the mask with the interval plus the trail, so none is active after the sign-in click', () => {
       const rendered = plan(
         [
           event({ action: 'navigate', startMs: 0, endMs: 100 }),
@@ -571,11 +609,11 @@ describe('masks', () => {
         [],
       );
       expect(rendered.masks).toHaveLength(1);
-      expect(rendered.masks[0]).toMatchObject({ startMs: 600, endMs: 1800 });
+      expect(rendered.masks[0]).toMatchObject({ startMs: 600, endMs: 2000 });
       expect(
-        frameAt(rendered, frames(rendered, 1700, 1800)[0]).masks,
+        frameAt(rendered, frames(rendered, 1900, 2000)[0]).masks,
       ).toHaveLength(1);
-      for (const frame of frames(rendered, 1800, rendered.durationMs)) {
+      for (const frame of frames(rendered, 2000, rendered.durationMs)) {
         expect(frameAt(rendered, frame).masks, `frame ${frame}`).toEqual([]);
       }
     });
@@ -605,7 +643,7 @@ describe('masks', () => {
         [],
       );
       expect(rendered.masks).toHaveLength(2);
-      expect(rendered.masks[0]).toMatchObject({ startMs: 600, endMs: 1500 });
+      expect(rendered.masks[0]).toMatchObject({ startMs: 600, endMs: 1700 });
       expect(rendered.masks[1]).toMatchObject({
         startMs: 1800,
         endMs: rendered.durationMs,
@@ -616,7 +654,7 @@ describe('masks', () => {
         width: back.width + 8,
         height: back.height + 8,
       });
-      expect(frameAt(rendered, frames(rendered, 1600, 1700)[0]).masks).toEqual(
+      expect(frameAt(rendered, frames(rendered, 1700, 1750)[0]).masks).toEqual(
         [],
       );
     });
