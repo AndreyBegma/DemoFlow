@@ -93,7 +93,16 @@ All four criteria have to hold, and the first cannot. **The source stays 1×.**
   arrive before it was produced. A capture that maps frames onto the engine
   clock should use `monotonicTimestamp`, against an anchor taken in the page.
   The sync mark's page-clock exchanges (#48) are that kind of anchor.
-- **A bare `Page.captureScreenshot` is CSS-sized too.** Without a clip at the
+- > **Correction (#85).** The size below holds, but not the reason, and the
+  > fix it names harms the page. A screenshot answers in the *calling*
+  > session's device metrics; a second CDP session has none, so its bare
+  > shot is CSS-sized. A device-scale clip does return device pixels, but
+  > Chromium then clears the page's emulation, which is Playwright's: the
+  > page drops to `devicePixelRatio` 1 and lays out at the window size.
+  > The screencast is capped either way. See
+  > [85-device-pixel-capture-spike.md](85-device-pixel-capture-spike.md).
+
+  **A bare `Page.captureScreenshot` is CSS-sized too.** Without a clip at the
   device scale, it returned 1280×720 here. Playwright's `page.screenshot()`
   passes that clip and gets 2560×1440. A capture pulling screenshots over CDP
   has to do the same.
