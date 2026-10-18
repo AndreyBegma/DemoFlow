@@ -20,6 +20,8 @@ export {
   type ReadinessProblem,
 } from './readiness.ts';
 export {
+  type CaptureMode,
+  captureMode,
   DEVICE_SCALE_FACTOR,
   type RecordingOptions,
   recordingOptions,

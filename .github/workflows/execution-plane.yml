@@ -21,9 +21,14 @@ on:
   workflow_dispatch:
     inputs:
       cdp_spike:
-        description: 'Run the #82 CDP capture spike probe instead of the suites'
+        description: 'Run the #82 / #85 capture spike instead of the suites'
         type: boolean
         default: false
+      capture:
+        description: 'Spike: screencast-probe (#82 probe, #85 candidates 0 and 1 raw) or a DEMOFLOW_CAPTURE mode measured on the fixture (#85)'
+        type: choice
+        options: [screencast-probe, video, screenshots, zoomed]
+        default: screencast-probe
 
 permissions:
   contents: read
@@ -132,14 +137,18 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # Spike #82, opt-in: dispatched by hand with `cdp_spike: true`, never on a
-  # pull request or a push. Measures what a CDP screencast delivers at
-  # deviceScaleFactor 2 on each OS (packages/engine/test/capture-spike).
+  # Spikes #82 and #85, opt-in: dispatched by hand with `cdp_spike: true`,
+  # never on a pull request or a push (packages/engine/test/capture-spike).
+  # `capture: screencast-probe` measures what a CDP screencast and CDP
+  # screenshots deliver at deviceScaleFactor 2. A DEMOFLOW_CAPTURE mode records
+  # every fixture scenario at 1× and in that mode, then runs the renderer's
+  # real-run suites (sync mark, #19/#48 offset, #73 layout) on that mode's
+  # source; `video` is the 1× baseline for CI time.
   cdp-spike:
-    name: cdp-spike (${{ matrix.os }})
+    name: cdp-spike ${{ inputs.capture }} (${{ matrix.os }})
     if: ${{ inputs.cdp_spike }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -173,17 +182,56 @@ jobs:
         run: bunx playwright install chromium
 
       - name: Build core
+        if: inputs.capture == 'screencast-probe'
         run: bun run build --filter=@demoflow/core
 
       - name: Probe the screencast
+        if: inputs.capture == 'screencast-probe'
         working-directory: packages/engine
-        run: npx vitest run test/capture-spike
+        run: npx vitest run test/capture-spike/screencast-size.spec.ts
+
+      # The renderer and its dependencies (core, engine) and the fixture.
+      - name: Build for a capture mode
+        if: inputs.capture != 'screencast-probe'
+        run: bun run build --filter=@demoflow/renderer --filter=@demoflow/fixture
+
+      # The engine takes FFmpeg from its caller; here, the renderer's.
+      - name: Resolve FFmpeg
+        if: inputs.capture != 'screencast-probe'
+        working-directory: packages/renderer
+        run: echo "DEMOFLOW_FFMPEG=$(node -p "require('ffmpeg-static')")" >> "$GITHUB_ENV"
+
+      - name: Measure the capture mode
+        if: inputs.capture != 'screencast-probe'
+        working-directory: packages/engine
+        env:
+          DEMOFLOW_CAPTURE_SPIKE: '1'
+          DEMOFLOW_CAPTURE: ${{ inputs.capture }}
+          DEMOFLOW_CDP_SPIKE_OUT: ${{ github.workspace }}/cdp-spike-out
+        run: npx vitest run test/capture-spike/device-pixel.spec.ts
+
+      # Its duration is the CI time compared against the `video` dispatch. A
+      # failure is evidence, not the end: the report is still uploaded.
+      - name: Renderer real-run suites on the mode's source
+        if: inputs.capture != 'screencast-probe'
+        continue-on-error: true
+        working-directory: packages/renderer
+        env:
+          DEMOFLOW_CAPTURE: ${{ inputs.capture }}
+        run: >-
+          npx vitest run
+          test/plan/build.spec.ts test/plan/sync-mark.spec.ts test/ffmpeg/render.spec.ts
+          --reporter=default --reporter=json
+          --outputFile.json=${{ github.workspace }}/cdp-spike-out/renderer-${{ inputs.capture }}-${{ runner.os }}.json
 
       - name: Upload the probe report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: cdp-spike-${{ matrix.os }}
-          path: packages/engine/${{ env.DEMOFLOW_CDP_SPIKE_OUT }}/*.json
+          name: cdp-spike-${{ inputs.capture }}-${{ matrix.os }}
+          path: |
+            packages/engine/${{ env.DEMOFLOW_CDP_SPIKE_OUT }}/*.json
+            ${{ env.DEMOFLOW_CDP_SPIKE_OUT }}/*.json
+            ${{ env.DEMOFLOW_CDP_SPIKE_OUT }}/*.png
           if-no-files-found: error
           retention-days: 14

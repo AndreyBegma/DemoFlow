@@ -1,4 +1,5 @@
 import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
 import {
   deriveRunStatus,
   type Scenario,
@@ -22,8 +23,22 @@ import {
   OriginGuard,
   originNotAllowed,
 } from './execute/readiness.ts';
-import { recordingOptions, toContextOptions } from './execute/recording.ts';
+import {
+  type CaptureMode,
+  captureMode,
+  pageZoom,
+  recordingOptions,
+  toContextOptions,
+  zoomPages,
+} from './execute/recording.ts';
+import {
+  DEFAULT_IN_FLIGHT,
+  type ScreenshotRecorder,
+  type ScreenshotRecorderOptions,
+  startScreenshotRecorder,
+} from './execute/screenshot-recorder.ts';
 import { recordSyncMark, type SyncMark } from './execute/sync-mark.ts';
+import { unzoomEvent } from './execute/zoom.ts';
 
 export interface RunOptions {
   /** Absolute; created when missing. The caller names it after the run id. */
@@ -37,6 +52,8 @@ export interface RunOptions {
   /** Defaults to `true`. */
   headless?: boolean;
   observers?: readonly EngineObserver[];
+  /** Spike #85. Defaults to `DEMOFLOW_CAPTURE`, and to `video` without it. */
+  capture?: CaptureMode;
 }
 
 const ASSERTIONS = new Set(['assertVisible', 'assertText']);
@@ -64,7 +81,16 @@ export async function runScenario(
 
   const startedAt = timestamp();
   const stages = pendingStages();
-  const recording = recordingOptions(scenario, options.runDir);
+  const recording = recordingOptions(
+    scenario,
+    options.runDir,
+    options.capture ?? captureMode(process.env.DEMOFLOW_CAPTURE),
+  );
+  const zoom = pageZoom(recording);
+  const screenshots =
+    recording.capture === 'screenshots'
+      ? screenshotOptions(options.runDir)
+      : undefined;
   const baseUrl = scenario.baseUrl ?? options.baseUrl;
 
   await mkdir(options.runDir, { recursive: true });
@@ -99,14 +125,24 @@ export async function runScenario(
   const browser = await chromium.launch({
     headless: options.headless ?? true,
   });
+  let recorder: ScreenshotRecorder | undefined;
   try {
     await emit('onBrowserLaunched', { browser });
     const context = await browser.newContext(toContextOptions(recording));
+    if (zoom !== 1) await zoomPages(context, zoom);
     const guard = new OriginGuard(options.allowedOrigins);
     const navigation = watchNavigation(context, guard);
 
     stages.recording = { status: 'running', startedAt: timestamp() };
     const page = await context.newPage();
+    if (screenshots !== undefined) {
+      recorder = await startScreenshotRecorder(
+        context,
+        page,
+        recording,
+        screenshots,
+      );
+    }
     const clock = startClock();
     await emit('onPageCreated', { page, recording });
     const syncMark = await recordSyncMark(page, clock);
@@ -127,7 +163,7 @@ export async function runScenario(
       baseUrl,
       guard,
       secrets: readiness.secrets,
-      pointer: viewportCentre(scenario.viewport),
+      pointer: zoomed(viewportCentre(scenario.viewport), zoom),
       observers,
       events,
       navigation,
@@ -152,11 +188,18 @@ export async function runScenario(
     }
 
     // Closing the context finalises the video, also after a failed step.
+    await recorder?.stop();
     await context.close();
     const video = page.video();
     let videoPath: string | undefined;
     try {
-      videoPath = video === null ? undefined : await video.path();
+      if (recorder !== undefined) {
+        videoPath = await recorder.encode(
+          path.join(options.runDir, 'screenshots.webm'),
+        );
+      } else {
+        videoPath = video === null ? undefined : await video.path();
+      }
       stages.recording = finish(
         stages.recording,
         videoPath === undefined ? 'failed' : 'passed',
@@ -168,12 +211,39 @@ export async function runScenario(
       });
     }
 
-    const outcome = conclude(startedAt, stages, events, videoPath, syncMark);
+    // Observers saw the steps' events in the zoomed viewport; the timeline gets CSS pixels.
+    const outcome = conclude(
+      startedAt,
+      stages,
+      events.map((event) => unzoomEvent(event, zoom)),
+      videoPath,
+      syncMark,
+    );
     await emit('onRunFinished', { outcome, video });
     return outcome;
   } finally {
+    await recorder?.stop();
     await browser.close();
   }
+}
+
+/** `DEMOFLOW_FFMPEG` and `DEMOFLOW_CAPTURE_INFLIGHT`, for `DEMOFLOW_CAPTURE=screenshots`. */
+function screenshotOptions(runDir: string): ScreenshotRecorderOptions {
+  const ffmpeg = process.env.DEMOFLOW_FFMPEG;
+  if (ffmpeg === undefined || ffmpeg === '') {
+    throw new Error('DEMOFLOW_CAPTURE=screenshots needs DEMOFLOW_FFMPEG');
+  }
+  const inFlight = Number(
+    process.env.DEMOFLOW_CAPTURE_INFLIGHT ?? DEFAULT_IN_FLIGHT,
+  );
+  if (!Number.isInteger(inFlight) || inFlight < 1) {
+    throw new Error('DEMOFLOW_CAPTURE_INFLIGHT must be a positive integer');
+  }
+  return { ffmpeg, inFlight, framesDir: path.join(runDir, '.frames') };
+}
+
+function zoomed(point: Point, zoom: number): Point {
+  return { x: point.x * zoom, y: point.y * zoom };
 }
 
 interface ExecuteInput {
