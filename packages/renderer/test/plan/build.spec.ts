@@ -19,6 +19,9 @@ import { hasFfmpeg, recordFixtureRun } from './fixture-runs.ts';
 /** The largest luma change between consecutive frames of a still picture. */
 const CODEC_NOISE = 11;
 
+/** Frames above the noise floor that make a stretch moving, not a blip. */
+const MOTION_FRAMES = 3;
+
 /** Per frame, when it is shown and the largest luma change from the one before. */
 async function frameChanges(
   file: string,
@@ -210,10 +213,13 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
           frame.atMs <= segment.sourceEndMs &&
           frame.change > CODEC_NOISE,
       );
+      // A turning spinner changes nearly every frame; one lone frame above the
+      // floor in a stall is a codec refresh (a 21 amid 1.7 s of stall on
+      // Ubuntu CI), not motion.
       expect(
-        moved,
-        `segment ${JSON.stringify(segment)} inside the spinner was compressed although the source moves; source freezes ${JSON.stringify(freezes)}`,
-      ).toEqual([]);
+        moved.length,
+        `segment ${JSON.stringify(segment)} inside the spinner was compressed although the source moves (${JSON.stringify(moved)}); source freezes ${JSON.stringify(freezes)}`,
+      ).toBeLessThan(MOTION_FRAMES);
       console.warn(
         `the source stalls inside the spinner wait (no change over ${JSON.stringify(segment)}; renderer freezes ${JSON.stringify(freezes)}): the screencast delivered no new frames`,
       );
