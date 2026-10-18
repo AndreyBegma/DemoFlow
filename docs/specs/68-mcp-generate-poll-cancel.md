@@ -28,7 +28,7 @@ website are involved (ADR-0008 §1).
 - A hidden `--project <dir>` option on `demoflow run`: the project root is
   taken from it instead of being searched upwards from the scenario file, so a
   scenario staged outside the project can run (Decision 5). *Amended in
-  #PR_NUMBER, orchestrator decision.*
+  #78, orchestrator decision.*
 - An in-memory FIFO queue, one running task at a time; a per-task timeout.
 - Registration instructions in the CLI's `--help` for `mcp`
   (`claude mcp add demoflow -- npx demoflow mcp`).
@@ -60,7 +60,7 @@ All by the owner in the #68 interview (2026-10-18) unless noted.
    file is deleted when the task ends. The run directory keeps the scenario that
    ran as the engine's `scenario.json`, and its `result.json` records
    `scenarioId` `inline/<taskId>.demo.json`. Nothing is written into the
-   repository. *Amended in #PR_NUMBER, orchestrator decision: the original
+   repository. *Amended in #78, orchestrator decision: the original
    `<runDir>/scenario.demo.json` could not work — `demoflow run` finds the
    project upwards from the scenario file, and `--run-id` refuses an existing
    run directory.* Starting the app, `baseUrl` and allowed origins come only
@@ -126,7 +126,7 @@ Error codes (minimum): `project-not-found`, `invalid-project-config`,
       scenario lists zod issue paths; a `file` outside the project is
       `file-not-in-project`.
 - [ ] `demoflow run --project <dir>` with a scenario outside the project runs
-      and records `scenarioId` `inline/<basename>`. *Amended in #PR_NUMBER,
+      and records `scenarioId` `inline/<basename>`. *Amended in #78,
       orchestrator decision.*
 - [ ] `demoflow run --run-id <id>` writes to `<home>/runs/<id>/`; without it,
       behaviour is unchanged (existing CLI tests pass).
