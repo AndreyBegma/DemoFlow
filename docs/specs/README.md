@@ -32,6 +32,7 @@ decisions live in [../adr/](../adr/README.md).
 | [#56](https://github.com/AndreyBegma/DemoFlow/issues/56) | [Container scroll settles (macOS)](56-macos-container-scroll.md) | — |
 | [#40](https://github.com/AndreyBegma/DemoFlow/issues/40) | [Screencast stalls: re-measure, un-quarantine](40-screencast-stalls.md) | — |
 | [#62](https://github.com/AndreyBegma/DemoFlow/issues/62) | [Drift reference on the page clock](62-drift-reference-page-clock.md) | #40 |
+| [#64](https://github.com/AndreyBegma/DemoFlow/issues/64) | [Sync mark hold invariant](64-sync-mark-hold-invariant.md) | — |
 
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.
