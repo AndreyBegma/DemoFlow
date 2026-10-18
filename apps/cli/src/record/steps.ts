@@ -9,6 +9,8 @@ import type {
 export interface RecordedStep {
   step: StepInput;
   warning?: string;
+  /** For a fill: the field it was typed into, as the page identifies it. */
+  field?: string;
 }
 
 /**
@@ -16,29 +18,51 @@ export interface RecordedStep {
  * gesture arrives as many events: typing into one field is one `fill`, a
  * scroll gesture is one `scroll`, a redirect after a navigation is one
  * `navigate`.
+ *
+ * Typing into one field keeps the locator of its first event: a later event
+ * may resolve the same field to another locator (a slow accessible-name read
+ * falls through to the label), and that is still the same gesture.
  */
 export function appendStep(
   steps: readonly RecordedStep[],
   next: RecordedStep,
 ): RecordedStep[] {
   const last = steps.at(-1);
-  if (last !== undefined && folds(last.step, next.step)) {
-    return [...steps.slice(0, -1), next];
+  if (last === undefined || !folds(last, next)) return [...steps, next];
+  if (
+    last.step.action === 'fill' &&
+    next.step.action === 'fill' &&
+    sameField(last, next)
+  ) {
+    return [
+      ...steps.slice(0, -1),
+      { ...last, step: { ...next.step, target: last.step.target } },
+    ];
   }
-  return [...steps, next];
+  return [...steps.slice(0, -1), next];
 }
 
-function folds(last: StepInput, next: StepInput): boolean {
-  if (last.action !== next.action) return false;
-  switch (next.action) {
+function folds(last: RecordedStep, next: RecordedStep): boolean {
+  if (last.step.action !== next.step.action) return false;
+  switch (next.step.action) {
     case 'navigate':
     case 'scroll':
       return true;
     case 'fill':
-      return last.action === 'fill' && sameLocator(last.target, next.target);
+      return (
+        last.step.action === 'fill' &&
+        (sameField(last, next) ||
+          (last.field === undefined &&
+            next.field === undefined &&
+            sameLocator(last.step.target, next.step.target)))
+      );
     default:
       return false;
   }
+}
+
+function sameField(a: RecordedStep, b: RecordedStep): boolean {
+  return a.field !== undefined && a.field === b.field;
 }
 
 export function sameLocator(a: Locator, b: Locator): boolean {

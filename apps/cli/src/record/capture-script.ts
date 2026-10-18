@@ -42,6 +42,8 @@ type CaptureEventBody =
       /** Absent for a secret: the value never leaves the page. */
       value?: string;
       secret: boolean;
+      /** The same for every event of one field in one document. */
+      field: string;
     }
   | { type: 'select'; candidates: Candidates; option: string }
   | { type: 'press'; candidates: Candidates; key: string }
@@ -67,6 +69,18 @@ export const CAPTURE_SCRIPT = `(() => {
   const secrets = new WeakSet();
   const held = new Map();
   let nextId = 0;
+  // A field keeps its id while the document lives; the token keeps ids of
+  // different documents apart.
+  const documentToken = Math.random().toString(36).slice(2);
+  const fields = new WeakMap();
+  let nextField = 0;
+  const fieldOf = (el) => {
+    if (!fields.has(el)) {
+      nextField += 1;
+      fields.set(el, documentToken + ':' + nextField);
+    }
+    return fields.get(el);
+  };
   const send = ({ element, ...event }) => {
     if (element) {
       nextId += 1;
@@ -209,9 +223,10 @@ export const CAPTURE_SCRIPT = `(() => {
     if (!(el instanceof Element) || !isTextField(el)) return;
     if (mode === 'secret-next') secrets.add(el);
     const secret = (el instanceof HTMLInputElement && el.type === 'password') || secrets.has(el);
+    const field = fieldOf(el);
     send(secret
-      ? { type: 'fill', element: el, candidates: candidates(el), secret: true }
-      : { type: 'fill', element: el, candidates: candidates(el), secret: false,
+      ? { type: 'fill', element: el, candidates: candidates(el), secret: true, field }
+      : { type: 'fill', element: el, candidates: candidates(el), secret: false, field,
           value: el.isContentEditable ? el.innerText : el.value });
   }, true);
 
