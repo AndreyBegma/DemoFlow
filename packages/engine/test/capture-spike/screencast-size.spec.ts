@@ -47,6 +47,25 @@ interface ModeReport {
   screenshotFps: number;
   screenshotMaxGapMs: number;
   devicePixelRatio: number;
+  /** #85 candidate 0: the screencast's session sets the device metrics itself first. */
+  screencastWithOverride: {
+    frame: Size;
+    fps: number;
+    maxGapMs: number;
+    devicePixelRatioDuring: number;
+  };
+  /** #85 candidate 1: bare `Page.captureScreenshot` on such a session, 1–4 in flight. */
+  pipelined: PipelinedReport[];
+}
+
+interface PipelinedReport {
+  inFlight: number;
+  frame: Size;
+  replyFps: number;
+  /** Replies that differ from the one before, per second: the page changes every frame. */
+  distinctFps: number;
+  maxDistinctGapMs: number;
+  devicePixelRatioAfter: number;
 }
 
 /** A JPEG's size from its first start-of-frame marker. */
@@ -132,6 +151,64 @@ async function screenshots(
   return { frame, ...rate(times, SAMPLE_MS) };
 }
 
+/**
+ * #85: the metrics Playwright sets on its own session, set on this one. A
+ * screenshot answers in the calling session's metrics (none on a second
+ * session, so CSS-sized); with these it is at device pixels.
+ */
+async function overrideMetrics(cdp: CDPSession): Promise<void> {
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    mobile: false,
+    width: VIEWPORT.width,
+    height: VIEWPORT.height,
+    screenWidth: VIEWPORT.width,
+    screenHeight: VIEWPORT.height,
+    deviceScaleFactor: DEVICE_SCALE_FACTOR,
+    screenOrientation: { angle: 0, type: 'landscapePrimary' },
+  });
+}
+
+async function pipelined(
+  page: Page,
+  cdp: CDPSession,
+  inFlight: number,
+): Promise<PipelinedReport> {
+  const replies: number[] = [];
+  const distinct: number[] = [];
+  let last = '';
+  let frame: Size | undefined;
+  const start = performance.now();
+  const worker = async (): Promise<void> => {
+    while (performance.now() - start < SAMPLE_MS) {
+      const sent = performance.now();
+      const shot = await cdp.send('Page.captureScreenshot', {
+        format: 'jpeg',
+        quality: 90,
+        optimizeForSpeed: true,
+        captureBeyondViewport: false,
+      });
+      const at = (sent + performance.now()) / 2;
+      replies.push(at);
+      frame ??= jpegSize(Buffer.from(shot.data, 'base64'));
+      if (shot.data !== last) {
+        last = shot.data;
+        distinct.push(at);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: inFlight }, worker));
+  if (frame === undefined) throw new Error('no screenshot');
+  distinct.sort((a, b) => a - b);
+  return {
+    inFlight,
+    frame,
+    replyFps: (replies.length * 1000) / SAMPLE_MS,
+    distinctFps: rate(distinct, SAMPLE_MS).fps,
+    maxDistinctGapMs: rate(distinct, SAMPLE_MS).maxGapMs,
+    devicePixelRatioAfter: await page.evaluate(() => window.devicePixelRatio),
+  };
+}
+
 async function probe(mode: string, browser: Browser): Promise<ModeReport> {
   const context = await browser.newContext({
     viewport: VIEWPORT,
@@ -148,6 +225,27 @@ async function probe(mode: string, browser: Browser): Promise<ModeReport> {
       maxHeight: VIEWPORT.height * DEVICE_SCALE_FACTOR,
     });
     const shots = await screenshots(page);
+
+    // #85: a second session that sets the metrics before it casts or shoots.
+    const own = await context.newCDPSession(page);
+    await overrideMetrics(own);
+    const during = page.evaluate(
+      () =>
+        new Promise<number>((resolve) =>
+          setTimeout(() => resolve(window.devicePixelRatio), 1000),
+        ),
+    );
+    const castWithOverride = await screencast(own, {
+      format: 'jpeg',
+      quality: 90,
+      maxWidth: VIEWPORT.width * DEVICE_SCALE_FACTOR,
+      maxHeight: VIEWPORT.height * DEVICE_SCALE_FACTOR,
+    });
+    const devicePixelRatioDuring = await during;
+    const pipelinedReports: PipelinedReport[] = [];
+    for (const inFlight of [1, 2, 3, 4]) {
+      pipelinedReports.push(await pipelined(page, own, inFlight));
+    }
     return {
       mode,
       screencastFrame: cast.frame,
@@ -158,6 +256,13 @@ async function probe(mode: string, browser: Browser): Promise<ModeReport> {
       screenshotFps: shots.fps,
       screenshotMaxGapMs: shots.maxGapMs,
       devicePixelRatio: await page.evaluate(() => window.devicePixelRatio),
+      screencastWithOverride: {
+        frame: castWithOverride.frame,
+        fps: castWithOverride.fps,
+        maxGapMs: castWithOverride.maxGapMs,
+        devicePixelRatioDuring,
+      },
+      pipelined: pipelinedReports,
     };
   } finally {
     await context.close();
@@ -210,6 +315,18 @@ describe.runIf(ENABLED)('CDP screencast at deviceScaleFactor 2 (#82)', () => {
           VIEWPORT.height,
         );
         expect(report.screenshot).toEqual({
+          width: VIEWPORT.width * DEVICE_SCALE_FACTOR,
+          height: VIEWPORT.height * DEVICE_SCALE_FACTOR,
+        });
+        // #85 candidate 0: the screencast's own metrics do not lift the cap.
+        expect(report.screencastWithOverride.devicePixelRatioDuring).toBe(
+          DEVICE_SCALE_FACTOR,
+        );
+        expect(report.screencastWithOverride.frame.width).toBeLessThanOrEqual(
+          VIEWPORT.width,
+        );
+        // ...but they do make a bare screenshot device-sized.
+        expect(report.pipelined[0]?.frame).toEqual({
           width: VIEWPORT.width * DEVICE_SCALE_FACTOR,
           height: VIEWPORT.height * DEVICE_SCALE_FACTOR,
         });

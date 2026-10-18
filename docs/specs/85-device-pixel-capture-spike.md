@@ -7,6 +7,9 @@ Decisions: [ADR-0004](../adr/0004-recording-is-separate-from-rendering.md) §1
 
 Depends on #82
 
+**Outcome: no candidate passes; the source stays 1×.** See the report,
+[85-device-pixel-capture-spike.md](../research/85-device-pixel-capture-spike.md).
+
 ## Summary
 
 #47 showed `recordVideo` cannot upscale; #82 showed a CDP screencast is capped
@@ -15,6 +18,15 @@ at CSS pixels, and that sequential screenshots — at device pixels — reach on
 the two remaining candidates against #82's Decision 1 criteria and ends the
 question either way:
 
+0. **The screencast, on a session that sets its own device metrics** — added
+   by the orchestrator during the spike. A screenshot on a second CDP session
+   answers in that session's metrics, and #82 opened its screencast on a
+   second session. If the session first sends
+   `Emulation.setDeviceMetricsOverride` (the viewport, `deviceScaleFactor: 2`)
+   and frames then come out at 2560×1440, the screencast leads (push-based,
+   timestamped) and goes through the same criteria; candidates 1 and 2 are
+   then measured only as far as the time box allows. Checked first, in the
+   #82 probe, with `devicePixelRatio` read while it runs.
 1. **Pipelined screenshots** — `Page.captureScreenshot` with a device-scale
    clip (a bare call is CSS-sized, report §"bare captureScreenshot"), with
    2–4 requests in flight; distinct frames only count.
