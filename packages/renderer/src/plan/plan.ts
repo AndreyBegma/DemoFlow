@@ -399,10 +399,19 @@ function distance(a: Point, b: Point): number {
 }
 
 /**
- * A blurred box over every masked field, from its event's start until a
- * `navigate` ends, a page scroll takes the box fully out of the viewport, or
- * the video ends. The timeline does not say which click navigated, so a mask
- * outlives such a click: covering too long is safe, too short is a leak.
+ * A blurred box over every masked field while it is on the page.
+ *
+ * A masked event that carries `maskVisibility` gets one span per interval: from
+ * the interval's start (less the lead) to its end, or to the video's end when
+ * the interval is open. Intervals may overlap for one step (a navigation that
+ * leaves the field on screen); both boxes are masked then. Page scrolls that
+ * start inside an interval move its box; the span does not end when the box
+ * leaves the viewport, since the field is still on the page and may scroll back.
+ *
+ * A timeline from before `maskVisibility` has no intervals, so the old rule
+ * stays: the mask runs from the event's start until a `navigate` ends, a page
+ * scroll takes the box fully out of the viewport, or the video ends. It cannot
+ * tell which click navigated, so covering too long is safe, too short a leak.
  */
 function maskSpans(
   events: readonly TimelineEvent[],
@@ -412,7 +421,38 @@ function maskSpans(
 ): MaskSpan[] {
   const spans: MaskSpan[] = [];
   for (const [index, event] of events.entries()) {
-    if (event.masked !== true || event.target === undefined) continue;
+    if (event.masked !== true) continue;
+    if (event.maskVisibility !== undefined) {
+      for (const interval of event.maskVisibility) {
+        const startMs = Math.max(0, out(interval.startMs) - TIMING.maskLeadMs);
+        const endMs =
+          interval.endMs === undefined
+            ? videoEndMs
+            : Math.min(out(interval.endMs), videoEndMs);
+        let box = grow(interval.box, TIMING.maskMarginPx);
+        const keys: MaskSpan['keys'] = [{ atMs: startMs, box }];
+        for (const later of events.slice(index + 1)) {
+          const scroll = later.scroll;
+          if (scroll === undefined || scroll.container !== undefined) continue;
+          if (
+            later.startMs < interval.startMs ||
+            (interval.endMs !== undefined && later.startMs >= interval.endMs)
+          ) {
+            continue;
+          }
+          keys.push({ atMs: Math.min(out(later.startMs), endMs), box });
+          box = {
+            ...box,
+            x: box.x - (scroll.after.x - scroll.before.x),
+            y: box.y - (scroll.after.y - scroll.before.y),
+          };
+          keys.push({ atMs: Math.min(out(later.endMs), endMs), box });
+        }
+        spans.push({ startMs, endMs, keys });
+      }
+      continue;
+    }
+    if (event.target === undefined) continue;
     let box = grow(event.target.box, TIMING.maskMarginPx);
     const startMs = Math.max(0, out(event.startMs) - TIMING.maskLeadMs);
     const keys: MaskSpan['keys'] = [{ atMs: startMs, box }];
