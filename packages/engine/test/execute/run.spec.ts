@@ -425,6 +425,66 @@ describe('pointer, scroll and screenshot actions', () => {
     expect(top.scroll?.after.y).toBe(0);
   });
 
+  it('records the container offset the scroll settled at, not one read before it moved (#56)', async () => {
+    // What the container really shows once each following `wait` ends.
+    let page: Page | undefined;
+    const settled = new Map<number, { y: number; max: number }>();
+    const outcome = await runScenario(
+      scenario([
+        { action: 'navigate', path: '/long' },
+        { action: 'scroll', to: 'bottom', within: { testId: 'log-panel' } },
+        { action: 'wait', ms: 1_000 },
+        { action: 'scroll', to: 'top', within: { testId: 'log-panel' } },
+        { action: 'wait', ms: 1_000 },
+      ]),
+      await options({
+        observers: [
+          {
+            onPageCreated: (event) => {
+              page = event.page;
+            },
+            onStepFinished: async ({ stepIndex, step }) => {
+              if (step.action !== 'wait' || page === undefined) return;
+              const panel = page.getByTestId('log-panel');
+              settled.set(
+                stepIndex,
+                await panel.evaluate((element) => ({
+                  y: element.scrollTop,
+                  max: element.scrollHeight - element.clientHeight,
+                })),
+              );
+            },
+          },
+        ],
+      }),
+    );
+    expect(outcome.stages.execution.status).toBe('passed');
+    const [, down, , up] = outcome.events;
+    const atBottom = settled.get(2);
+    const atTop = settled.get(4);
+    expect(atBottom?.max).toBeGreaterThan(0);
+    expect(down.scroll?.after.y).toBe(atBottom?.y);
+    expect(down.scroll?.after.y).toBe(atBottom?.max);
+    expect(up.scroll?.before.y).toBe(atBottom?.y);
+    expect(up.scroll?.after.y).toBe(atTop?.y);
+    expect(up.scroll?.after.y).toBe(0);
+  });
+
+  it('settles at once when the container is already where the scroll goes', async () => {
+    const outcome = await runScenario(
+      scenario([
+        { action: 'navigate', path: '/long' },
+        { action: 'scroll', to: 'top', within: { testId: 'log-panel' } },
+      ]),
+      await options(),
+    );
+    expect(outcome.stages.execution.status).toBe('passed');
+    const step = outcome.events[1];
+    expect(step.scroll?.before).toEqual({ x: 0, y: 0 });
+    expect(step.scroll?.after).toEqual({ x: 0, y: 0 });
+    expect(step.endMs - step.startMs).toBeLessThan(2_000);
+  });
+
   it('hands a screenshot to the observer and records its path', async () => {
     let png: Buffer | undefined;
     const runOptions = await options({

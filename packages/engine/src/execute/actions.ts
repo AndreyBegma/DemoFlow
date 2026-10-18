@@ -19,9 +19,8 @@ import {
 /** Spec 3: the recording shows typing, one character every 35 ms. */
 export const TYPING_DELAY_MS = 35;
 
-/** How long a scroll position must hold still before a smooth scroll counts as done. */
-const SCROLL_SETTLE_MS = 150;
-const SCROLL_POLL_MS = 50;
+/** A scroll waits on animation frames; this bounds one wait if the page stops producing them. */
+const SCROLL_FRAME_FALLBACK_MS = 100;
 /** A target that moves while the pointer glides towards it is re-aimed at most this often. */
 const MAX_REAIMS = 3;
 /** How long after a click a navigation it caused may take to start. */
@@ -287,61 +286,128 @@ async function scroll(
   const container =
     step.within === undefined ? undefined : locate(ctx, step.within);
   await container?.waitFor({ state: 'visible', timeout: step.timeoutMs });
-  const read = (): Promise<Point> =>
-    container === undefined
-      ? ctx.page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }))
-      : container.evaluate((element) => ({
-          x: element.scrollLeft,
-          y: element.scrollTop,
-        }));
-  const before = await read();
-  if (step.target !== undefined) {
-    const target = locate(ctx, step.target);
-    await target.waitFor({ state: 'attached', timeout: step.timeoutMs });
-    await target.evaluate((element) =>
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' }),
-    );
-  } else if (container === undefined) {
-    await ctx.page.evaluate((edge) => {
-      const top = edge === 'top' ? 0 : document.documentElement.scrollHeight;
-      window.scrollTo({ top, behavior: 'smooth' });
-    }, step.to);
-  } else {
-    await container.evaluate((element, edge) => {
-      const top = edge === 'top' ? 0 : element.scrollHeight;
-      element.scrollTo({ top, behavior: 'smooth' });
-    }, step.to);
+  const target =
+    step.target === undefined ? undefined : locate(ctx, step.target);
+  await target?.waitFor({ state: 'attached', timeout: step.timeoutMs });
+  const handles = await Promise.all([
+    container?.elementHandle({ timeout: step.timeoutMs }) ?? null,
+    target?.elementHandle({ timeout: step.timeoutMs }) ?? null,
+  ]);
+  try {
+    const [scroller, element] = handles;
+    const { before, after } = await ctx.page.evaluate(scrollAndSettle, {
+      scroller,
+      target: element,
+      edge: step.to ?? null,
+      timeoutMs: step.timeoutMs,
+      fallbackMs: SCROLL_FRAME_FALLBACK_MS,
+    });
+    const containerBox =
+      container === undefined ? null : await measure(container);
+    return {
+      scroll:
+        containerBox === null
+          ? { before, after }
+          : { before, after, container: containerBox },
+    };
+  } finally {
+    await Promise.all(handles.map((handle) => handle?.dispose()));
   }
-  const after = await settle(read, step.timeoutMs);
-  const containerBox =
-    container === undefined ? null : await measure(container);
-  return {
-    scroll:
-      containerBox === null
-        ? { before, after }
-        : { before, after, container: containerBox },
-  };
 }
 
-/** Waits until a smooth scroll stops moving, and returns where it stopped. */
-async function settle(
-  read: () => Promise<Point>,
-  timeoutMs: number,
-): Promise<Point> {
-  const deadline = Date.now() + timeoutMs;
-  let last = await read();
-  let stillSince = Date.now();
-  while (Date.now() < deadline) {
-    await sleep(SCROLL_POLL_MS);
-    const now = await read();
-    if (now.x !== last.x || now.y !== last.y) {
-      last = now;
-      stillSince = Date.now();
-    } else if (Date.now() - stillSince >= SCROLL_SETTLE_MS) {
-      break;
-    }
+interface ScrollRequest {
+  /** The container to scroll; `null` scrolls the page. */
+  scroller: Element | null;
+  /** The element to bring to the centre; `null` scrolls to `edge`. */
+  target: Element | null;
+  edge: 'top' | 'bottom' | null;
+  timeoutMs: number;
+  fallbackMs: number;
+}
+
+/**
+ * Runs in the page: starts a smooth scroll and waits for it to settle (#56,
+ * spec Decision 2) — the offset unchanged across two consecutive animation
+ * frames, and then: a scroller that moved has fired its `scrollend`, one that
+ * did not sits at its destination. Stillness alone is not enough: a smooth
+ * scroll can wait out several frames before its first step, and stall mid-way.
+ * An end only counts while the scroller is still where it fired, so a late
+ * `scrollend` from an earlier scroll cannot end this one.
+ */
+async function scrollAndSettle({
+  scroller,
+  target,
+  edge,
+  timeoutMs,
+  fallbackMs,
+}: ScrollRequest): Promise<{ before: Point; after: Point }> {
+  const root = document.scrollingElement ?? document.documentElement;
+  const read = (): Point =>
+    scroller === null
+      ? { x: window.scrollX, y: window.scrollY }
+      : { x: scroller.scrollLeft, y: scroller.scrollTop };
+  const before = read();
+  const box = scroller ?? root;
+  const maxX = box.scrollWidth - box.clientWidth;
+  const maxY = box.scrollHeight - box.clientHeight;
+  const clamp = (value: number, max: number): number =>
+    Math.min(Math.max(value, 0), Math.max(max, 0));
+
+  let destination: Point;
+  if (target === null) {
+    destination = { x: before.x, y: edge === 'top' ? 0 : maxY };
+  } else {
+    // Where `scrollIntoView({ block: 'center', inline: 'nearest' })` lands.
+    const rect = target.getBoundingClientRect();
+    const frame = scroller?.getBoundingClientRect();
+    const left = frame === undefined ? 0 : frame.left + box.clientLeft;
+    const top = frame === undefined ? 0 : frame.top + box.clientTop;
+    const width = scroller === null ? window.innerWidth : box.clientWidth;
+    const height = scroller === null ? window.innerHeight : box.clientHeight;
+    let dx = 0;
+    if (rect.left < left) dx = rect.left - left;
+    else if (rect.right > left + width) dx = rect.right - (left + width);
+    destination = {
+      x: clamp(before.x + dx, maxX),
+      y: clamp(before.y + rect.top - top + rect.height / 2 - height / 2, maxY),
+    };
   }
-  return last;
+  const reached = (at: Point): boolean =>
+    Math.abs(at.x - destination.x) <= 1 && Math.abs(at.y - destination.y) <= 1;
+
+  // Where the scroller was when it last fired `scrollend`.
+  let endedAt: Point | undefined;
+  const onScrollEnd = (): void => {
+    endedAt = read();
+  };
+  const events = scroller ?? document;
+  events.addEventListener('scrollend', onScrollEnd);
+  if (target !== null) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } else {
+    (scroller ?? window).scrollTo({ top: destination.y, behavior: 'smooth' });
+  }
+
+  // A page that stops producing frames still ends the wait at the deadline.
+  const nextFrame = (): Promise<void> =>
+    new Promise((resolve) => {
+      requestAnimationFrame(() => resolve());
+      setTimeout(resolve, fallbackMs);
+    });
+  const deadline = performance.now() + timeoutMs;
+  let last = read();
+  while (performance.now() < deadline) {
+    await nextFrame();
+    const now = read();
+    const still = now.x === last.x && now.y === last.y;
+    const moved = now.x !== before.x || now.y !== before.y;
+    // An end the scroller has moved on from was not this scroll's end.
+    const ended = endedAt?.x === now.x && endedAt.y === now.y;
+    last = now;
+    if (still && (moved ? ended : reached(now))) break;
+  }
+  events.removeEventListener('scrollend', onScrollEnd);
+  return { before, after: last };
 }
 
 async function assertText(
