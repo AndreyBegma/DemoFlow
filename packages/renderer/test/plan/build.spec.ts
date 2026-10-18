@@ -1,18 +1,23 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { RunResultSchema } from '@demoflow/core';
+import type { EngineObserver } from '@demoflow/engine';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   buildRenderPlan,
+  DEFAULT_OFFSET_MS,
   frameAt,
   frameCount,
   parseProbe,
   probeVideo,
   type RenderPlan,
+  type Rgb,
   recordRender,
   renderPath,
   runFfmpeg,
+  runFfmpegRaw,
 } from '../../src/index.ts';
 import { hasFfmpeg, recordFixtureRun } from './fixture-runs.ts';
 
@@ -45,6 +50,62 @@ async function frameChanges(
     atMs: Number(match[1]) * 1000,
     change: Number(match[2]),
   }));
+}
+
+/** Playwright records at a fixed 25 fps; the drift method decodes at it. */
+const DRIFT_FRAME_MS = 40;
+
+/**
+ * The page side of the clock-drift method, on the sync mark: the page reports
+ * the instant it removed the mark, on a clock started where the engine's is.
+ */
+function clearProbe(): {
+  observer: EngineObserver;
+  clearedAtMs: () => number;
+} {
+  let clearedAtMs = Number.NaN;
+  return {
+    observer: {
+      async onPageCreated({ page }) {
+        const zero = performance.now();
+        await page.exposeFunction('__demoflowCleared', () => {
+          if (Number.isNaN(clearedAtMs)) clearedAtMs = performance.now() - zero;
+        });
+        // The mark is the only child removed from the blank page.
+        await page.evaluate(`new MutationObserver((records) => {
+          if (records.some((record) => record.removedNodes.length > 0)) {
+            window.__demoflowCleared();
+          }
+        }).observe(document.documentElement, { childList: true })`);
+      },
+    },
+    clearedAtMs: () => clearedAtMs,
+  };
+}
+
+/** clock-drift.spec.ts's decode: 4×4 RGB frames at 25 fps; the top-left pixel of each. */
+async function driftFrames(file: string): Promise<Rgb[]> {
+  const { stdout } = await runFfmpegRaw([
+    '-v',
+    'error',
+    '-t',
+    '3',
+    '-i',
+    file,
+    '-vf',
+    'fps=25,scale=4:4',
+    '-f',
+    'rawvideo',
+    '-pix_fmt',
+    'rgb24',
+    '-',
+  ]);
+  const size = 4 * 4 * 3;
+  const out: Rgb[] = [];
+  for (let at = 0; at + size <= stdout.length; at += size) {
+    out.push([stdout[at], stdout[at + 1], stdout[at + 2]]);
+  }
+  return out;
 }
 
 if (!hasFfmpeg) {
@@ -108,11 +169,14 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
   let failing: string;
   let tour: string;
   let customersPlan: RenderPlan;
+  let customersClearedAtMs: number;
   let failingPlan: RenderPlan;
 
   beforeAll(async () => {
     parent = await mkdtemp(path.join(tmpdir(), 'demoflow-plan-'));
-    customers = await recordFixtureRun('customers', parent);
+    const probe = clearProbe();
+    customers = await recordFixtureRun('customers', parent, [probe.observer]);
+    customersClearedAtMs = probe.clearedAtMs();
     failing = await recordFixtureRun('failing', parent);
     tour = await recordFixtureRun('tour', parent);
     customersPlan = await buildRenderPlan(customers);
@@ -319,5 +383,68 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     // The verification failure still decides the run.
     expect(result.status).toBe('failed');
     await writeFile(file, original);
+  });
+
+  it('measures the offset within one frame of the clock-drift method (#19)', async () => {
+    // The engine sometimes records no frame while the mark is up (#48): then
+    // one more customers run, and the test fails if that one lacks it too.
+    let runDir = customers;
+    let plan = customersPlan;
+    let clearedAtMs = customersClearedAtMs;
+    if (!plan.offsetMeasured) {
+      console.info(
+        'sync mark not in the shared customers recording: recording once more',
+      );
+      const probe = clearProbe();
+      runDir = await recordFixtureRun('customers', path.join(parent, 'again'), [
+        probe.observer,
+      ]);
+      plan = await buildRenderPlan(runDir);
+      clearedAtMs = probe.clearedAtMs();
+    }
+    expect(plan.offsetMeasured, 'the sync mark was not found twice').toBe(true);
+    expect(plan.maskLeadMs).toBe(40);
+
+    // clock-drift.spec.ts: the first frame showing the change, less the
+    // instant the page reported it, both decoded and timed independently.
+    const decoded = await driftFrames(path.join(runDir, plan.source.file));
+    const isMark = (pixel: Rgb): boolean =>
+      pixel[0] > 200 && pixel[1] < 100 && pixel[2] > 200;
+    const markAt = decoded.findIndex(isMark);
+    const clearAt = decoded.findIndex(
+      (pixel, i) => i > markAt && !isMark(pixel),
+    );
+    expect(markAt, 'no mark frame in the video').toBeGreaterThanOrEqual(0);
+    expect(clearAt).toBeGreaterThan(markAt);
+    expect(clearedAtMs, 'the page never reported the clear').toBeGreaterThan(0);
+    const driftOffsetMs = clearAt * DRIFT_FRAME_MS - clearedAtMs;
+    console.info(
+      `sync offset: renderer ${plan.offsetMs.toFixed(1)} ms, drift method ${driftOffsetMs.toFixed(1)} ms (${runDir === customers ? 'shared recording' : 're-recorded'})`,
+    );
+    expect(Math.abs(plan.offsetMs - driftOffsetMs)).toBeLessThanOrEqual(
+      DRIFT_FRAME_MS,
+    );
+
+    // The output starts after the mark: its first source frame does not show it.
+    const first = frameAt(plan, 0).sourceMs ?? 0;
+    expect(first).toBeGreaterThan(0);
+    expect(isMark(decoded[Math.round(first / DRIFT_FRAME_MS)])).toBe(false);
+  });
+
+  it('keeps the defaults when the mark is not in the video', async () => {
+    // The same recording, told the mark was green: nothing matches.
+    const runDir = path.join(parent, 'no-mark');
+    await cp(customers, runDir, { recursive: true });
+    const file = path.join(runDir, 'timeline.json');
+    const timeline = JSON.parse(await readFile(file, 'utf8')) as {
+      syncMark: { colour: string };
+    };
+    timeline.syncMark.colour = '#00ff00';
+    await writeFile(file, JSON.stringify(timeline));
+    const plan = await buildRenderPlan(runDir);
+    expect(plan.offsetMeasured).toBe(false);
+    expect(plan.offsetMs).toBe(DEFAULT_OFFSET_MS);
+    expect(plan.maskLeadMs).toBe(200);
+    expect(plan.timeMap[0].sourceStartMs).toBe(0);
   });
 });
