@@ -27,53 +27,11 @@ export function easeInOut(t: number): number {
 export function frameAt(plan: RenderPlan, frame: number): FrameState {
   const atMs = (frame * 1000) / plan.output.fps;
   const card = plan.failure?.endCard;
-  const onCard = card !== undefined && atMs >= card.startMs;
-  const { crop, content, scale, toOutput, stage } = geometryAt(
-    plan,
-    onCard ? card.startMs : atMs,
-  );
-  const screen: Box = {
-    x: 0,
-    y: 0,
-    width: plan.output.width,
-    height: plan.output.height,
-  };
   const watermark = plan.failure !== undefined;
 
-  // Cards are inserted time (spec 108): no page, no overlay, the camera at zoom 1.
-  const titleCard = onCard
-    ? undefined
-    : plan.cards.find(
-        (entry) =>
-          atMs >= entry.startMs && atMs < entry.startMs + entry.durationMs,
-      );
-  if (titleCard !== undefined) {
-    // Before every camera key, so at zoom 1: the window as the stage shows it.
-    const { content, scale } = geometryAt(plan, -1);
-    return {
-      sourceMs: null,
-      crop: {
-        x: 0,
-        y: 0,
-        width: plan.source.width,
-        height: plan.source.height,
-      },
-      content,
-      scale,
-      rings: [],
-      masks: [],
-      watermark,
-      card: {
-        title: titleCard.title,
-        ...(titleCard.subtitle === undefined
-          ? {}
-          : { subtitle: titleCard.subtitle }),
-        background: plan.cardBackground,
-      },
-    };
-  }
-
-  if (onCard) {
+  // No fade into the failure card (spec 114, Decision 4).
+  if (card !== undefined && atMs >= card.startMs) {
+    const { crop, content, scale, stage } = geometryAt(plan, card.startMs);
     return {
       sourceMs: null,
       crop,
@@ -87,16 +45,120 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
     };
   }
 
-  const cursor = cursorAt(plan.cursor, atMs);
-  const rings = plan.clicks.flatMap((ring) => {
-    const progress = (atMs - ring.atMs) / ring.durationMs;
-    return progress >= 0 && progress < 1
-      ? [{ point: toOutput(ring.point), progress }]
-      : [];
-  });
-  const masks = plan.masks.flatMap((mask) => {
-    if (atMs < mask.startMs || atMs >= mask.endMs) return [];
-    const box = maskBoxAt(mask, atMs);
+  // Cards are inserted time (spec 108): no page, no overlay, the camera at zoom 1.
+  const titleCard = plan.cards.find(
+    (entry) => atMs >= entry.startMs && atMs < entry.startMs + entry.durationMs,
+  );
+  if (titleCard !== undefined) {
+    const state: FrameState = {
+      ...backgroundAt(plan),
+      card: {
+        title: titleCard.title,
+        ...(titleCard.subtitle === undefined
+          ? {}
+          : { subtitle: titleCard.subtitle }),
+        background: plan.cardBackground,
+      },
+    };
+    const fade = cardFade(plan, titleCard, atMs);
+    return fade === undefined ? state : { ...state, fade };
+  }
+
+  return pageAt(plan, atMs);
+}
+
+/** Nothing of the page: the background, at zoom 1 — the window as the stage shows it. */
+function backgroundAt(plan: RenderPlan): FrameState {
+  // Before every camera key, so at zoom 1.
+  const { content, scale } = geometryAt(plan, -1);
+  return {
+    sourceMs: null,
+    crop: { x: 0, y: 0, width: plan.source.width, height: plan.source.height },
+    content,
+    scale,
+    rings: [],
+    masks: [],
+    watermark: plan.failure !== undefined,
+  };
+}
+
+/**
+ * A card dissolves with the page inside its own time (spec 114, Decision 2):
+ * a scene or outro card in from the page frame just before it, an intro or
+ * scene card out into the page frame just after it. The page frame is the
+ * page at the cut, everything on it as it was there — or a held frame, when
+ * a page load holds across the cut. The card is always the frame on top, so
+ * a page frame that is itself mid-dissolve keeps its own fade.
+ */
+function cardFade(
+  plan: RenderPlan,
+  card: RenderPlan['cards'][number],
+  atMs: number,
+): FrameState['fade'] {
+  const fadeMs = plan.transitions?.durationMs;
+  if (fadeMs === undefined || fadeMs <= 0) return undefined;
+  const endMs = card.startMs + card.durationMs;
+  if (card.kind !== 'intro' && atMs < card.startMs + fadeMs) {
+    return {
+      from: pageAt(plan, card.startMs - CUT_EPSILON_MS),
+      progress: (atMs - card.startMs) / fadeMs,
+    };
+  }
+  if (card.kind !== 'outro' && atMs >= endMs - fadeMs) {
+    return {
+      from: pageAt(plan, endMs),
+      progress: (endMs - atMs) / fadeMs,
+    };
+  }
+  return undefined;
+}
+
+/** The page frame just before a cut: an instant there still belongs to the page. */
+const CUT_EPSILON_MS = 1e-6;
+
+/**
+ * The page at `atMs`: the live page, or — while a page load holds (spec 114)
+ * — the held frame, dissolving into the live page once it is ready.
+ */
+function pageAt(plan: RenderPlan, atMs: number): FrameState {
+  const live = liveAt(plan, atMs);
+  const hold = plan.transitions?.holds.find(
+    (entry) => atMs >= entry.startMs && atMs < entry.fadeEndMs,
+  );
+  if (hold === undefined) return live;
+  const held: FrameState =
+    hold.sourceMs === undefined
+      ? { ...backgroundAt(plan), backdrop: plan.cardBackground }
+      : {
+          ...live,
+          sourceMs: hold.sourceMs,
+          // The held page's masks, where the camera now shows that page.
+          masks: maskBoxes(hold.masks, geometryAt(plan, atMs), plan.output),
+        };
+  if (atMs < hold.endMs || hold.fadeMs <= 0) return held;
+  const progress = pageMsBetween(plan, hold.endMs, atMs) / hold.fadeMs;
+  return { ...live, fade: { from: held, progress: Math.min(1, progress) } };
+}
+
+/** Output ms from `fromMs` to `toMs`, less the cards between: page time. */
+function pageMsBetween(plan: RenderPlan, fromMs: number, toMs: number): number {
+  let ms = toMs - fromMs;
+  for (const card of plan.cards) {
+    const start = Math.max(fromMs, card.startMs);
+    const end = Math.min(toMs, card.startMs + card.durationMs);
+    if (end > start) ms -= end - start;
+  }
+  return ms;
+}
+
+/** Viewport boxes on the frame: through the camera, clipped to the window and the output frame. */
+function maskBoxes(
+  boxes: readonly Box[],
+  { toOutput, scale, content }: Geometry,
+  output: { width: number; height: number },
+): Box[] {
+  const screen: Box = { x: 0, y: 0, width: output.width, height: output.height };
+  return boxes.flatMap((box) => {
     const corner = toOutput(box);
     const inWindow = intersect(
       {
@@ -110,6 +172,27 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
     const clipped = inWindow && intersect(inWindow, screen);
     return clipped === undefined ? [] : [clipped];
   });
+}
+
+/** The live page at `atMs`, with everything drawn over it. */
+function liveAt(plan: RenderPlan, atMs: number): FrameState {
+  const geometry = geometryAt(plan, atMs);
+  const { crop, content, scale, toOutput, stage } = geometry;
+  const watermark = plan.failure !== undefined;
+  const cursor = cursorAt(plan.cursor, atMs);
+  const rings = plan.clicks.flatMap((ring) => {
+    const progress = (atMs - ring.atMs) / ring.durationMs;
+    return progress >= 0 && progress < 1
+      ? [{ point: toOutput(ring.point), progress }]
+      : [];
+  });
+  const masks = maskBoxes(
+    plan.masks.flatMap((mask) =>
+      atMs < mask.startMs || atMs >= mask.endMs ? [] : [maskBoxAt(mask, atMs)],
+    ),
+    geometry,
+    plan.output,
+  );
   const caption = plan.captions.find(
     (entry) => atMs >= entry.startMs && atMs < entry.endMs,
   )?.text;

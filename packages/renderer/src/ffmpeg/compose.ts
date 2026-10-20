@@ -188,8 +188,8 @@ export function createCompositor(
 
   return {
     compose(target, state, source) {
-      if (state.card !== undefined) {
-        const { title, subtitle, background } = state.card;
+      const background = state.card?.background ?? state.backdrop;
+      if (background !== undefined) {
         const key = `${background.from}${background.to}${background.angle}`;
         let backdrop = backdrops.get(key);
         if (backdrop === undefined) {
@@ -203,11 +203,18 @@ export function createCompositor(
           backdrops.set(key, backdrop);
         }
         target.data.set(backdrop.data);
-        const laid = cached(titleCards, `${title}\n\n${subtitle ?? ''}`, () =>
-          layCard(title, subtitle, output),
-        );
-        const { text, textOnLight } = LOOK.card;
-        paintMask(target, laid.mask, isLight(background) ? textOnLight : text);
+        if (state.card !== undefined) {
+          const { title, subtitle } = state.card;
+          const laid = cached(titleCards, `${title}\n\n${subtitle ?? ''}`, () =>
+            layCard(title, subtitle, output),
+          );
+          const { text, textOnLight } = LOOK.card;
+          paintMask(
+            target,
+            laid.mask,
+            isLight(background) ? textOnLight : text,
+          );
+        }
       } else if (state.endCard !== undefined) {
         fill(target, LOOK.endCard.background);
         const card = cached(cards, state.endCard, (text) =>

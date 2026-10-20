@@ -20,6 +20,7 @@ import {
   insertCards,
   toOutputMs,
 } from './time-map.ts';
+import { planHolds, shiftHolds } from './transitions.ts';
 import type {
   CameraKeyframe,
   Caption,
@@ -33,6 +34,7 @@ import type {
   Point,
   RenderPlan,
   RenderPlanOptions,
+  TransitionsSpec,
   VideoProbe,
 } from './types.ts';
 
@@ -235,20 +237,41 @@ export function planRender(
       : { description: options.scenario.description }),
     failed: failure !== undefined,
   });
+  const masks = maskSpans(events, out, viewport, pageEndMs, {
+    leadMs: maskLeadMs,
+    trailMs: maskTrailMs,
+  });
   const overlays = shiftOverlays(
     {
       cursor: cursorMoves(events, out),
       clicks: clickRings(events, out),
       camera: cameraKeyframes(events, out, viewport, maxZoom),
-      masks: maskSpans(events, out, viewport, pageEndMs, {
-        leadMs: maskLeadMs,
-        trailMs: maskTrailMs,
-      }),
+      masks,
       captions: captions(events, out, pageEndMs),
       keys: keyBadges(events, out, pageEndMs, viewport),
     },
     cards,
   );
+  const transitions: TransitionsSpec | undefined =
+    options.transitions?.enabled === true
+      ? {
+          durationMs: options.transitions.durationMs,
+          holds: shiftHolds(
+            planHolds({
+              navigations: timeline.navigations ?? [],
+              events,
+              out,
+              toSource,
+              sourceStartMs: pageMap[0]?.sourceStartMs ?? 0,
+              pageEndMs,
+              masks,
+              sourceFrameMs: 1000 / source.fps,
+              durationMs: options.transitions.durationMs,
+            }),
+            cards,
+          ),
+        }
+      : undefined;
   const timeMap = insertCards(pageMap, cards);
   const videoEndMs = timeMap.at(-1)?.outputEndMs ?? 0;
 
@@ -288,6 +311,7 @@ export function planRender(
       frame?.background ??
       resolveBackground(options.background ?? { preset: 'ocean' }),
     ...overlays,
+    ...(transitions === undefined ? {} : { transitions }),
     ...(failureSpec === undefined ? {} : { failure: failureSpec }),
   };
 }

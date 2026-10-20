@@ -168,6 +168,7 @@ export async function runCommand(
           frame: config.render.frame,
           background: config.render.background,
           cards: config.render.cards,
+          transitions: config.render.transitions,
           scenario:
             scenario.description === undefined
               ? {}
