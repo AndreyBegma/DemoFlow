@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
+import { t } from '@/i18n';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DemoFlow',
-  description: 'Verified, polished demo videos of the features you ship.',
+  title: t('meta.title'),
+  description: t('app.tagline'),
 };
 
 export default function RootLayout({
