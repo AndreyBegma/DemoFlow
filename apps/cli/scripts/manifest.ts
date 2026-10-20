@@ -19,6 +19,13 @@ export const WORKSPACE_SCOPE = '@demoflow/';
 /** The bundle, relative to the package root: two levels deep (see stage.ts). */
 export const BIN = 'dist/bin/main.js';
 
+/**
+ * The name the package is published under. The workspace package is
+ * `@demoflow/cli`: were it also `demoflow`, `npx demoflow` inside the
+ * repository would resolve to the private workspace package (#105).
+ */
+export const PUBLISHED_NAME = 'demoflow';
+
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 /**
@@ -59,7 +66,7 @@ export function runtimeDependencies(
       found.set(name, { version, from });
     }
   };
-  visit(cli, cli.name ?? 'demoflow');
+  visit(cli, cli.name ?? PUBLISHED_NAME);
 
   return Object.fromEntries(
     [...found.entries()]
@@ -77,7 +84,7 @@ export function publishManifest(
     throw new Error('the CLI manifest has no name or version');
   }
   return {
-    name: cli.name,
+    name: PUBLISHED_NAME,
     version: cli.version,
     description: cli.description,
     keywords: cli.keywords,

@@ -72,7 +72,7 @@ jobs:
       # Named explicitly: the CLI does not depend on the fixture, and the
       # execution plane must build without apps/api, apps/web or Prisma.
       - name: Build the execution plane and the fixture
-        run: bun run build --filter=demoflow --filter=@demoflow/fixture
+        run: bun run build --filter=@demoflow/cli --filter=@demoflow/fixture
 
       - name: Test
         run: >-
@@ -80,7 +80,7 @@ jobs:
           --filter=@demoflow/core
           --filter=@demoflow/engine
           --filter=@demoflow/renderer
-          --filter=demoflow
+          --filter=@demoflow/cli
 
       - name: Start the fixture preview
         run: node .github/scripts/serve-fixture.mjs start

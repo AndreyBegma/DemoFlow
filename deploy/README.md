@@ -86,7 +86,7 @@ scenario, `runs/<runId>/render/ffmpeg.mp4` and `runs/<runId>/result.json`.
   workflow installs Chromium's system libraries first, never the browser. Ubuntu
   also runs the release scripts' tests (`bun run test:release`).
 
-Locally: `bun run build --filter=demoflow`, then
+Locally: `bun run build --filter=@demoflow/cli`, then
 `node apps/cli/scripts/smoke.mjs` (add `--browsers` with the fixture preview up:
 `node .github/scripts/serve-fixture.mjs start`).
 
