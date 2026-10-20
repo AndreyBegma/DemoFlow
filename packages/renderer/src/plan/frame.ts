@@ -157,7 +157,12 @@ function maskBoxes(
   { toOutput, scale, content }: Geometry,
   output: { width: number; height: number },
 ): Box[] {
-  const screen: Box = { x: 0, y: 0, width: output.width, height: output.height };
+  const screen: Box = {
+    x: 0,
+    y: 0,
+    width: output.width,
+    height: output.height,
+  };
   return boxes.flatMap((box) => {
     const corner = toOutput(box);
     const inWindow = intersect(
