@@ -134,6 +134,27 @@ export function wrapText(
   return lines;
 }
 
+/**
+ * `text` wrapped to at most `maxLines` of `maxWidth`; what does not fit is
+ * cut and the last line ends in an ellipsis that fits too (spec 108).
+ */
+export function clampLines(
+  text: string,
+  style: TextStyle,
+  maxWidth: number,
+  maxLines: number,
+): string[] {
+  const lines = wrapText(text, style, maxWidth);
+  if (lines.length <= maxLines) return lines;
+  const kept = lines.slice(0, maxLines);
+  let last = kept[maxLines - 1];
+  while (last !== '' && measureText(`${last}…`, style) > maxWidth) {
+    last = [...last].slice(0, -1).join('');
+  }
+  kept[maxLines - 1] = `${last.trimEnd()}…`;
+  return kept;
+}
+
 /** The distance from one baseline to the next. */
 export function lineHeight(style: TextStyle): number {
   return style.fontPx * 1.25;

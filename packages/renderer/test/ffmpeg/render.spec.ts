@@ -1,7 +1,11 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { RunResultSchema, type TimelineEvent } from '@demoflow/core';
+import {
+  CardsConfigSchema,
+  RunResultSchema,
+  type TimelineEvent,
+} from '@demoflow/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LOOK, renderStage } from '../../src/ffmpeg/compose.ts';
 import { wrapText } from '../../src/ffmpeg/font.ts';
@@ -248,9 +252,97 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
     });
   }
 
+  it('renders the cards of a real run: intro, a scene card, the outro (customers)', async () => {
+    const runDir = await recordFixtureRun(
+      'customers',
+      path.join(parent, 'cards'),
+    );
+    const plain = await buildRenderPlan(runDir, {
+      cards: CardsConfigSchema.parse({
+        intro: { enabled: false },
+        scenes: { enabled: false },
+      }),
+    });
+    const plan = await buildRenderPlan(runDir, {
+      cards: CardsConfigSchema.parse({
+        outro: { title: 'Acme', cta: 'acme.dev/try' },
+      }),
+      scenario: { description: 'Find a customer and open their record' },
+    });
+    expect(plan.cards.map((card) => card.kind)).toEqual([
+      'intro',
+      'scene',
+      'outro',
+    ]);
+    expect(plan.durationMs).toBeCloseTo(plain.durationMs + 6000, 6);
+    await ffmpegRenderer.render(runDir, plan);
+    const file = renderPath(runDir, 'ffmpeg');
+    expect((await probeVideo(file)).durationMs).toBeCloseTo(
+      plan.durationMs,
+      -2,
+    );
+
+    const { fps, width } = plan.output;
+    const [intro, scene, outro] = plan.cards;
+    // The first frame at or after `ms`: a real run's cards sit off the frame grid.
+    const frameOf = (ms: number): number => Math.ceil((ms * fps) / 1000 - 1e-6);
+    const last = frameCount(plan) - 1;
+    const beforeScene = frameOf(scene.startMs) - 1;
+    const afterScene = frameOf(scene.startMs + scene.durationMs);
+    expect(frameAt(plan, 0).card?.title).toBe(intro.title);
+    expect(frameAt(plan, frameOf(scene.startMs)).card?.title).toBe('Customers');
+    expect(frameAt(plan, last).card?.title).toBe(outro.title);
+    expect(frameAt(plan, beforeScene).sourceMs).not.toBeNull();
+    expect(frameAt(plan, afterScene).sourceMs).not.toBeNull();
+
+    const [first, before, onScene, after, end] = await extractFrames(
+      file,
+      [0, beforeScene, frameOf(scene.startMs) + 10, afterScene, last],
+      plan,
+    );
+    // Cards: the background, with light text in the middle.
+    for (const card of [first, onScene, end]) {
+      let white = 0;
+      for (let y = 440; y < 640; y++) {
+        for (let x = 0; x < width; x++) {
+          if (rgb(card, width, x, y).every((c) => c > 220)) white++;
+        }
+      }
+      expect(white).toBeGreaterThan(500);
+    }
+    // The page pauses on the cut and resumes there: either side of the scene
+    // card is the frame the run without cards shows at that page time. The
+    // cards ahead are 60 and 105 frames long (2 000 and 3 500 ms at 30 fps).
+    const plainFile = path.join(runDir, 'render', 'plain.mp4');
+    await drawPlan(path.join(runDir, plain.source.file), plain, plainFile);
+    const [plainBefore, plainAfter] = await extractFrames(
+      plainFile,
+      [beforeScene - 60, afterScene - 105],
+      plain,
+    );
+    for (const [name, carded, without] of [
+      ['before', before, plainBefore],
+      ['after', after, plainAfter],
+    ] as const) {
+      let difference = 0;
+      for (let at = 0; at < carded.length; at++) {
+        difference += Math.abs(carded[at] - without[at]);
+      }
+      const mean = difference / carded.length;
+      console.info(`scene card: ${name} the cut, mean difference ${mean}`);
+      // Measured 0.4–2.3: two encodes, and a camera that eases into the cut.
+      // The neighbouring source frame, mid page load, measured 193.
+      expect(mean, `${name} the scene card`).toBeLessThan(5);
+    }
+  });
+
   it('covers the password field on every frame until the navigation (login)', async () => {
     const runDir = await recordFixtureRun('login', parent);
-    const plan = await buildRenderPlan(runDir);
+    // With the default cards (spec 108): the intro moves every page frame.
+    const plan = await buildRenderPlan(runDir, {
+      cards: CardsConfigSchema.parse({}),
+    });
+    expect(plan.cards.map((card) => card.kind)).toEqual(['intro']);
     await ffmpegRenderer.render(runDir, plan);
     const unmaskedFile = path.join(runDir, 'render', 'unmasked.mp4');
     await drawPlan(

@@ -2,6 +2,7 @@ import type { Box } from '@demoflow/core';
 import type { FrameState, OutputSpec, RenderPlan } from '../plan/types.ts';
 import {
   capHeight,
+  clampLines,
   descent,
   lineHeight,
   measureText,
@@ -70,6 +71,18 @@ export const LOOK = {
     background: hex('#111111'),
     maxWidth: 1600,
     text: { fontPx: 48, weight: 'regular' },
+  },
+  /** Intro, scene and outro cards (spec 108), centred on the background. */
+  card: {
+    maxWidth: 1600,
+    maxLines: 2,
+    title: { fontPx: 64, weight: 'semibold' },
+    subtitle: { fontPx: 40, weight: 'regular' },
+    /** From the title's last baseline to the subtitle's first cap top. */
+    gap: 44,
+    text: WHITE,
+    /** On a light background, such as `paper`. */
+    textOnLight: hex('#111111'),
   },
   /** Under the window (spec 100), in output pixels at 1080p, scaled with the output height. */
   shadow: { colour: BLACK, alpha: 0.4, offsetY: 14, sigma: 28 },
@@ -163,6 +176,8 @@ export function createCompositor(
 ): Compositor {
   const captions = new Map<string, Laid>();
   const cards = new Map<string, Laid>();
+  const titleCards = new Map<string, Laid>();
+  const backdrops = new Map<string, Picture>();
   const badge = layBadge(output);
   const screen: Box = {
     x: 0,
@@ -173,7 +188,27 @@ export function createCompositor(
 
   return {
     compose(target, state, source) {
-      if (state.endCard !== undefined) {
+      if (state.card !== undefined) {
+        const { title, subtitle, background } = state.card;
+        const key = `${background.from}${background.to}${background.angle}`;
+        let backdrop = backdrops.get(key);
+        if (backdrop === undefined) {
+          backdrop = createPicture(output.width, output.height);
+          fillGradient(
+            backdrop,
+            hex(background.from),
+            hex(background.to),
+            background.angle,
+          );
+          backdrops.set(key, backdrop);
+        }
+        target.data.set(backdrop.data);
+        const laid = cached(titleCards, `${title}\n\n${subtitle ?? ''}`, () =>
+          layCard(title, subtitle, output),
+        );
+        const { text, textOnLight } = LOOK.card;
+        paintMask(target, laid.mask, isLight(background) ? textOnLight : text);
+      } else if (state.endCard !== undefined) {
         fill(target, LOOK.endCard.background);
         const card = cached(cards, state.endCard, (text) =>
           layEndCard(text, output),
@@ -437,6 +472,53 @@ function layBadge(output: OutputSpec): Laid {
       panel.y + paddingY + capHeight(style),
     ),
   };
+}
+
+/** The title and subtitle, each at most two lines, centred as one block. */
+function layCard(
+  title: string,
+  subtitle: string | undefined,
+  output: OutputSpec,
+): Laid {
+  const { maxWidth, maxLines, gap, title: big, subtitle: small } = LOOK.card;
+  const titleLines = clampLines(title, big, maxWidth, maxLines);
+  const subtitleLines =
+    subtitle === undefined
+      ? []
+      : clampLines(subtitle, small, maxWidth, maxLines);
+  const titleHeight =
+    (titleLines.length - 1) * lineHeight(big) + capHeight(big);
+  const subtitleHeight =
+    subtitleLines.length === 0
+      ? 0
+      : gap + (subtitleLines.length - 1) * lineHeight(small) + capHeight(small);
+  const top = Math.round((output.height - titleHeight - subtitleHeight) / 2);
+  const panel: Box = { x: 0, y: 0, width: output.width, height: output.height };
+  const centreX = output.width / 2;
+  const titleMask = textMask(titleLines, big, centreX, top + capHeight(big));
+  if (subtitleLines.length === 0) return { panel, mask: titleMask };
+  const subtitleMask = textMask(
+    subtitleLines,
+    small,
+    centreX,
+    top + titleHeight + gap + capHeight(small),
+  );
+  return {
+    panel,
+    mask: mergeMasks([
+      { mask: titleMask, x: 0, y: 0 },
+      { mask: subtitleMask, x: 0, y: 0 },
+    ]),
+  };
+}
+
+/** Whether dark text reads better than white on `background`: its mean luminance is high. */
+function isLight(background: { from: string; to: string }): boolean {
+  const luminance = (value: string): number => {
+    const { r, g, b } = hex(value);
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  };
+  return (luminance(background.from) + luminance(background.to)) / 2 > 0.6;
 }
 
 function layEndCard(text: string, output: OutputSpec): Laid {

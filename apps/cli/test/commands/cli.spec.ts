@@ -185,6 +185,8 @@ describe('demoflow run', () => {
           render: {
             frame: { marginRatio: 0.2 },
             background: { color: '#c03020' },
+            // Frame 0 is the page, not the intro card.
+            cards: { intro: { enabled: false } },
           },
         }),
       );
@@ -233,6 +235,69 @@ describe('demoflow run', () => {
       }
     } finally {
       await rm(framed, { recursive: true, force: true });
+    }
+  });
+
+  it('renders the cards from render.cards: the intro card opens the video', async () => {
+    const carded = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-cards-'));
+    try {
+      const render = async (cards: object): Promise<string> => {
+        await writeFile(
+          path.join(carded, 'demoflow.config.json'),
+          JSON.stringify({
+            baseUrl: fixture.origin,
+            render: { background: { color: '#c03020' }, cards },
+          }),
+        );
+        const result = await demoflow(
+          [
+            'run',
+            path.join(carded, 'demoflow', 'customers.demo.json'),
+            '--json',
+            '--out',
+            out,
+          ],
+          carded,
+        );
+        expect(result.code, result.stderr).toBe(0);
+        const json = JSON.parse(result.stdout);
+        return path.join(json.runDir, json.renders[0].file);
+      };
+      await cp(FIXTURE_SCENARIOS, path.join(carded, 'demoflow'), {
+        recursive: true,
+      });
+      const file = await render({ outro: { title: 'Acme' } });
+      const { stdout: frame } = await runFfmpegRaw([
+        '-i',
+        file,
+        '-frames:v',
+        '1',
+        '-f',
+        'rawvideo',
+        '-pix_fmt',
+        'rgb24',
+        'pipe:1',
+      ]);
+      expect(frame.length).toBe(1920 * 1080 * 3);
+      const pixel = (x: number, y: number): number[] => {
+        const at = (y * 1920 + x) * 3;
+        return [frame[at], frame[at + 1], frame[at + 2]];
+      };
+      // The intro card: background where the window would be at 6 % margin…
+      const colour = [0xc0, 0x30, 0x20];
+      pixel(960, 150).forEach((value, c) => {
+        expect(Math.abs(value - colour[c])).toBeLessThanOrEqual(8);
+      });
+      // …and the scenario name in white across the middle.
+      let white = 0;
+      for (let y = 480; y < 560; y++) {
+        for (let x = 0; x < 1920; x++) {
+          if (pixel(x, y).every((value) => value > 220)) white++;
+        }
+      }
+      expect(white).toBeGreaterThan(200);
+    } finally {
+      await rm(carded, { recursive: true, force: true });
     }
   });
 

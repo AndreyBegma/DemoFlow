@@ -58,6 +58,45 @@ export const FrameConfigSchema = z
   .prefault({});
 export type FrameConfig = z.infer<typeof FrameConfigSchema>;
 
+const CardDurationSchema = z.number().int().min(500).max(10_000);
+
+const CardTextSchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(/\S/, 'expected some text, not only spaces');
+
+/**
+ * Cards inserted between page frames (spec 108): an intro from the scenario's
+ * name and description, one per `scene` marker, and an outro. The outro is off
+ * unless it has a `title` — the config has no project name to fall back on.
+ */
+export const CardsConfigSchema = z
+  .strictObject({
+    intro: z
+      .strictObject({
+        enabled: z.boolean().default(true),
+        durationMs: CardDurationSchema.default(2000),
+      })
+      .prefault({}),
+    scenes: z
+      .strictObject({
+        enabled: z.boolean().default(true),
+        durationMs: CardDurationSchema.default(1500),
+      })
+      .prefault({}),
+    outro: z
+      .strictObject({
+        title: CardTextSchema.optional(),
+        /** A second line under the title, e.g. a URL. */
+        cta: CardTextSchema.optional(),
+        durationMs: CardDurationSchema.default(2500),
+      })
+      .prefault({}),
+  })
+  .prefault({});
+export type CardsConfig = z.infer<typeof CardsConfigSchema>;
+
 /** Render defaults per ADR-0004 §5–6: 1920×1080, 30 fps, idle 1 s → 400 ms. */
 export const RenderConfigSchema = z
   .strictObject({
@@ -72,6 +111,7 @@ export const RenderConfigSchema = z
       .prefault({}),
     frame: FrameConfigSchema,
     background: BackgroundConfigSchema.default({ preset: 'ocean' }),
+    cards: CardsConfigSchema,
   })
   .prefault({});
 export type RenderConfig = z.infer<typeof RenderConfigSchema>;

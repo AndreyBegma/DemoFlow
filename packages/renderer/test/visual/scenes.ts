@@ -8,6 +8,7 @@ import {
 import { createCompositor, renderStage } from '../../src/ffmpeg/compose.ts';
 import { createPicture, type Picture } from '../../src/ffmpeg/raster.ts';
 import {
+  BACKGROUND_PRESET_COLOURS,
   type FrameState,
   frameAt,
   type OutputSpec,
@@ -217,7 +218,44 @@ export const SCENES: readonly Scene[] = [
     region: { x: 0, y: 0, width: 1920, height: 1080 },
     plan: FRAMED,
   },
+  // Spec 108: cards on the background, in the caption's typeface.
+  card(
+    'card-intro',
+    'Create a customer',
+    'From the dashboard to a saved record',
+  ),
+  card('card-intro-no-description', 'Create a customer'),
+  card('card-scene', 'Invoices'),
+  card('card-outro', 'Acme', 'acme.dev/try'),
+  card('card-outro-no-cta', 'Acme'),
+  card(
+    'card-long-title',
+    // The title runs past two lines and ends in an ellipsis; the subtitle just fills two.
+    'A scenario name long enough to need a second line, and then so many more words that even two lines of it cannot hold them all',
+    'And a description that is long enough to wrap onto a second line of its own, and still goes on and on past that second line too',
+  ),
+  card('card-light-background', 'Acme', 'acme.dev/try', 'paper'),
 ];
+
+function card(
+  name: string,
+  title: string,
+  subtitle?: string,
+  preset: keyof typeof BACKGROUND_PRESET_COLOURS = 'ocean',
+): Scene {
+  return {
+    name,
+    frame: state({
+      sourceMs: null,
+      card: {
+        title,
+        ...(subtitle === undefined ? {} : { subtitle }),
+        background: BACKGROUND_PRESET_COLOURS[preset],
+      },
+    }),
+    region: { x: 0, y: 0, width: 1920, height: 1080 },
+  };
+}
 
 /** Every background a config can name: the six presets, a colour and a custom gradient. */
 export const SWATCH_BACKGROUNDS: readonly BackgroundConfig[] = [
