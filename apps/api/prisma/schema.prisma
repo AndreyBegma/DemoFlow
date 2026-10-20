@@ -5,3 +5,49 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// An account. `passwordHash` is null for a user who signs in only with GitHub
+// (slice 3). `email` is stored trimmed and lower-cased.
+model User {
+  id              String       @id @default(cuid())
+  email           String       @unique
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  sessions        Session[]
+  emailTokens     EmailToken[]
+}
+
+// A signed-in browser. Only the SHA-256 hash of the cookie's token is stored.
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  lastSeenAt DateTime
+  createdAt  DateTime @default(now())
+  userAgent  String?
+
+  @@index([userId])
+}
+
+enum EmailTokenPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+// A single-use emailed link. Only the SHA-256 hash of the token is stored.
+model EmailToken {
+  id        String            @id @default(cuid())
+  tokenHash String            @unique
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   EmailTokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  @@index([userId, purpose])
+}
