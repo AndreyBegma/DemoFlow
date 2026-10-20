@@ -97,6 +97,42 @@ export const CardsConfigSchema = z
   .prefault({});
 export type CardsConfig = z.infer<typeof CardsConfigSchema>;
 
+/**
+ * Dissolves between a card and the page, and from the held frame of a page
+ * load into the loaded page (spec 114). Dissolve only, no other styles.
+ */
+export const TransitionsConfigSchema = z
+  .strictObject({
+    enabled: z.boolean().default(true),
+    /**
+     * At most half the shortest card that is on: a card fades in and out
+     * within its own time. Default 300, or half the shortest card when that
+     * is less, so a 500 ms card valid before #114 stays valid.
+     */
+    durationMs: z.number().int().min(100).max(1000).optional().meta({
+      description:
+        'Milliseconds; at most half the shortest card that is on. Default 300, or half the shortest card when that is less.',
+    }),
+  })
+  .prefault({});
+
+/** The transitions of a parsed config: the duration is always resolved. */
+export interface TransitionsConfig {
+  enabled: boolean;
+  durationMs: number;
+}
+
+const DEFAULT_TRANSITION_MS = 300;
+
+/** The durations of the cards that are on (spec 108): an outro only with a title. */
+function cardsOn(cards: CardsConfig): number[] {
+  return [
+    cards.intro.enabled ? cards.intro.durationMs : undefined,
+    cards.scenes.enabled ? cards.scenes.durationMs : undefined,
+    cards.outro.title === undefined ? undefined : cards.outro.durationMs,
+  ].filter((ms) => ms !== undefined);
+}
+
 /** Render defaults per ADR-0004 §5–6: 1920×1080, 30 fps, idle 1 s → 400 ms. */
 export const RenderConfigSchema = z
   .strictObject({
@@ -112,6 +148,31 @@ export const RenderConfigSchema = z
     frame: FrameConfigSchema,
     background: BackgroundConfigSchema.default({ preset: 'ocean' }),
     cards: CardsConfigSchema,
+    transitions: TransitionsConfigSchema,
+  })
+  .superRefine(({ cards, transitions }, ctx) => {
+    const { enabled, durationMs } = transitions;
+    if (!enabled || durationMs === undefined) return;
+    const shortest = Math.min(...cardsOn(cards));
+    if (durationMs > shortest / 2) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `expected at most half the shortest card (${shortest} ms)`,
+        path: ['transitions', 'durationMs'],
+      });
+    }
+  })
+  .transform(({ transitions, ...render }) => {
+    const resolved: TransitionsConfig = {
+      enabled: transitions.enabled,
+      durationMs:
+        transitions.durationMs ??
+        Math.min(
+          DEFAULT_TRANSITION_MS,
+          Math.floor(Math.min(...cardsOn(render.cards)) / 2),
+        ),
+    };
+    return { ...render, transitions: resolved };
   })
   .prefault({});
 export type RenderConfig = z.infer<typeof RenderConfigSchema>;
