@@ -62,7 +62,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build the CLI package and the fixture
-        run: bun run build --filter=demoflow --filter=@demoflow/fixture
+        run: bun run build --filter=@demoflow/cli --filter=@demoflow/fixture
 
       - name: Release script tests
         if: runner.os == 'Linux'
