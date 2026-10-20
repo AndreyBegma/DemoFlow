@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import {
   deriveRunStatus,
+  type Navigation,
   type Scenario,
   type Stage,
   type Stages,
@@ -15,6 +16,7 @@ import {
 } from './execute/actions.ts';
 import { type Clock, startClock } from './execute/clock.ts';
 import { MaskTracker } from './execute/mask.ts';
+import { NavigationRecorder } from './execute/navigations.ts';
 import type { EngineObserver, RunOutcome } from './execute/observer.ts';
 import { type Point, viewportCentre } from './execute/pointer.ts';
 import {
@@ -108,6 +110,7 @@ export async function runScenario(
     stages.recording = { status: 'running', startedAt: timestamp() };
     const page = await context.newPage();
     const clock = startClock();
+    const navigations = new NavigationRecorder(page, clock);
     await emit('onPageCreated', { page, recording });
     const syncMark = await recordSyncMark(page, clock);
 
@@ -168,7 +171,11 @@ export async function runScenario(
       });
     }
 
-    const outcome = conclude(startedAt, stages, events, videoPath, syncMark);
+    const outcome = conclude(startedAt, stages, events, {
+      videoPath,
+      syncMark,
+      navigations: navigations.list(),
+    });
     await emit('onRunFinished', { outcome, video });
     return outcome;
   } finally {
@@ -349,9 +356,13 @@ function conclude(
   startedAt: string,
   stages: Stages,
   events: TimelineEvent[],
-  videoPath?: string,
-  syncMark?: SyncMark,
+  recorded: {
+    videoPath?: string | undefined;
+    syncMark?: SyncMark | undefined;
+    navigations?: Navigation[];
+  } = {},
 ): RunOutcome {
+  const { videoPath, syncMark, navigations } = recorded;
   const warnings: string[] = [];
   return {
     startedAt,
@@ -361,6 +372,7 @@ function conclude(
     events,
     warnings,
     ...(syncMark === undefined ? {} : { syncMark }),
+    ...(navigations === undefined ? {} : { navigations }),
     ...(videoPath === undefined ? {} : { videoPath }),
   };
 }

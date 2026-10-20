@@ -1,4 +1,5 @@
 import type {
+  Navigation,
   RunStatus,
   Scenario,
   Stages,
@@ -24,6 +25,8 @@ export interface RunOutcome {
   warnings: string[];
   /** Painted at clock zero, cleared before step 0; absent when it could not be painted. */
   syncMark?: SyncMark;
+  /** The main frame's document navigations (#114); absent when the browser never started. */
+  navigations?: Navigation[];
   /** The absolute path of the raw recording, when the browser was started. */
   videoPath?: string;
 }
