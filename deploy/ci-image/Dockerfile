@@ -1,6 +1,7 @@
 # The image the Woodpecker check steps run on: `demoflow-ci:node-bun`.
-# The pipeline's first step builds it on the agent host's daemon (no registry),
-# so a change here reaches CI with the commit that makes it. Not under
+# The pipeline's first step builds it on the agent host's daemon (no registry)
+# on push and manual runs only; pull requests reuse the tag the last push built
+# (ADR-0011), so a change here reaches pull requests once it is merged. Not under
 # .woodpecker/: Woodpecker reads every entry there as a workflow.
 #
 # bun is a literal, the one package.json `packageManager` pins; moving bun is
