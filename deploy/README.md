@@ -34,6 +34,15 @@ pin in `packages/engine`. `PLAYWRIGHT_BROWSERS_PATH` is `/ci-cache/playwright`
 in every step that mounts the caches; the host directory is
 `/home/archi/ci-cache/demoflow/playwright`.
 
+Pull requests get no Docker socket and no host cache (ADR-0011). `ci-image`,
+`build-staging` and `deploy-staging` run on push and manual events only; a pull
+request runs on the `demoflow-ci:node-bun` image the last push built, so a
+change to `deploy/ci-image/` reaches pull requests once it is merged. If an
+agent has never built the image, the pull request fails at image pull: start a
+manual run on `develop`. `install-pr`, `build-pr` and `test-pr` mount nothing —
+bun, turbo and Chromium are downloaded or rebuilt inside the pipeline every
+run — while `install`, `build` and `test` (push, manual) keep the host caches.
+
 The CI PostgreSQL is throwaway: tmpfs, with `fsync`, `synchronous_commit` and
 `full_page_writes` off.
 
@@ -172,8 +181,9 @@ Nothing is published on the host. The stack runs on its own compose network
    Save the token as `~/.demoflow/cloudflared.env`, mode 600, with one
    line: `TUNNEL_TOKEN=...`.
 2. **Woodpecker.** Activate `AndreyBegma/DemoFlow` and apply these settings:
-   - *Trusted → volumes*: on. The steps mount the Docker socket, the stack
-     directory and the caches, and the postgres service mounts a tmpfs.
+   - *Trusted → volumes*: on. The push and manual steps mount the Docker
+     socket, the stack directory and the caches, and the postgres service
+     mounts a tmpfs. Pull request steps mount nothing (ADR-0011).
    - *Require approval*: forks. The repository is public.
    - *Cancel previous pipelines*: push, pull_request.
    - Timeout: 60 min.
