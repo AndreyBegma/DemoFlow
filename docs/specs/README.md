@@ -65,5 +65,15 @@ decisions live in [../adr/](../adr/README.md).
 | [#114](https://github.com/AndreyBegma/DemoFlow/issues/114) | [Fade transitions](114-transitions.md) | #108 |
 | [#133](https://github.com/AndreyBegma/DemoFlow/issues/133) | [GIF and WebM export](133-export-formats.md) | — |
 
+## Phase 5 — Website and Runner pairing
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#120](https://github.com/AndreyBegma/DemoFlow/issues/120) | [Accounts API](120-accounts-api.md) | — |
+| [#121](https://github.com/AndreyBegma/DemoFlow/issues/121) | [i18n dictionary](121-i18n-dictionary.md) | — |
+| [#124](https://github.com/AndreyBegma/DemoFlow/issues/124) | [Sign-in pages](124-sign-in-pages.md) | #120, #121 |
+| [#126](https://github.com/AndreyBegma/DemoFlow/issues/126) | [GitHub sign-in](126-github-sign-in.md) | #120, #124 |
+| [#135](https://github.com/AndreyBegma/DemoFlow/issues/135) | [Runner pairing, slice 1](135-runner-pairing.md) | #133 (cli slot) |
+
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.
