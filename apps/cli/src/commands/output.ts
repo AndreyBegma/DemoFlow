@@ -17,7 +17,9 @@ export function formatSummary(result: RunResult, runDir: string): string {
   }
   for (const warning of result.warnings) lines.push(`warning: ${warning}`);
   for (const render of result.renders) {
-    lines.push(`Video: ${path.join(runDir, ...render.file.split('/'))}`);
+    lines.push(
+      `Video (${render.format}): ${path.join(runDir, ...render.file.split('/'))}`,
+    );
   }
   lines.push(`Run directory: ${runDir}`);
   return `${lines.join('\n')}\n`;

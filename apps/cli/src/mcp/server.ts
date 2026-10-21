@@ -1,7 +1,12 @@
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { formatPath, type Issue, ScenarioSchema } from '@demoflow/core';
+import {
+  formatPath,
+  type Issue,
+  RENDER_FORMATS,
+  ScenarioSchema,
+} from '@demoflow/core';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -66,6 +71,17 @@ const GenerateDemoInput = z.strictObject({
     .optional()
     .describe(
       `The task is killed and timed_out after this long; default ${DEFAULT_TIMEOUT_MINUTES}.`,
+    ),
+  formats: z
+    .array(z.enum(RENDER_FORMATS))
+    .min(1)
+    .refine(
+      (formats) => new Set(formats).size === formats.length,
+      'expected each format once',
+    )
+    .optional()
+    .describe(
+      "The files to render, in order; replaces the project's render.formats (default there: mp4).",
     ),
 });
 /** The same input, with the scenario left for `parseScenario` and its issue paths. */
@@ -266,6 +282,7 @@ export function createMcpServer(deps: McpServerDeps): Server {
       scenarioFile,
       staged,
       timeoutMs: (input.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES) * MINUTE_MS,
+      ...(input.formats === undefined ? {} : { formats: input.formats }),
     });
     return { taskId, status: task.status, position: queue.position(taskId) };
   }

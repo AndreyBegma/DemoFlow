@@ -871,9 +871,14 @@ describe('output', () => {
       width: 1920,
       height: 1080,
       fps: 30,
-      codec: 'h264',
-      pixelFormat: 'yuv420p',
-      faststart: true,
+      files: [
+        {
+          format: 'mp4',
+          codec: 'h264',
+          pixelFormat: 'yuv420p',
+          faststart: true,
+        },
+      ],
     });
     expect(rendered.fit).toEqual({ x: 0, y: 0, scale: 1.5 });
     expect(rendered.frame).toBeUndefined();

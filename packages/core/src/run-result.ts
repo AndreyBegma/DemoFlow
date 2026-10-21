@@ -71,8 +71,14 @@ export function deriveRunStatus(
   return warnings.length > 0 ? 'completed_with_warnings' : 'completed';
 }
 
+/** The files a run can render (spec 133); `mp4` is the default. */
+export const RENDER_FORMATS = ['mp4', 'gif', 'webm'] as const;
+export type RenderFormat = (typeof RENDER_FORMATS)[number];
+
 export const RenderOutputSchema = z.strictObject({
   renderer: NonEmptyStringSchema,
+  // Runs before spec 133 rendered only MP4 and wrote no `format`.
+  format: z.enum(RENDER_FORMATS).default('mp4'),
   // Relative to the run directory.
   file: NonEmptyStringSchema,
   durationMs: z.number().nonnegative(),
@@ -81,6 +87,7 @@ export const RenderOutputSchema = z.strictObject({
   height: z.number().int().positive(),
   fps: z.number().positive(),
 });
+/** One rendered file; for a GIF, its own size and frame rate. */
 export type RenderOutput = z.infer<typeof RenderOutputSchema>;
 
 /** `result.json`, the report of one run. */

@@ -1,27 +1,34 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import type { Writable } from 'node:stream';
-import { resolveFfmpeg } from '../plan/ffmpeg.ts';
+import { ENCODERS, missingEncoders, resolveFfmpeg } from '../plan/ffmpeg.ts';
 import { frameAt, frameCount } from '../plan/frame.ts';
-import type { RenderPlan, SourceSpec } from '../plan/types.ts';
+import type {
+  OutputFile,
+  OutputSpec,
+  RenderPlan,
+  SourceSpec,
+} from '../plan/types.ts';
 import { createCompositor, renderStage } from './compose.ts';
 import { drawLayers, sourcesOf } from './layers.ts';
 import { createPicture, type Picture } from './raster.ts';
 
 /**
- * Writes every frame of `plan` to `out`, an MP4: one FFmpeg decodes
- * `sourceFile` into raw frames, each output frame is drawn from
- * `frameAt(plan, frame)` alone, and a second FFmpeg encodes them.
+ * Writes every frame of `plan` to `out`, one path per `plan.output.files`
+ * entry: one FFmpeg decodes `sourceFile` into raw frames, each output frame
+ * is drawn from `frameAt(plan, frame)` alone, and a second FFmpeg encodes
+ * them into every file.
  */
 export async function drawPlan(
   sourceFile: string,
   plan: RenderPlan,
-  out: string,
+  out: readonly string[],
 ): Promise<void> {
   const { output } = plan;
+  const binary = encoderBinary(output);
   const compositor = createCompositor(output, renderStage(plan));
   const kept = keptFrames(plan);
   const source = openSource(sourceFile, plan.source, kept);
-  const encoder = startEncoder(plan, out);
+  const encoder = startEncoder(binary, plan, out);
   // Two pictures: one is drawn while FFmpeg still reads the other.
   const pictures = [0, 1].map(() => createPicture(output.width, output.height));
   const pending: (Promise<void> | undefined)[] = [undefined, undefined];
@@ -224,57 +231,160 @@ interface Encoder {
   done: Promise<void>;
 }
 
-/** FFmpeg reading RGB24 frames on stdin and writing `plan.output` to `out`. */
-function startEncoder(plan: RenderPlan, out: string): Encoder {
-  const { output } = plan;
-  const child = spawn(
-    resolveFfmpeg(),
-    [
-      '-hide_banner',
-      '-loglevel',
-      'error',
-      '-y',
-      '-f',
-      'rawvideo',
-      '-pix_fmt',
-      'rgb24',
-      '-s',
-      `${output.width}x${output.height}`,
-      '-r',
-      String(output.fps),
-      '-i',
-      'pipe:0',
-      // BT.709, limited range, tagged in the stream: FFmpeg's
-      // default RGB → YUV conversion is BT.601 and leaves the file untagged.
-      '-vf',
-      `scale=in_range=pc:out_range=tv:out_color_matrix=bt709,format=${output.pixelFormat}`,
-      '-colorspace',
-      'bt709',
-      '-color_primaries',
-      'bt709',
-      '-color_trc',
-      'bt709',
-      '-color_range',
-      'tv',
-      '-c:v',
-      'libx264',
-      '-preset',
-      'medium',
-      '-crf',
-      '18',
-      '-pix_fmt',
-      output.pixelFormat,
-      ...(output.faststart ? ['-movflags', '+faststart'] : []),
-      out,
-    ],
-    { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true },
-  );
+/**
+ * The FFmpeg that can write every file of `output`: a format whose encoder it
+ * lacks fails here, before anything starts, naming the format (spec 133).
+ */
+function encoderBinary(output: OutputSpec): string {
+  const required = output.files.map((file) => ENCODERS[file.format]);
+  const binary = resolveFfmpeg(required);
+  const missing = missingEncoders(binary, required);
+  for (const file of output.files) {
+    if (missing.includes(ENCODERS[file.format])) {
+      throw new Error(
+        `cannot encode the ${file.format}: ${binary} has no ${ENCODERS[file.format]} encoder`,
+      );
+    }
+  }
+  return binary;
+}
+
+/**
+ * One FFmpeg reading RGB24 frames on stdin and writing every file of
+ * `plan.output`, `out[i]` for `files[i]`.
+ */
+function startEncoder(
+  binary: string,
+  plan: RenderPlan,
+  out: readonly string[],
+): Encoder {
+  const child = spawn(binary, encoderArgs(plan.output, out), {
+    stdio: ['pipe', 'ignore', 'pipe'],
+    windowsHide: true,
+  });
   if (child.stdin === null) throw new Error('the encoder has no stdin');
   // A write after FFmpeg died fails with EPIPE; `done` carries the reason.
   child.stdin.on('error', () => undefined);
-  const done = exited(child, 'encoding the MP4');
+  const formats = plan.output.files.map((file) => file.format).join(', ');
+  const done = exited(child, `encoding the ${formats}`);
   done.catch(() => undefined);
   return { process: child, input: child.stdin, done };
+}
+
+/**
+ * Exported for tests: the encoder's arguments. The raw frames are split once
+ * per file in one filter graph, so every file comes from the same frames in
+ * one pass (spec 133, Decision 2).
+ */
+export function encoderArgs(
+  output: OutputSpec,
+  out: readonly string[],
+): string[] {
+  const { files } = output;
+  if (files.length === 0 || files.length !== out.length) {
+    throw new Error(`expected one path per output, got ${out.length}`);
+  }
+  const graph =
+    files.length === 1
+      ? [`[0:v]${branch(files[0], 0)}`]
+      : [
+          `[0:v]split=${files.length}${files.map((_, i) => `[s${i}]`).join('')}`,
+          ...files.map((file, i) => `[s${i}]${branch(file, i)}`),
+        ];
+  return [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'rawvideo',
+    '-pix_fmt',
+    'rgb24',
+    '-s',
+    `${output.width}x${output.height}`,
+    '-r',
+    String(output.fps),
+    '-i',
+    'pipe:0',
+    '-filter_complex',
+    graph.join(';'),
+    ...files.flatMap((file, i) => [
+      '-map',
+      `[v${i}]`,
+      ...fileArgs(file),
+      out[i],
+    ]),
+  ];
+}
+
+/** The filters from the raw frames to file `i`'s, labelled `[v<i>]`. */
+function branch(file: OutputFile, i: number): string {
+  switch (file.format) {
+    case 'mp4':
+    case 'webm':
+      // BT.709, limited range, tagged in the stream: FFmpeg's
+      // default RGB → YUV conversion is BT.601 and leaves the file untagged.
+      return `scale=in_range=pc:out_range=tv:out_color_matrix=bt709,format=${file.pixelFormat}[v${i}]`;
+    case 'gif':
+      // One palette for the whole video, from frames that differ (spec 133,
+      // Decision 3); `palettegen` emits it only at the end, so `paletteuse`
+      // holds every GIF frame until then.
+      return [
+        `fps=${file.fps},scale=${file.width}:${file.height}:flags=lanczos,split[g${i}][h${i}]`,
+        `[g${i}]palettegen=stats_mode=diff[p${i}]`,
+        `[h${i}][p${i}]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle[v${i}]`,
+      ].join(';');
+  }
+}
+
+const BT709_TAGS = [
+  '-colorspace',
+  'bt709',
+  '-color_primaries',
+  'bt709',
+  '-color_trc',
+  'bt709',
+  '-color_range',
+  'tv',
+];
+
+/** The encoder options of one file, before its path. */
+function fileArgs(file: OutputFile): string[] {
+  switch (file.format) {
+    case 'mp4':
+      return [
+        ...BT709_TAGS,
+        '-c:v',
+        ENCODERS.mp4,
+        '-preset',
+        'medium',
+        '-crf',
+        '18',
+        '-pix_fmt',
+        file.pixelFormat,
+        ...(file.faststart ? ['-movflags', '+faststart'] : []),
+      ];
+    case 'webm':
+      return [
+        ...BT709_TAGS,
+        '-c:v',
+        ENCODERS.webm,
+        '-crf',
+        String(file.crf),
+        '-b:v',
+        '0',
+        '-deadline',
+        'good',
+        '-cpu-used',
+        String(file.cpuUsed),
+        '-row-mt',
+        '1',
+        '-pix_fmt',
+        file.pixelFormat,
+      ];
+    case 'gif':
+      return ['-c:v', ENCODERS.gif, '-loop', '0'];
+  }
 }
 
 /** Resolves when `child` exits with 0; rejects with the tail of its stderr otherwise. */

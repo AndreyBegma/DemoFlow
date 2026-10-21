@@ -99,6 +99,17 @@ describe('TaskQueue', () => {
     ]);
   });
 
+  it('passes the formats of a task as --format, in order', () => {
+    const { queue, children, spec } = harness();
+    queue.submit(spec('t1', { formats: ['webm', 'gif'] }));
+    expect(children[0]?.args.slice(-4)).toEqual([
+      '--format',
+      'webm',
+      '--format',
+      'gif',
+    ]);
+  });
+
   it('is FIFO and never runs two tasks at once', async () => {
     const h = harness();
     const first = h.queue.submit(h.spec('t1'));

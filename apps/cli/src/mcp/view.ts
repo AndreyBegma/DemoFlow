@@ -1,6 +1,12 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { type RunResult, STAGE_NAMES, type Stages } from '@demoflow/core';
+import {
+  type RenderFormat,
+  type RenderOutput,
+  type RunResult,
+  STAGE_NAMES,
+  type Stages,
+} from '@demoflow/core';
 import { RUN_FILES } from '@demoflow/engine';
 import type { TaskStatus } from './tasks.ts';
 
@@ -15,11 +21,31 @@ export interface TaskView {
   stages?: Stages;
   failedStep?: { stepIndex: number; message: string };
   artifacts?: {
+    /** The first of `videos`. */
     video?: string;
+    /** Every rendered file on disk, in `render.formats` order (spec 133). */
+    videos?: RenderedVideo[];
     timeline?: string;
     source?: string;
     runDir: string;
   };
+}
+
+/** One rendered file, as an absolute local path. */
+export interface RenderedVideo {
+  format: RenderFormat;
+  path: string;
+}
+
+/** The renders of a run that are on disk, in the order `result.json` lists them. */
+export function renderedVideos(
+  runDir: string,
+  renders: readonly RenderOutput[],
+): RenderedVideo[] {
+  return renders.flatMap(({ format, file }) => {
+    const video = path.join(runDir, ...file.split('/'));
+    return existsSync(video) ? [{ format, path: video }] : [];
+  });
 }
 
 export function taskView(input: {
@@ -63,12 +89,11 @@ function artifactsOf(
   result: RunResult | undefined,
 ): NonNullable<TaskView['artifacts']> {
   const artifacts: NonNullable<TaskView['artifacts']> = { runDir };
-  const render = result?.renders[0];
-  const video =
-    render === undefined
-      ? undefined
-      : path.join(runDir, ...render.file.split('/'));
-  if (video !== undefined && existsSync(video)) artifacts.video = video;
+  const videos = renderedVideos(runDir, result?.renders ?? []);
+  if (videos.length > 0) {
+    artifacts.video = videos[0].path;
+    artifacts.videos = videos;
+  }
   const timeline = path.join(runDir, RUN_FILES.timeline);
   if (existsSync(timeline)) artifacts.timeline = timeline;
   const source = path.join(runDir, RUN_FILES.video);

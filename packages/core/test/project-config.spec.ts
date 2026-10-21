@@ -24,9 +24,54 @@ describe('parseProjectConfig', () => {
             outro: { durationMs: 2500 },
           },
           transitions: { enabled: true, durationMs: 300 },
+          formats: ['mp4'],
+          gif: { width: 800, fps: 12 },
         },
       },
     });
+  });
+
+  it('keeps the formats given, in order, and the GIF settings', () => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: { formats: ['gif', 'mp4', 'webm'], gif: { width: 640, fps: 10 } },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        render: {
+          formats: ['gif', 'mp4', 'webm'],
+          gif: { width: 640, fps: 10 },
+        },
+      },
+    });
+  });
+
+  it('clamps the GIF defaults to a smaller render', () => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: { width: 640, height: 360, fps: 10, formats: ['gif'] },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { render: { gif: { width: 640, fps: 10 } } },
+    });
+  });
+
+  it.each([
+    [{ formats: [] }, 'render.formats'],
+    [{ formats: ['mp4', 'mp4'] }, 'render.formats'],
+    [{ formats: ['avi'] }, 'render.formats[0]'],
+    [{ gif: { width: 1921 } }, 'render.gif.width'],
+    [{ gif: { width: 159 } }, 'render.gif.width'],
+    [{ gif: { fps: 31 } }, 'render.gif.fps'],
+    [{ width: 1280, height: 720, gif: { width: 1281 } }, 'render.gif.width'],
+  ])('rejects the render %o at %s', (render, path) => {
+    const result = parseProjectConfig({ baseUrl: 'https://a.example', render });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContainEqual(expect.objectContaining({ path }));
+    }
   });
 
   it('keeps the transitions given, filling the rest', () => {

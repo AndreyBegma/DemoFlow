@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   type Box,
   FrameConfigSchema,
+  type RenderFormat,
   type RunResult,
   RunResultSchema,
   type StepAction,
@@ -31,6 +32,7 @@ import type {
   Interval,
   KeyBadge,
   MaskSpan,
+  OutputFile,
   Point,
   RenderPlan,
   RenderPlanOptions,
@@ -285,9 +287,7 @@ export function planRender(
     version: 1,
     output: {
       ...output,
-      codec: 'h264',
-      pixelFormat: 'yuv420p',
-      faststart: true,
+      files: outputFiles(output, options),
     },
     source: {
       file: timeline.videoFile,
@@ -371,6 +371,52 @@ function failureCard(
       text: `${stage} failed${where}: ${failure.message}`,
     },
   };
+}
+
+/** VP9 at constant quality (spec 133): measured on the fixture demo, see #133. */
+const WEBM = { crf: 32, cpuUsed: 4 } as const;
+
+/** The GIF defaults of spec 133, Decision 3. */
+const GIF = { width: 800, fps: 12 } as const;
+
+/** One file per requested format, in the order given; MP4 alone by default. */
+function outputFiles(
+  output: { width: number; height: number; fps: number },
+  options: RenderPlanOptions,
+): OutputFile[] {
+  return (options.formats ?? ['mp4']).map((format) =>
+    outputFile(format, output, options),
+  );
+}
+
+function outputFile(
+  format: RenderFormat,
+  output: { width: number; height: number; fps: number },
+  options: RenderPlanOptions,
+): OutputFile {
+  switch (format) {
+    case 'mp4':
+      return {
+        format,
+        codec: 'h264',
+        pixelFormat: 'yuv420p',
+        faststart: true,
+      };
+    case 'webm':
+      return { format, codec: 'vp9', pixelFormat: 'yuv420p', ...WEBM };
+    case 'gif': {
+      const width = options.gif?.width ?? Math.min(GIF.width, output.width);
+      return {
+        format,
+        width,
+        height: Math.max(
+          2,
+          Math.round((width * output.height) / output.width / 2) * 2,
+        ),
+        fps: options.gif?.fps ?? Math.min(GIF.fps, output.fps),
+      };
+    }
+  }
 }
 
 function fitInto(

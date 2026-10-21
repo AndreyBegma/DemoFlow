@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { Command, CommanderError, Option } from 'commander';
+import { RENDER_FORMATS, type RenderFormat } from '@demoflow/core';
+import {
+  Command,
+  CommanderError,
+  InvalidArgumentError,
+  Option,
+} from 'commander';
 import {
   describeError,
   EXIT_STAGE_FAILED,
@@ -54,6 +60,12 @@ export async function main(
     .option('--out <dir>', 'artifacts directory (the home of runs/)')
     .option('--headed', 'show the browser window')
     .option('--json', 'print the result as one JSON object on stdout')
+    .addOption(
+      new Option(
+        '--format <format>',
+        `a file to render, repeatable; replaces render.formats (${RENDER_FORMATS.join(', ')})`,
+      ).argParser(collectFormat),
+    )
     .addOption(new Option('--run-id <id>', 'name the run directory').hideHelp())
     .addOption(new Option('--project <dir>', 'the project root').hideHelp())
     .action(
@@ -64,6 +76,7 @@ export async function main(
           out?: string;
           headed?: boolean;
           json?: boolean;
+          format?: RenderFormat[];
           runId?: string;
           project?: string;
         },
@@ -126,6 +139,23 @@ export async function main(
     );
     return EXIT_STAGE_FAILED;
   }
+}
+
+/** `--format`, once per file: a known format, each at most once (spec 133). */
+function collectFormat(
+  value: string,
+  previous: RenderFormat[] = [],
+): RenderFormat[] {
+  const format = RENDER_FORMATS.find((known) => known === value);
+  if (format === undefined) {
+    throw new InvalidArgumentError(
+      `expected one of ${RENDER_FORMATS.join(', ')}`,
+    );
+  }
+  if (previous.includes(format)) {
+    throw new InvalidArgumentError(`${format} is given twice`);
+  }
+  return [...previous, format];
 }
 
 function isCommanderError(error: unknown): error is CommanderError {

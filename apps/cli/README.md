@@ -27,6 +27,24 @@ A project has a `demoflow.config.json` at its root:
 `demoflow run` prints where the video landed; `--json` prints the run result
 as one JSON object instead.
 
+A run renders an MP4 by default. `render.formats` asks for GIF and WebM (VP9)
+as well, all encoded in one pass; the GIF is 800 px wide at 12 fps unless
+`render.gif` says otherwise:
+
+```json
+{
+  "baseUrl": "http://localhost:3000",
+  "render": {
+    "formats": ["mp4", "gif"],
+    "gif": { "width": 800, "fps": 12 }
+  }
+}
+```
+
+`demoflow run --format gif --format mp4` replaces `render.formats` for one
+run; `generate_demo` takes the same list as `formats`. The files are
+`render/ffmpeg.mp4`, `render/ffmpeg.gif` and `render/ffmpeg.webm`.
+
 | Command | What it does |
 |---|---|
 | `demoflow validate <scenario>` | check a scenario against the schema |

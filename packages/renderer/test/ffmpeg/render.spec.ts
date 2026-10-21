@@ -129,10 +129,14 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
         scenario === 'failing' ? { frame: { enabled: false } } : {},
       );
       expect(plan.frame === undefined).toBe(scenario === 'failing');
-      const output = await ffmpegRenderer.render(runDir, plan);
+      const outputs = await ffmpegRenderer.render(runDir, plan);
+      // No `formats`: the MP4 alone, as before spec 133.
+      expect(outputs).toHaveLength(1);
+      const [output] = outputs;
 
       expect(output).toMatchObject({
         renderer: 'ffmpeg',
+        format: 'mp4',
         file: 'render/ffmpeg.mp4',
         width: 1920,
         height: 1080,
@@ -332,7 +336,7 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
       );
     }
     const plainFile = path.join(runDir, 'render', 'plain.mp4');
-    await drawPlan(path.join(runDir, plain.source.file), plain, plainFile);
+    await drawPlan(path.join(runDir, plain.source.file), plain, [plainFile]);
     const [plainBefore, plainAfter] = await extractFrames(
       plainFile,
       [beforeScene - 60, afterScene - 105],
@@ -384,7 +388,7 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
               },
             }),
       },
-      unmaskedFile,
+      [unmaskedFile],
     );
 
     const events = await readEvents(runDir);
@@ -559,7 +563,7 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
     // the check above would have caught it.
     const { transitions: _, ...cut } = plan;
     const cutFile = path.join(runDir, 'render', 'cut.mp4');
-    await drawPlan(path.join(runDir, plan.source.file), cut, cutFile);
+    await drawPlan(path.join(runDir, plan.source.file), cut, [cutFile]);
     const lastHeld = held.at(-1) ?? before;
     const [cutBefore, cutLate] = await extractFrames(
       cutFile,
