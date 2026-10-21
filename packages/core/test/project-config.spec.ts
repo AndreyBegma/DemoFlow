@@ -23,9 +23,65 @@ describe('parseProjectConfig', () => {
             scenes: { enabled: true, durationMs: 1500 },
             outro: { durationMs: 2500 },
           },
+          transitions: { enabled: true, durationMs: 300 },
         },
       },
     });
+  });
+
+  it('keeps the transitions given, filling the rest', () => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: { transitions: { durationMs: 750 } },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { render: { transitions: { enabled: true, durationMs: 750 } } },
+    });
+  });
+
+  it.each([
+    [{ durationMs: 99 }],
+    [{ durationMs: 1001 }],
+    [{ durationMs: 300.5 }],
+    [{ style: 'wipe' }],
+  ])('rejects the transitions %o', (transitions) => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: { transitions },
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a fade longer than half the shortest card that is on', () => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: {
+        cards: { scenes: { durationMs: 500 } },
+        transitions: { durationMs: 300 },
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({ path: 'render.transitions.durationMs' }),
+      );
+    }
+  });
+
+  it('counts only the cards that are on, and nothing with transitions off', () => {
+    const scenes = { enabled: false, durationMs: 500 };
+    for (const render of [
+      { cards: { scenes }, transitions: { durationMs: 1000 } },
+      {
+        cards: { scenes: { durationMs: 500 } },
+        transitions: { enabled: false, durationMs: 1000 },
+      },
+    ]) {
+      expect(
+        parseProjectConfig({ baseUrl: 'https://a.example', render }).ok,
+      ).toBe(true);
+    }
   });
 
   it('keeps what is given and fills the rest of render', () => {
@@ -122,6 +178,8 @@ describe('parseProjectConfig', () => {
             scenes: { enabled: true, durationMs: 500 },
             outro: { title: 'Acme', cta: 'acme.dev/try', durationMs: 10_000 },
           },
+          // The default fade shrinks to half the shortest card (#114).
+          transitions: { enabled: true, durationMs: 250 },
         },
       },
     });

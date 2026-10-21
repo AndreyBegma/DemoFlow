@@ -3,6 +3,7 @@ import type {
   Box,
   CardsConfig,
   FrameConfig,
+  TransitionsConfig,
   Viewport,
 } from '@demoflow/core';
 
@@ -53,6 +54,8 @@ export interface RenderPlanOptions {
   background?: BackgroundConfig;
   /** Intro, scene and outro cards (spec 108). Default: none. */
   cards?: CardsConfig;
+  /** Dissolves at cards and page loads (spec 114). Default: none. */
+  transitions?: TransitionsConfig;
   /** The intro card's subtitle; its title is the run's scenario name. */
   scenario?: { description?: string };
 }
@@ -168,6 +171,32 @@ export interface CardSpec {
   subtitle?: string;
 }
 
+/**
+ * A page load (spec 114). From `startMs` the page shows the frame held at
+ * `sourceMs` — on the run's first load, from about:blank, the background
+ * instead — with `masks` drawn on it; at `endMs` the page is ready and the
+ * held frame dissolves into it over `fadeMs` of page time, until `fadeEndMs`.
+ * Cursor, rings, captions and badges keep following page time throughout.
+ */
+export interface NavigationHold {
+  startMs: number;
+  endMs: number;
+  fadeEndMs: number;
+  /** Page milliseconds: a card inside the dissolve does not take from it. */
+  fadeMs: number;
+  /** The last source frame before the navigation; absent on the first load. */
+  sourceMs?: number;
+  /** The masks active when the navigation started, at their boxes then (viewport CSS pixels). */
+  masks: Box[];
+}
+
+export interface TransitionsSpec {
+  /** Each card dissolves with the page over this long, inside its own time. */
+  durationMs: number;
+  /** In output order, never overlapping. */
+  holds: NavigationHold[];
+}
+
 export interface FailureSpec {
   stage: 'readiness' | 'execution' | 'verification' | 'recording';
   /** 1-based, as a person counts steps; absent when the failure has no step. */
@@ -216,6 +245,8 @@ export interface RenderPlan {
   masks: MaskSpan[];
   captions: Caption[];
   keys: KeyBadge[];
+  /** Absent when transitions are off: the cuts are hard, as before spec 114. */
+  transitions?: TransitionsSpec;
   failure?: FailureSpec;
 }
 
@@ -243,4 +274,11 @@ export interface FrameState {
   endCard?: string;
   /** An intro, scene or outro card: nothing of the page is drawn. */
   card?: { title: string; subtitle?: string; background: GradientSpec };
+  /** Only the background, as behind a card: the run's first load before the page is ready (spec 114). */
+  backdrop?: GradientSpec;
+  /**
+   * A dissolve (spec 114): `from` is drawn, then this frame over it at
+   * `progress`, from 0 (only `from`) to 1 (only this frame).
+   */
+  fade?: { from: FrameState; progress: number };
 }

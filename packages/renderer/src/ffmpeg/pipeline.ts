@@ -4,6 +4,7 @@ import { resolveFfmpeg } from '../plan/ffmpeg.ts';
 import { frameAt, frameCount } from '../plan/frame.ts';
 import type { RenderPlan, SourceSpec } from '../plan/types.ts';
 import { createCompositor, renderStage } from './compose.ts';
+import { drawLayers, sourcesOf } from './layers.ts';
 import { createPicture, type Picture } from './raster.ts';
 
 /**
@@ -18,23 +19,43 @@ export async function drawPlan(
 ): Promise<void> {
   const { output } = plan;
   const compositor = createCompositor(output, renderStage(plan));
-  const source = openSource(sourceFile, plan.source);
+  const kept = keptFrames(plan);
+  const source = openSource(sourceFile, plan.source, kept);
   const encoder = startEncoder(plan, out);
   // Two pictures: one is drawn while FFmpeg still reads the other.
   const pictures = [0, 1].map(() => createPicture(output.width, output.height));
   const pending: (Promise<void> | undefined)[] = [undefined, undefined];
+  const scratch: Picture[] = [];
   try {
     const frames = frameCount(plan);
     for (let frame = 0; frame < frames; frame++) {
       const slot = frame % 2;
       await pending[slot];
       const state = frameAt(plan, frame);
-      const picture =
-        state.sourceMs === null
-          ? undefined
-          : await source.at(sourceFrameIndex(state.sourceMs, plan.source));
-      compositor.compose(pictures[slot], state, picture);
+      const drawn = new Map<number, Picture>();
+      for (const sourceMs of sourcesOf(state)) {
+        drawn.set(
+          sourceMs,
+          await source.at(sourceFrameIndex(sourceMs, plan.source)),
+        );
+      }
+      drawLayers(
+        compositor,
+        pictures[slot],
+        state,
+        (sourceMs) => {
+          const picture = drawn.get(sourceMs);
+          if (picture === undefined) {
+            throw new Error(`source ${sourceMs} ms was not fetched`);
+          }
+          return picture;
+        },
+        scratch,
+      );
       pending[slot] = write(encoder.input, pictures[slot].data);
+      for (const [index, lastFrame] of kept) {
+        if (lastFrame <= frame) source.forget(index);
+      }
     }
     await Promise.all(pending);
     encoder.input.end();
@@ -56,15 +77,46 @@ export function sourceFrameIndex(sourceMs: number, source: SourceSpec): number {
   return Math.max(0, Math.floor((sourceMs * source.fps) / 1000 + 1e-6));
 }
 
+/**
+ * The source frames the page-load holds draw after the decoder has passed
+ * them (spec 114), each with the last output frame that draws it.
+ */
+function keptFrames(plan: RenderPlan): Map<number, number> {
+  const kept = new Map<number, number>();
+  for (const hold of plan.transitions?.holds ?? []) {
+    if (hold.sourceMs === undefined) continue;
+    const index = sourceFrameIndex(hold.sourceMs, plan.source);
+    // A card dissolving across the hold's edge may draw it a card's length later.
+    const lastMs =
+      hold.fadeEndMs +
+      Math.max(0, ...plan.cards.map((card) => card.durationMs));
+    const lastFrame = Math.ceil((lastMs * plan.output.fps) / 1000);
+    kept.set(index, Math.max(kept.get(index) ?? 0, lastFrame));
+  }
+  return kept;
+}
+
 interface Source {
-  /** Frame `index`, or the last one when the video is shorter. Indexes never go back. */
+  /**
+   * Frame `index`, or the last one when the video is shorter. Indexes never
+   * go back, except to a kept frame: an earlier one gives the current frame.
+   */
   at(index: number): Promise<Picture>;
+  /** Releases a kept frame once nothing draws it any more. */
+  forget(index: number): void;
   /** Stops the decoder and resolves once it has exited. */
   close(): Promise<void>;
 }
 
-/** Decodes `file` to RGB24 frames at the source's constant frame rate, read forward once. */
-function openSource(file: string, spec: SourceSpec): Source {
+/**
+ * Decodes `file` to RGB24 frames at the source's constant frame rate, read
+ * forward once. The frames `kept` names stay in memory as it passes them.
+ */
+function openSource(
+  file: string,
+  spec: SourceSpec,
+  kept: ReadonlyMap<number, number> = new Map(),
+): Source {
   const child = spawn(
     resolveFfmpeg(),
     [
@@ -93,9 +145,12 @@ function openSource(file: string, spec: SourceSpec): Source {
   let index = -1;
   let current: Picture | undefined;
   let ended = false;
+  const keeping = new Map<number, Picture>();
 
   return {
     async at(wanted) {
+      const past = wanted < index ? keeping.get(wanted) : undefined;
+      if (past !== undefined) return past;
       while (index < wanted && !ended) {
         const next = await frames.next();
         if (next.done) {
@@ -108,10 +163,15 @@ function openSource(file: string, spec: SourceSpec): Source {
             data: next.value,
           };
           index++;
+          // Each frame is a fresh buffer, so a kept one is never overwritten.
+          if (kept.has(index)) keeping.set(index, current);
         }
       }
       if (current === undefined) throw new Error('the source has no frames');
       return current;
+    },
+    forget(dropped) {
+      keeping.delete(dropped);
     },
     close() {
       // The plan rarely needs the last source frame, so the decoder is

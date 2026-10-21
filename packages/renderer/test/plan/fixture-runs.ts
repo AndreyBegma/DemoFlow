@@ -47,10 +47,28 @@ export async function recordFixtureRun(
   observers: readonly EngineObserver[] = [],
 ): Promise<string> {
   const file = path.join(FIXTURE_ROOT, 'demoflow', `${scenario}.demo.json`);
-  const parsed = parseScenario(JSON.parse(await readFile(file, 'utf8')));
+  return recordInlineRun(
+    scenario,
+    JSON.parse(await readFile(file, 'utf8')),
+    parentDir,
+    observers,
+  );
+}
+
+/**
+ * Records a scenario given inline — validated as a scenario file is — against
+ * the fixture, into `<parentDir>/<name>`, and returns that run directory.
+ */
+export async function recordInlineRun(
+  name: string,
+  input: unknown,
+  parentDir: string,
+  observers: readonly EngineObserver[] = [],
+): Promise<string> {
+  const parsed = parseScenario(input);
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
 
-  const runDir = path.join(parentDir, scenario);
+  const runDir = path.join(parentDir, name);
   const fixture = await startFixtureServer();
   try {
     await runScenario(parsed.value, {
@@ -60,9 +78,7 @@ export async function recordFixtureRun(
       env: { FIXTURE_PASSWORD },
       observers: [
         ...observers,
-        createCaptureObserver({
-          scenarioId: `demoflow/${scenario}.demo.json`,
-        }),
+        createCaptureObserver({ scenarioId: `demoflow/${name}.demo.json` }),
       ],
     });
   } finally {

@@ -247,6 +247,23 @@
             }
           },
           "additionalProperties": false
+        },
+        "transitions": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "default": true,
+              "type": "boolean"
+            },
+            "durationMs": {
+              "description": "Milliseconds; at most half the shortest card that is on. Default 300, or half the shortest card when that is less.",
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 1000
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

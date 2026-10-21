@@ -60,6 +60,44 @@ const MaskVisibilitySchema = z
   });
 
 /**
+ * A main-frame document navigation: from its request to the page's `load`
+ * (#114). Absent `endMs`: still loading when the recording ended.
+ */
+const NavigationSchema = z
+  .strictObject({
+    startMs: msSchema,
+    endMs: msSchema.optional(),
+  })
+  .refine((navigation) => (navigation.endMs ?? Infinity) > navigation.startMs, {
+    message: 'expected endMs to be after startMs',
+    path: ['endMs'],
+  });
+export type Navigation = z.infer<typeof NavigationSchema>;
+
+/** Ordered and non-overlapping; only the last may be open. */
+const NavigationsSchema = z
+  .array(NavigationSchema)
+  .superRefine((navigations, ctx) => {
+    for (const [index, navigation] of navigations.entries()) {
+      const previous = navigations[index - 1];
+      if (previous === undefined) continue;
+      if (previous.endMs === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'expected only the last navigation to be open',
+          path: [index - 1, 'endMs'],
+        });
+      } else if (navigation.startMs < previous.endMs) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'expected navigations ordered and not overlapping',
+          path: [index, 'startMs'],
+        });
+      }
+    }
+  });
+
+/**
  * One executed step. Times are milliseconds from the video's first frame;
  * boxes and points are CSS pixels of the viewport (ADR-0004 §1).
  */
@@ -146,6 +184,8 @@ export const TimelineSchema = z
         path: ['offMs'],
       })
       .optional(),
+    // Document navigations only: a same-document route change has no blank page (#114).
+    navigations: NavigationsSchema.optional(),
   })
   .refine(
     (timeline) => {

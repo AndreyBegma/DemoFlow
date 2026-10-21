@@ -1,11 +1,14 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { setTimeout } from 'node:timers/promises';
 import {
   CardsConfigSchema,
   RunResultSchema,
   type TimelineEvent,
+  TimelineSchema,
 } from '@demoflow/core';
+import type { EngineObserver } from '@demoflow/engine';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LOOK, renderStage } from '../../src/ffmpeg/compose.ts';
 import { wrapText } from '../../src/ffmpeg/font.ts';
@@ -21,7 +24,11 @@ import {
   runFfmpeg,
   toOutputMs,
 } from '../../src/index.ts';
-import { hasFfmpeg, recordFixtureRun } from '../plan/fixture-runs.ts';
+import {
+  hasFfmpeg,
+  recordFixtureRun,
+  recordInlineRun,
+} from '../plan/fixture-runs.ts';
 import {
   checkFramedLayout,
   checkLayout,
@@ -313,6 +320,17 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
     // The page pauses on the cut and resumes there: either side of the scene
     // card is the frame the run without cards shows at that page time. The
     // cards ahead are 60 and 105 frames long (2 000 and 3 500 ms at 30 fps).
+    // As the plan draws it: the same source frame. The camera may differ by
+    // a pixel or so — a move cut by the card eases into the cut and out of it.
+    for (const [carded, without] of [
+      [beforeScene, beforeScene - 60],
+      [afterScene, afterScene - 105],
+    ]) {
+      expect(frameAt(plan, carded).sourceMs).toBeCloseTo(
+        frameAt(plain, without).sourceMs ?? Number.NaN,
+        6,
+      );
+    }
     const plainFile = path.join(runDir, 'render', 'plain.mp4');
     await drawPlan(path.join(runDir, plain.source.file), plain, plainFile);
     const [plainBefore, plainAfter] = await extractFrames(
@@ -330,24 +348,42 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
       }
       const mean = difference / carded.length;
       console.info(`scene card: ${name} the cut, mean difference ${mean}`);
-      // Measured 0.4–2.3: two encodes, and a camera that eases into the cut.
+      // Measured 0.4–2.3 locally and 5.11 once on CI: two separate x264
+      // encodes of the same frame (the plan states match exactly, above).
       // The neighbouring source frame, mid page load, measured 193.
-      expect(mean, `${name} the scene card`).toBeLessThan(5);
+      expect(mean, `${name} the scene card`).toBeLessThan(20);
     }
   });
 
   it('covers the password field on every frame until the navigation (login)', async () => {
     const runDir = await recordFixtureRun('login', parent);
     // With the default cards (spec 108): the intro moves every page frame.
+    // With the default transitions (spec 114): every hold and dissolve too.
     const plan = await buildRenderPlan(runDir, {
       cards: CardsConfigSchema.parse({}),
+      transitions: { enabled: true, durationMs: 300 },
     });
     expect(plan.cards.map((card) => card.kind)).toEqual(['intro']);
+    expect(plan.transitions?.holds.length).toBeGreaterThan(0);
     await ffmpegRenderer.render(runDir, plan);
     const unmaskedFile = path.join(runDir, 'render', 'unmasked.mp4');
     await drawPlan(
       path.join(runDir, plan.source.file),
-      { ...plan, masks: [] },
+      {
+        ...plan,
+        masks: [],
+        ...(plan.transitions === undefined
+          ? {}
+          : {
+              transitions: {
+                ...plan.transitions,
+                holds: plan.transitions.holds.map((hold) => ({
+                  ...hold,
+                  masks: [],
+                })),
+              },
+            }),
+      },
       unmaskedFile,
     );
 
@@ -429,5 +465,109 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
         `frame ${n}: the field differs from the unmasked render`,
       ).toBeGreaterThan(10);
     });
+  });
+
+  it('holds the page before a document load until the next one is ready, never a blank page', async () => {
+    // A second `navigate` loads a new document (spec 114). Its scripts answer
+    // 800 ms late, so it commits and shows its blank page well before `load`.
+    const slowScripts: EngineObserver = {
+      async onPageCreated({ page }) {
+        await page.route('**/*.js', async (route) => {
+          if (route.request().headers().referer?.endsWith('/long')) {
+            await setTimeout(800);
+          }
+          await route.continue();
+        });
+      },
+    };
+    const runDir = await recordInlineRun(
+      'two-pages',
+      {
+        schemaVersion: 1,
+        name: 'Two pages',
+        viewport: { width: 1280, height: 720 },
+        steps: [
+          { action: 'navigate', path: '/customers' },
+          { action: 'wait', ms: 600 },
+          { action: 'navigate', path: '/long' },
+          { action: 'wait', ms: 800 },
+        ],
+      },
+      parent,
+      [slowScripts],
+    );
+    const timeline = TimelineSchema.parse(
+      JSON.parse(await readFile(path.join(runDir, 'timeline.json'), 'utf8')),
+    );
+    expect(timeline.navigations).toHaveLength(2);
+    const plan = await buildRenderPlan(runDir, {
+      transitions: { enabled: true, durationMs: 300 },
+    });
+    const hold = plan.transitions?.holds[1];
+    if (hold?.sourceMs === undefined) throw new Error('no held frame');
+    const { fps } = plan.output;
+    const frameOf = (ms: number): number => Math.ceil((ms * fps) / 1000 - 1e-6);
+    const before = frameOf(hold.startMs) - 1;
+    const held: number[] = [];
+    for (let n = frameOf(hold.startMs); n < frameOf(hold.endMs); n++) {
+      held.push(n);
+      expect(frameAt(plan, n).sourceMs, `frame ${n}`).toBe(hold.sourceMs);
+    }
+    // The scripts' 800 ms: frames enough to see the blank page without the hold.
+    expect(held.length).toBeGreaterThan(15);
+    const middle = frameOf((hold.endMs + hold.fadeEndMs) / 2);
+    expect(frameAt(plan, middle).fade?.from.sourceMs).toBe(hold.sourceMs);
+    console.info(
+      `page load: held ${hold.startMs.toFixed(0)}–${hold.endMs.toFixed(0)} ms, ${held.length} frames`,
+    );
+
+    await ffmpegRenderer.render(runDir, plan);
+    const [last, ...rest] = await extractFrames(
+      renderPath(runDir, 'ffmpeg'),
+      [before, ...held, middle],
+      plan,
+    );
+    const mid = rest.pop();
+    // The share of pixels that clearly changed: a page's text and panels on a
+    // light page are a small part of the frame, so a mean hides them.
+    const changed = (a: Uint8Array, b: Uint8Array): number => {
+      let count = 0;
+      for (let at = 0; at < a.length; at += 3) {
+        if (
+          Math.abs(a[at] - b[at]) > 40 ||
+          Math.abs(a[at + 1] - b[at + 1]) > 40 ||
+          Math.abs(a[at + 2] - b[at + 2]) > 40
+        ) {
+          count++;
+        }
+      }
+      return count / (a.length / 3);
+    };
+    // Every frame of the load is the page before it, as the last live frame
+    // showed it — not the blank page of the new document.
+    for (const [i, frame] of rest.entries()) {
+      const share = changed(frame, last);
+      console.info(`page load: frame ${held[i]} vs the page before, ${share}`);
+      expect(share, `frame ${held[i]}`).toBeLessThan(0.001);
+    }
+    // Mid-dissolve: neither the held page nor the loaded one alone.
+    if (mid === undefined) throw new Error('no mid-dissolve frame');
+    console.info(`page load: mid-dissolve, ${changed(mid, last)}`);
+    expect(changed(mid, last)).toBeGreaterThan(0.001);
+
+    // Without the hold the same stretch shows the new document's blank page:
+    // the check above would have caught it.
+    const { transitions: _, ...cut } = plan;
+    const cutFile = path.join(runDir, 'render', 'cut.mp4');
+    await drawPlan(path.join(runDir, plan.source.file), cut, cutFile);
+    const lastHeld = held.at(-1) ?? before;
+    const [cutBefore, cutLate] = await extractFrames(
+      cutFile,
+      [before, lastHeld],
+      cut,
+    );
+    const blank = changed(cutLate, cutBefore);
+    console.info(`page load: frame ${lastHeld} without the hold, ${blank}`);
+    expect(blank).toBeGreaterThan(0.01);
   });
 });

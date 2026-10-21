@@ -69,6 +69,9 @@ export function createCaptureObserver(options: CaptureOptions): EngineObserver {
           ...(outcome.syncMark === undefined
             ? {}
             : { syncMark: outcome.syncMark }),
+          ...(outcome.navigations === undefined
+            ? {}
+            : { navigations: outcome.navigations }),
         });
         await writeJson(path.join(runDir, RUN_FILES.timeline), timeline);
       }

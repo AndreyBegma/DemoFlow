@@ -185,8 +185,10 @@ describe('demoflow run', () => {
           render: {
             frame: { marginRatio: 0.2 },
             background: { color: '#c03020' },
-            // Frame 0 is the page, not the intro card.
+            // Frame 0 is the page, not the intro card nor the first load's
+            // background (spec 114).
             cards: { intro: { enabled: false } },
+            transitions: { enabled: false },
           },
         }),
       );
@@ -298,6 +300,59 @@ describe('demoflow run', () => {
       expect(white).toBeGreaterThan(200);
     } finally {
       await rm(carded, { recursive: true, force: true });
+    }
+  });
+
+  it('renders with render.transitions on by default: the first load opens on the background', async () => {
+    const faded = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-fades-'));
+    try {
+      await writeFile(
+        path.join(faded, 'demoflow.config.json'),
+        JSON.stringify({
+          baseUrl: fixture.origin,
+          render: {
+            background: { color: '#c03020' },
+            cards: { intro: { enabled: false } },
+          },
+        }),
+      );
+      await cp(FIXTURE_SCENARIOS, path.join(faded, 'demoflow'), {
+        recursive: true,
+      });
+      const result = await demoflow(
+        [
+          'run',
+          path.join(faded, 'demoflow', 'customers.demo.json'),
+          '--json',
+          '--out',
+          out,
+        ],
+        faded,
+      );
+      expect(result.code, result.stderr).toBe(0);
+      const json = JSON.parse(result.stdout);
+      const { stdout: frame } = await runFfmpegRaw([
+        '-i',
+        path.join(json.runDir, json.renders[0].file),
+        '-frames:v',
+        '1',
+        '-f',
+        'rawvideo',
+        '-pix_fmt',
+        'rgb24',
+        'pipe:1',
+      ]);
+      expect(frame.length).toBe(1920 * 1080 * 3);
+      // The middle of the window: the background, not about:blank's white
+      // nor the page — the page dissolves in once it has loaded (spec 114).
+      const colour = [0xc0, 0x30, 0x20];
+      const at = (540 * 1920 + 960) * 3;
+      const pixel = [frame[at], frame[at + 1], frame[at + 2]];
+      pixel.forEach((value, c) => {
+        expect(Math.abs(value - colour[c]), `${pixel}`).toBeLessThanOrEqual(8);
+      });
+    } finally {
+      await rm(faded, { recursive: true, force: true });
     }
   });
 
