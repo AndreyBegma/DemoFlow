@@ -14,6 +14,24 @@ export const en = {
       resend: 'Resend email',
       resending: 'Sending…',
       resent: 'Verification email sent. Check your inbox.',
+      settings: 'Account settings',
+    },
+    settings: {
+      title: 'Account settings',
+      back: 'Back to your projects',
+      email: 'Email',
+      github: {
+        title: 'GitHub',
+        linked: 'Linked. You can sign in with GitHub.',
+        notLinked: 'Not linked',
+        unavailable: 'GitHub sign-in is not available yet.',
+        link: 'Link GitHub',
+        unlink: 'Unlink GitHub',
+        unlinking: 'Unlinking…',
+        unlinked: 'GitHub is unlinked.',
+        needsPassword:
+          'You sign in only with GitHub. To unlink it, first set a password with “Forgot your password?” on the sign-in page.',
+      },
     },
   },
   meta: {
@@ -37,6 +55,24 @@ export const en = {
       invalid: 'Something in the form is not valid. Check it and try again.',
       rateLimited: 'Too many attempts, try again later.',
       unknown: 'Something went wrong. Try again.',
+    },
+    github: {
+      continue: 'Continue with GitHub',
+      or: 'or',
+      errors: {
+        noVerifiedEmail:
+          'Your GitHub account has no verified primary email. Verify one on GitHub, then try again.',
+        linkRequiresVerified:
+          'An account with this email exists but its email is not verified yet. Sign in with your password, then link GitHub from account settings.',
+        alreadyLinkedElsewhere:
+          'That GitHub account is already linked to another DemoFlow account.',
+        alreadyLinked:
+          'This DemoFlow account is already linked to a different GitHub account.',
+        stateInvalid:
+          'The GitHub sign-in expired or was started in another browser. Try again.',
+        denied: 'GitHub sign-in was cancelled.',
+        failed: 'GitHub did not answer. Try again in a moment.',
+      },
     },
     signUp: {
       title: 'Create your account',

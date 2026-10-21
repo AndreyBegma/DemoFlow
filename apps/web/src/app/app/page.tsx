@@ -1,5 +1,6 @@
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Card } from '@andrewbehma/glass-ui/card';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ResendButton } from '@/components/auth/resend-button';
 import { SignOutButton } from '@/components/auth/sign-out-button';
@@ -15,7 +16,12 @@ export default async function AppPage() {
         <p className="min-w-0 break-words text-sm text-ink-2">
           {t('app.shell.signedInAs', { email: user.email })}
         </p>
-        <SignOutButton />
+        <div className="flex items-center gap-3">
+          <Link href="/app/settings" className="text-sm text-ink underline">
+            {t('app.shell.settings')}
+          </Link>
+          <SignOutButton />
+        </div>
       </header>
       {user.emailVerified ? null : (
         <Banner tone="warn" title={t('app.shell.verifyTitle')}>
