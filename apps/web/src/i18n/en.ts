@@ -125,6 +125,58 @@ export const en = {
   home: {
     title: 'DemoFlow',
   },
+  landing: {
+    meta: {
+      title: 'DemoFlow — demo videos from one JSON scenario',
+      description:
+        'DemoFlow drives your running app in a real browser, checks every step and renders a polished demo video. Everything runs on your machine.',
+      imageAlt: 'A DemoFlow demo video of a sample app',
+    },
+    nav: {
+      label: 'Main',
+      home: 'DemoFlow home',
+      docs: 'Docs',
+      signIn: 'Sign in',
+      openApp: 'Open app',
+    },
+    hero: {
+      title: 'Demo videos of the features you ship, from one JSON scenario.',
+      subtitle:
+        'DemoFlow drives your running app in a real browser, checks every step, and renders a polished video (MP4, GIF or WebM) with a drawn cursor, zoom on the action and captions.',
+    },
+    video: {
+      label: 'A demo video of a sample app, recorded with DemoFlow',
+      caption: 'This video was made with DemoFlow from a short JSON scenario.',
+    },
+    benefits: {
+      title: 'Why DemoFlow',
+      write: {
+        title: 'Write it, or let an agent write it',
+        body: 'Describe a flow in a short JSON scenario, or let an AI agent such as Claude Code write and run it over MCP. Out comes a finished video.',
+      },
+      secrets: {
+        title: 'Secrets stay masked',
+        body: 'Passwords come from environment variables, never touch disk or logs, and are blurred in the video by construction.',
+      },
+      local: {
+        title: 'Your videos stay on your machine',
+        body: 'The browser, your app and your secrets never leave your computer. DemoFlow runs locally or in your own CI.',
+      },
+    },
+    install: {
+      title: 'Run it in your project',
+      command: 'npx demoflow',
+      body: 'Then run demoflow record to capture a scenario by clicking through your app.',
+      copy: 'Copy command',
+      copied: 'Copied',
+      copyFailed: 'Could not copy. Select the command and copy it.',
+    },
+    footer: {
+      license: 'DemoFlow · MIT licence',
+      github: 'GitHub',
+      docs: 'Docs',
+    },
+  },
   auth: {
     fields: {
       email: 'Email',
