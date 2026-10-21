@@ -18,6 +18,7 @@ import { type Clock, startClock } from './execute/clock.ts';
 import { MaskTracker } from './execute/mask.ts';
 import { NavigationRecorder } from './execute/navigations.ts';
 import type { EngineObserver, RunOutcome } from './execute/observer.ts';
+import { installNavigationProbe } from './execute/pending-navigation.ts';
 import { type Point, viewportCentre } from './execute/pointer.ts';
 import {
   checkReadiness,
@@ -104,6 +105,7 @@ export async function runScenario(
   try {
     await emit('onBrowserLaunched', { browser });
     const context = await browser.newContext(toContextOptions(recording));
+    await installNavigationProbe(context);
     const guard = new OriginGuard(options.allowedOrigins);
     const navigation = watchNavigation(context, guard);
 
