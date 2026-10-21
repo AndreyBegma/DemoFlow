@@ -27,7 +27,8 @@ export default async function globalSetup(): Promise<void> {
   const client = new Client({ connectionString: url });
   await client.connect();
   try {
-    await client.query('TRUNCATE "User" CASCADE');
+    // `DeviceCode` has no foreign key to `User`, so the cascade misses it.
+    await client.query('TRUNCATE "User", "DeviceCode" CASCADE');
   } finally {
     await client.end();
   }
