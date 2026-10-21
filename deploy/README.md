@@ -218,3 +218,16 @@ Nothing is published on the host. The stack runs on its own compose network
 - **`530` / error 1033** from the public URL means the hostname exists but no
   cloudflared connector is running. Check that `TUNNEL_TOKEN` is set and look
   at `docker logs demoflow-staging-cloudflared`.
+
+### Mail on staging
+
+Account emails (verification, password reset) go through Resend. The key and
+the verified sender domain are the owner's to add, in `env/api.env`:
+`RESEND_API_KEY`, `MAIL_FROM`, and empty `MAIL_TRANSPORT=` (empty, not
+deleted: `refresh.sh` would append a deleted key again). Until then
+staging runs `MAIL_TRANSPORT=log`: each email — recipient, subject and link —
+is written to the API log instead of sent
+(`docker logs demoflow-staging-api 2>&1 | grep Mail`).
+
+Staging runs `APP_ENV=production`, which refuses to start with neither a
+Resend key nor `MAIL_TRANSPORT=log` — the error names `RESEND_API_KEY`.

@@ -1,24 +1,11 @@
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import helmet from 'helmet';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { configureApp } from './app.setup';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-
-  app.use(helmet());
-  app.enableCors({
-    origin: process.env.WEB_URL ?? 'http://localhost:3670',
-    credentials: true,
-  });
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  configureApp(app);
 
   const port = process.env.PORT ?? 8370;
   await app.listen(port);
