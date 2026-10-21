@@ -24,6 +24,7 @@ import {
   runFfmpeg,
   toOutputMs,
 } from '../../src/index.ts';
+import { runFfmpegRaw } from '../../src/plan/ffmpeg.ts';
 import {
   hasFfmpeg,
   recordFixtureRun,
@@ -99,6 +100,58 @@ async function readResult(runDir: string) {
   return RunResultSchema.parse(
     JSON.parse(await readFile(path.join(runDir, 'result.json'), 'utf8')),
   );
+}
+
+/**
+ * Whether the source video shows something inside `box` (viewport pixels,
+ * a few pixels inside its edge), frame by frame, judged against the last
+ * source frame: for a field the run removed, the page without it.
+ */
+async function sourceShows(
+  runDir: string,
+  plan: RenderPlan,
+  box: { x: number; y: number; width: number; height: number },
+): Promise<{ atMs: number; shown: boolean }[]> {
+  const { scale, width, height } = plan.source;
+  // Even, as a crop of 4:2:0 video is: FFmpeg rounds an odd one.
+  const even = (n: number): number => 2 * Math.floor(n / 2);
+  const x = even(Math.max(0, Math.ceil(box.x * scale) + 4));
+  const y = even(Math.max(0, Math.ceil(box.y * scale) + 4));
+  const w = even(
+    Math.min(width, Math.floor((box.x + box.width) * scale) - 3) - x,
+  );
+  const h = even(
+    Math.min(height, Math.floor((box.y + box.height) * scale) - 3) - y,
+  );
+  expect(w > 0 && h > 0, 'the box is inside the source').toBe(true);
+  const { stdout, stderr } = await runFfmpegRaw([
+    '-i',
+    path.join(runDir, plan.source.file),
+    '-vf',
+    `crop=${w}:${h}:${x}:${y},showinfo`,
+    '-fps_mode',
+    'passthrough',
+    '-f',
+    'rawvideo',
+    '-pix_fmt',
+    'rgb24',
+    'pipe:1',
+  ]);
+  // One `n: … pts_time:` line per frame shown.
+  const times = [
+    ...stderr.matchAll(/\bn:\s*\d+\s+pts:\s*\d+\s+pts_time:([\d.]+)/g),
+  ].map((match) => Number(match[1]) * 1000);
+  const size = w * h * 3;
+  expect(stdout.length).toBe(size * times.length);
+  const last = stdout.subarray((times.length - 1) * size);
+  return times.map((atMs, i) => {
+    const frame = stdout.subarray(i * size, (i + 1) * size);
+    let difference = 0;
+    for (let at = 0; at < size; at++) {
+      difference += Math.abs(frame[at] - last[at]);
+    }
+    return { atMs, shown: difference / size > 8 };
+  });
 }
 
 async function readEvents(runDir: string): Promise<TimelineEvent[]> {
@@ -359,7 +412,7 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
     }
   });
 
-  it('covers the password field on every frame until the navigation (login)', async () => {
+  it('covers the password field on every frame it shows, and drops the box soon after the form leaves (login)', async () => {
     const runDir = await recordFixtureRun('login', parent);
     // With the default cards (spec 108): the intro moves every page frame.
     // With the default transitions (spec 114): every hold and dissolve too.
@@ -407,50 +460,99 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
           plan.output.fps) /
           1000,
       );
-    const from = toFrame(password.startMs);
+    const { width, height, fps } = plan.output;
+    // The default plan is framed (spec 100): the field moves with the window.
+    expect(plan.frame).toBeDefined();
+    /** The field in output pixels on frame `n`, a few pixels inside its edge. */
+    const fieldOn = (n: number) => {
+      const state = frameAt(plan, n);
+      const viewX = state.crop.x / plan.source.scale;
+      const viewY = state.crop.y / plan.source.scale;
+      return {
+        x0: Math.max(
+          0,
+          Math.ceil(state.content.x + (box.x - viewX) * state.scale) + 3,
+        ),
+        y0: Math.max(
+          0,
+          Math.ceil(state.content.y + (box.y - viewY) * state.scale) + 3,
+        ),
+        x1: Math.min(
+          width,
+          Math.floor(
+            state.content.x + (box.x + box.width - viewX) * state.scale,
+          ) - 3,
+        ),
+        y1: Math.min(
+          height,
+          Math.floor(
+            state.content.y + (box.y + box.height - viewY) * state.scale,
+          ) - 3,
+        ),
+      };
+    };
+
+    // #155: signing in removes the form on the same page. On every output
+    // frame around the click, the source frame it draws (or the next one, the
+    // stricter reading) either lacks the field or has a mask over it; and the
+    // mask is gone at most 300 ms after the first frame without the field.
+    const source = await sourceShows(runDir, plan, box);
+    const showsField = (sourceMs: number): boolean => {
+      const next = source.findIndex((frame) => frame.atMs > sourceMs);
+      const at = next === -1 ? source.length - 1 : Math.max(0, next - 1);
+      return source[at].shown || (source[next]?.shown ?? false);
+    };
     // A slow runner can deliver a video that ends before the timeline does
     // (the same run measures shorter than its events); only frames the
     // rendered file has can be checked.
     const maskedFile = renderPath(runDir, 'ffmpeg');
-    const to = Math.min(
-      toFrame(navigation.endMs),
-      await countFrames(maskedFile),
-    );
-    // A frame every 500 ms (15 at 30 fps), and the last one before the navigation.
-    const numbers = sampleFrames(from, to, plan.output.fps / 2);
+    const frames = await countFrames(maskedFile);
+    const around = {
+      from: toFrame(navigation.startMs),
+      to: Math.min(toFrame(navigation.endMs) + fps / 2, frames),
+    };
+    let lastShown = -1;
+    let firstGone: number | undefined;
+    let lastMasked = -1;
+    for (let n = around.from; n < around.to; n++) {
+      const { sourceMs, masks } = frameAt(plan, n);
+      if (sourceMs === null) continue;
+      const field = fieldOn(n);
+      const covered = masks.some(
+        (mask) =>
+          mask.x <= field.x0 &&
+          mask.y <= field.y0 &&
+          mask.x + mask.width >= field.x1 &&
+          mask.y + mask.height >= field.y1,
+      );
+      if (covered) lastMasked = n;
+      if (showsField(sourceMs)) {
+        expect(firstGone, `frame ${n}: the field is back`).toBeUndefined();
+        expect(covered, `frame ${n}: the field shows unmasked`).toBe(true);
+        lastShown = n;
+      } else if (lastShown !== -1) {
+        firstGone ??= n;
+      }
+    }
+    expect(
+      showsField(frameAt(plan, around.from).sourceMs ?? Number.NaN),
+      'the field is on screen when the click starts',
+    ).toBe(true);
+    if (firstGone === undefined) {
+      throw new Error('the field never left the screen');
+    }
+    expect(((lastMasked - firstGone) * 1000) / fps).toBeLessThanOrEqual(300);
+
+    // The mask really hides the field: a frame every 500 ms (15 at 30 fps)
+    // while it is on screen, and the last one.
+    const from = toFrame(password.startMs);
+    const numbers = sampleFrames(from, lastShown + 1, fps / 2);
     expect(numbers.length).toBeGreaterThan(2);
 
     const masked = await extractFrames(maskedFile, numbers, plan);
     const unmasked = await extractFrames(unmaskedFile, numbers, plan);
-    const { width } = plan.output;
-    // The default plan is framed (spec 100): the field moves with the window.
-    expect(plan.frame).toBeDefined();
-    const { height } = plan.output;
     numbers.forEach((n, i) => {
-      const state = frameAt(plan, n);
-      const viewX = state.crop.x / plan.source.scale;
-      const viewY = state.crop.y / plan.source.scale;
-      // The field in output pixels, a few pixels inside its edge, on the frame.
-      const x0 = Math.max(
-        0,
-        Math.ceil(state.content.x + (box.x - viewX) * state.scale) + 3,
-      );
-      const y0 = Math.max(
-        0,
-        Math.ceil(state.content.y + (box.y - viewY) * state.scale) + 3,
-      );
-      const x1 = Math.min(
-        width,
-        Math.floor(
-          state.content.x + (box.x + box.width - viewX) * state.scale,
-        ) - 3,
-      );
-      const y1 = Math.min(
-        height,
-        Math.floor(
-          state.content.y + (box.y + box.height - viewY) * state.scale,
-        ) - 3,
-      );
+      const { x0, y0, x1, y1 } = fieldOn(n);
       expect(x1 > x0 && y1 > y0, `frame ${n}: the box is on screen`).toBe(true);
       let difference = 0;
       for (let y = y0; y < y1; y++) {

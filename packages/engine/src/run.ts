@@ -136,7 +136,7 @@ export async function runScenario(
       observers,
       events,
       navigation,
-      masks: new MaskTracker(page),
+      masks: new MaskTracker(page, clock),
       scrub,
       emit,
     });
@@ -274,7 +274,7 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
     }
     // A failed masked fill is tracked too (#42): its interval stays open to the end.
     if (step.action === 'fill') {
-      input.masks.track(event, step.target);
+      await input.masks.track(event, step.target);
     }
     input.events.push(event);
     await emit('onStepFinished', { stepIndex, step, event });
