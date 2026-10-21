@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import { RunnerSocketAdapter } from './runner/runner-socket.adapter';
 import { originCheck } from './security/origin-check';
 
 /** Everything `main.ts` puts around the app. Integration tests apply it too. */
@@ -17,6 +18,9 @@ export function configureApp(app: NestExpressApplication): void {
   app.enableCors({ origin: webUrl, credentials: true });
   app.use(cookieParser());
   app.use(originCheck(webUrl));
+
+  // The runner socket (`/runner`), authenticated on the upgrade.
+  app.useWebSocketAdapter(new RunnerSocketAdapter(app));
 
   app.useGlobalPipes(
     new ValidationPipe({

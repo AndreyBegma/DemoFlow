@@ -11,7 +11,7 @@ import {
   type SignedIn,
   signedInUser,
 } from './runner.fixtures';
-import { RUNNER_LAST_USED_INTERVAL_MS } from './runner-token.guard';
+import { RUNNER_LAST_USED_INTERVAL_MS } from './runner-auth.service';
 
 const WEB_ORIGIN = 'http://localhost:3670';
 
@@ -58,6 +58,9 @@ describe('runners (integration)', () => {
             cliVersion: MACHINE.cliVersion,
             createdAt: expect.any(String),
             lastUsedAt: null,
+            online: false,
+            lastSeenAt: null,
+            lastSeenIp: null,
           },
           expect.objectContaining({ id: older.runnerId, name: 'Older' }),
         ],

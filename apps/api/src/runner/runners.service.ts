@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Runner } from '@prisma/client';
 import { Clock } from '../common/clock';
 import { PrismaService } from '../database/prisma.service';
+import { RunnerConnections } from './runner-connections.service';
+import { CLOSE_REVOKED } from './runner-socket';
 
 /** A machine as the API returns it: never its token hash. */
 export interface RunnerView {
@@ -11,9 +13,13 @@ export interface RunnerView {
   cliVersion: string;
   createdAt: Date;
   lastUsedAt: Date | null;
+  /** Has an open socket on this API right now (spec #151). */
+  online: boolean;
+  lastSeenAt: Date | null;
+  lastSeenIp: string | null;
 }
 
-export function toRunnerView(runner: Runner): RunnerView {
+export function toRunnerView(runner: Runner, online: boolean): RunnerView {
   return {
     id: runner.id,
     name: runner.name,
@@ -21,6 +27,9 @@ export function toRunnerView(runner: Runner): RunnerView {
     cliVersion: runner.cliVersion,
     createdAt: runner.createdAt,
     lastUsedAt: runner.lastUsedAt,
+    online,
+    lastSeenAt: runner.lastSeenAt,
+    lastSeenIp: runner.lastSeenIp,
   };
 }
 
@@ -33,6 +42,7 @@ export class RunnersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly clock: Clock,
+    private readonly connections: RunnerConnections,
   ) {}
 
   async list(userId: string): Promise<RunnerView[]> {
@@ -40,7 +50,7 @@ export class RunnersService {
       where: { userId, revokedAt: null },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
-    return runners.map(toRunnerView);
+    return runners.map((runner) => this.view(runner));
   }
 
   async rename(userId: string, id: string, name: string): Promise<RunnerView> {
@@ -51,18 +61,33 @@ export class RunnersService {
     if (count !== 1) {
       throw new NotFoundException();
     }
-    return toRunnerView(
+    return this.view(
       await this.prisma.runner.findUniqueOrThrow({ where: { id } }),
     );
   }
 
+  /**
+   * Revokes the token, drops a rotation in flight and the last-seen address
+   * (spec #151 Decision 10), and closes a live socket with `4401`.
+   */
   async revoke(userId: string, id: string): Promise<void> {
     const { count } = await this.prisma.runner.updateMany({
       where: { id, userId, revokedAt: null },
-      data: { revokedAt: this.clock.now() },
+      data: {
+        revokedAt: this.clock.now(),
+        pendingTokenHash: null,
+        pendingIssuedAt: null,
+        lastSeenAt: null,
+        lastSeenIp: null,
+      },
     });
     if (count !== 1) {
       throw new NotFoundException();
     }
+    this.connections.disconnect(id, CLOSE_REVOKED, 'revoked');
+  }
+
+  private view(runner: Runner): RunnerView {
+    return toRunnerView(runner, this.connections.isOnline(runner.id));
   }
 }

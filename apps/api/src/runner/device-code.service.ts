@@ -226,6 +226,8 @@ export class DeviceCodeService {
           os: machine.os,
           cliVersion: machine.cliVersion,
           tokenHash: hashToken(token),
+          // On the clock rotation is measured with (spec #151).
+          tokenIssuedAt: now,
         },
         include: { user: true },
       });
