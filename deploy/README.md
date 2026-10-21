@@ -231,3 +231,21 @@ is written to the API log instead of sent
 
 Staging runs `APP_ENV=production`, which refuses to start with neither a
 Resend key nor `MAIL_TRANSPORT=log` — the error names `RESEND_API_KEY`.
+
+### GitHub sign-in on staging
+
+"Continue with GitHub" stays hidden until both `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET` are set; while either is empty `/api/auth/providers`
+answers `{ "github": false }` and `/api/auth/github/start` is a 404. To turn it
+on, the owner:
+
+1. Creates an OAuth App (GitHub → Settings → Developer settings → OAuth Apps):
+   homepage `https://demoflow-app.luna-realm.com`, authorization callback URL
+   `https://demoflow-app.luna-realm.com/api/auth/github/callback`. A second
+   app for local development uses `http://localhost:3670/api/auth/github/callback`.
+2. Puts the client id and a generated client secret in `env/api.env` on the
+   host, and restarts the API container.
+
+The app asks for `read:user user:email` only, and keeps no GitHub token. The
+client secret also signs the short-lived `df_oauth` cookie, so rotating it
+only fails sign-ins that are in flight.
