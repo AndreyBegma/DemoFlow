@@ -6,14 +6,16 @@ import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
 import { Input } from '@andrewbehma/glass-ui/field';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { t } from '@/i18n';
 import { type Runner, renameRunner, revokeRunner } from '@/lib/api';
 import { formatDate } from '@/lib/format-date';
+import { formatRelative } from '@/lib/format-relative';
 import type { ErrorKey } from '@/lib/validation';
 import { apiErrorKey } from '../auth/form-parts';
 
 const NAME_MAX = 64;
+const REFRESH_MS = 15_000;
 
 type Failure = 'machines.errors.name' | 'machines.errors.notFound';
 
@@ -23,6 +25,38 @@ export function MachineList({ runners }: { runners: Runner[] }) {
   const [revoking, setRevoking] = useState<Runner | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Failure | ErrorKey | undefined>();
+  // Null until mounted, so the server render and hydration agree.
+  const [now, setNow] = useState<number | null>(null);
+
+  // Online status by polling (spec #151, Decision 11): refetch while the tab is
+  // visible. router.refresh() keeps client state, so an open rename survives.
+  useEffect(() => {
+    setNow(Date.now());
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const tick = () => {
+      router.refresh();
+      setNow(Date.now());
+    };
+    const sync = () => {
+      if (timer !== undefined) {
+        clearInterval(timer);
+        timer = undefined;
+      }
+      if (document.visibilityState === 'visible') {
+        timer = setInterval(tick, REFRESH_MS);
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') tick();
+      sync();
+    };
+    sync();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (timer !== undefined) clearInterval(timer);
+    };
+  }, [router]);
 
   if (runners.length === 0) {
     return (
@@ -30,9 +64,17 @@ export function MachineList({ runners }: { runners: Runner[] }) {
         title={t('machines.empty.title')}
         description={t('machines.empty.body')}
         action={
-          <code className="rounded-control bg-hover px-3 py-2 text-sm">
-            {t('machines.empty.command')}
-          </code>
+          <div className="flex flex-col items-center gap-2">
+            <code className="rounded-control bg-hover px-3 py-2 text-sm">
+              {t('machines.empty.command')}
+            </code>
+            <span className="text-sm text-ink-2">
+              {t('machines.empty.afterLogin')}
+            </span>
+            <code className="rounded-control bg-hover px-3 py-2 text-sm">
+              {t('machines.startCommand')}
+            </code>
+          </div>
         }
       />
     );
@@ -78,12 +120,26 @@ export function MachineList({ runners }: { runners: Runner[] }) {
   return (
     <div className="flex flex-col gap-4">
       {error ? <Banner tone="danger">{t(error)}</Banner> : null}
+      {runners.some((runner) => runner.online) ? null : (
+        <Banner tone="info">
+          {t('machines.noneOnline')}{' '}
+          <code className="rounded-control bg-hover px-2 py-1 text-sm">
+            {t('machines.startCommand')}
+          </code>
+        </Banner>
+      )}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[40rem] text-left text-sm">
+        <table className="w-full min-w-[48rem] text-left text-sm">
           <thead className="text-ink-2">
             <tr>
               <th scope="col" className="py-2 pr-4 font-normal">
                 {t('machines.columns.name')}
+              </th>
+              <th scope="col" className="py-2 pr-4 font-normal">
+                {t('machines.columns.status')}
+              </th>
+              <th scope="col" className="py-2 pr-4 font-normal">
+                {t('machines.columns.lastSeen')}
               </th>
               <th scope="col" className="py-2 pr-4 font-normal">
                 {t('machines.columns.os')}
@@ -119,6 +175,20 @@ export function MachineList({ runners }: { runners: Runner[] }) {
                   ) : (
                     <span className="break-words">{runner.name}</span>
                   )}
+                </td>
+                <td className="py-3 pr-4 align-top">
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className={`size-2.5 rounded-full ${runner.online ? 'bg-green-500' : 'bg-gray-400'}`}
+                    />
+                    {runner.online
+                      ? t('machines.status.online')
+                      : t('machines.status.offline')}
+                  </span>
+                </td>
+                <td className="py-3 pr-4 align-top">
+                  <LastSeen runner={runner} now={now} />
                 </td>
                 <td className="py-3 pr-4 align-top break-words">{runner.os}</td>
                 <td className="py-3 pr-4 align-top">{runner.cliVersion}</td>
@@ -171,6 +241,29 @@ export function MachineList({ runners }: { runners: Runner[] }) {
           if (revoking) void revoke(revoking);
         }}
       />
+    </div>
+  );
+}
+
+function LastSeen({ runner, now }: { runner: Runner; now: number | null }) {
+  if (!runner.lastSeenAt) {
+    return <span className="text-ink-2">{t('machines.lastSeen.never')}</span>;
+  }
+  const when =
+    now === null
+      ? formatDate(runner.lastSeenAt)
+      : (formatRelative(runner.lastSeenAt, now) ??
+        t('machines.lastSeen.justNow'));
+  return (
+    <div className="flex flex-col">
+      <time dateTime={runner.lastSeenAt} title={formatDate(runner.lastSeenAt)}>
+        {when}
+      </time>
+      {runner.lastSeenIp ? (
+        <span className="text-xs text-ink-2 break-all">
+          {t('machines.lastSeen.ip', { ip: runner.lastSeenIp })}
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { getRunners } from '@/lib/session';
 export default async function MachinesPage() {
   const runners = await getRunners();
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-6">
+    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 p-6">
       <header>
         <Link href="/app" className="text-sm text-ink-2 underline">
           {t('machines.back')}
