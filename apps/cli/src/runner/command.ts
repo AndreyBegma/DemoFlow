@@ -9,6 +9,7 @@ import {
   stopRunner,
 } from './control.ts';
 import { defaultDaemonDeps, runForeground } from './daemon.ts';
+import { installCommand, uninstallCommand } from './install/commands.ts';
 
 /**
  * `demoflow runner`: the background daemon of spec 151. The hidden
@@ -64,8 +65,19 @@ export function registerRunnerCommands(
       setExit(await logsCommand(flags, io, defaultControlDeps()));
     });
 
-  // `runner install` / `uninstall` (Decision 2) are registered on this group
-  // from src/runner/install/, and replace `noAutostart` in defaultControlDeps.
+  runner
+    .command('install')
+    .description('Start the runner at every login, and now')
+    .action(() => {
+      setExit(installCommand(io, defaultControlDeps()));
+    });
+
+  runner
+    .command('uninstall')
+    .description('Stop starting the runner at login')
+    .action(() => {
+      setExit(uninstallCommand(io, defaultControlDeps()));
+    });
 
   return runner;
 }

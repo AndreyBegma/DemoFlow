@@ -55,6 +55,7 @@ run; `generate_demo` takes the same list as `formats`. The files are
 | `demoflow logout` | revoke this machine and delete its credentials |
 | `demoflow runner start` | keep this machine connected, in the background |
 | `demoflow runner stop` / `status` / `logs` | stop it, check it, read its log |
+| `demoflow runner install` / `uninstall` | start the runner at every login, or stop doing so |
 
 ## Pair this machine with your account
 
@@ -107,6 +108,28 @@ the command). No jobs run over it yet.
   rewrites `credentials.json`.
 - `runner.log` (rotated at 5 MB, three files kept), `runner.lock` and
   `runner.state.json` sit next to `credentials.json`. None holds the token.
+
+### Start at login
+
+```sh
+npx demoflow runner install
+```
+
+Registers the runner for your user, with no admin rights, and starts it now.
+It needs `demoflow login` first. The unit runs the same `node` and CLI that
+ran `install`, by absolute path; if you move or upgrade the CLI, run
+`install` again. `runner uninstall` removes it; a running runner keeps
+running until `runner stop`.
+
+| OS | What it creates |
+|---|---|
+| Linux | a systemd user unit, `~/.config/systemd/user/demoflow-runner.service`, enabled with `systemctl --user` |
+| macOS | a LaunchAgent, `~/Library/LaunchAgents/dev.demoflow.runner.plist` |
+| Windows | a Task Scheduler task, `DemoFlowRunner`, at logon for the current user |
+
+A crash is restarted (systemd, launchd). A runner stopped on purpose, or
+revoked on the website, exits cleanly and stays down. Windows does not
+restart a crash; the next logon starts it again. Neither file holds the token.
 
 ## With Claude Code
 
