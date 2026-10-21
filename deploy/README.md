@@ -219,6 +219,27 @@ Nothing is published on the host. The stack runs on its own compose network
   cloudflared connector is running. Check that `TUNNEL_TOKEN` is set and look
   at `docker logs demoflow-staging-cloudflared`.
 
+### The runner socket on staging
+
+Paired machines hold one WebSocket each, `wss://demoflow-app.luna-realm.com/api/runner`
+(spec #151). It needs no configuration of its own: Cloudflare and the tunnel
+pass WebSocket upgrades, and Caddy's `/api/*` route strips the prefix and
+proxies the upgrade to `api:8370/runner` like any request. Both sides ping
+every 25 s, well under Cloudflare's 100 s idle limit.
+
+- **A deploy drops every socket.** The API says `bye` and closes with `1001`;
+  daemons reconnect with backoff and Caddy holds the upgrade until the new
+  API answers. Machines show Offline for those seconds.
+- **To check it**, with a paired machine: `demoflow runner start`, then
+  `/app/machines` shows it Online within 15 s. Without a CLI,
+  `curl -si --http1.1 -H 'Connection: Upgrade' -H 'Upgrade: websocket'
+  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=='
+  https://demoflow-app.luna-realm.com/api/runner` must answer `401`: the
+  upgrade reached the API, which refused the missing token. A `404` or `502`
+  means the upgrade did not get through.
+- Online state lives in the API's memory, so it is right only while staging
+  runs one API container (#120).
+
 ### Mail on staging
 
 Account emails (verification, password reset) go through Resend. The key and
