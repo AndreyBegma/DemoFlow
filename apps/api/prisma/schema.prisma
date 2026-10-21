@@ -17,6 +17,20 @@ model User {
   updatedAt       DateTime     @updatedAt
   sessions        Session[]
   emailTokens     EmailToken[]
+  githubIdentity  GithubIdentity?
+}
+
+// The GitHub account a user signs in with (spec #126). At most one per user,
+// and one user per GitHub account. Holds no email and no token: the email
+// lives only in `User.email`, the access token is never stored (ADR-0008).
+model GithubIdentity {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // GitHub's numeric user id, as a string. Stable across login and email changes.
+  githubUserId String   @unique
+  login        String
+  createdAt    DateTime @default(now())
 }
 
 // A signed-in browser. Only the SHA-256 hash of the cookie's token is stored.
