@@ -6,7 +6,26 @@ export type ApiError = 'invalid' | 'rate_limited' | 'unknown';
 
 export type ApiResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: ApiError };
+  | { ok: false; error: ApiError; status?: number };
+
+/** A pending device code, as the signed-in user sees it (spec #135). */
+export interface DeviceRequest {
+  userCode: string;
+  hostname: string;
+  os: string;
+  cliVersion: string;
+  createdAt: string;
+}
+
+/** A paired machine (spec #135). */
+export interface Runner {
+  id: string;
+  name: string;
+  os: string;
+  cliVersion: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
 
 export interface PublicUser {
   id: string;
@@ -48,7 +67,7 @@ function errorFor(status: number): ApiError {
 
 async function request<T>(
   path: string,
-  init: { method: 'GET' | 'POST' | 'DELETE'; body?: unknown },
+  init: { method: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown },
   target: Target = {},
 ): Promise<ApiResult<T>> {
   const headers: Record<string, string> = {};
@@ -62,7 +81,13 @@ async function request<T>(
       credentials: 'same-origin',
       cache: 'no-store',
     });
-    if (!response.ok) return { ok: false, error: errorFor(response.status) };
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: errorFor(response.status),
+        status: response.status,
+      };
+    }
     const text = await response.text();
     return { ok: true, data: (text ? JSON.parse(text) : undefined) as T };
   } catch {
@@ -122,5 +147,45 @@ export function confirmPasswordReset(token: string, password: string) {
   return request<void>('/auth/password-reset/confirm', {
     method: 'POST',
     body: { token, password },
+  });
+}
+
+// Runner pairing (spec #135).
+
+export function getDeviceRequest(userCode: string, target?: Target) {
+  return request<DeviceRequest>(
+    `/runner/device/${encodeURIComponent(userCode)}`,
+    { method: 'GET' },
+    target,
+  );
+}
+
+export function approveDevice(userCode: string, name: string) {
+  return request<void>(
+    `/runner/device/${encodeURIComponent(userCode)}/approve`,
+    { method: 'POST', body: { name } },
+  );
+}
+
+export function denyDevice(userCode: string) {
+  return request<void>(`/runner/device/${encodeURIComponent(userCode)}/deny`, {
+    method: 'POST',
+  });
+}
+
+export function listRunners(target?: Target) {
+  return request<{ runners: Runner[] }>('/runners', { method: 'GET' }, target);
+}
+
+export function renameRunner(id: string, name: string) {
+  return request<{ runner: Runner }>(`/runners/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: { name },
+  });
+}
+
+export function revokeRunner(id: string) {
+  return request<void>(`/runners/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
   });
 }

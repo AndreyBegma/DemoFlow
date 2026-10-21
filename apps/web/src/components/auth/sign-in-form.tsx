@@ -19,7 +19,8 @@ interface State {
   done: boolean;
 }
 
-export function SignInForm() {
+/** `next` is an in-app path the page already checked with `safeReturnTo`. */
+export function SignInForm({ next }: { next?: string }) {
   const router = useRouter();
   const [state, action, pending] = useActionState(
     async (_previous: State, data: FormData): Promise<State> => {
@@ -41,7 +42,7 @@ export function SignInForm() {
           done: false,
         };
       }
-      router.replace('/app');
+      router.replace(next ?? '/app');
       router.refresh();
       return { email, errors: {}, done: true };
     },
