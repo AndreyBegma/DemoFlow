@@ -14,6 +14,8 @@ import {
   isInputError,
 } from './commands/errors.ts';
 import { type Io, processIo } from './commands/io.ts';
+import { type LoginFlags, loginCommand } from './commands/login.ts';
+import { logoutCommand } from './commands/logout.ts';
 import { runCommand } from './commands/run.ts';
 import { setupCommand } from './commands/setup.ts';
 import { validateCommand } from './commands/validate.ts';
@@ -110,6 +112,25 @@ export async function main(
     .description('Install Chromium now instead of on the first run')
     .action(async () => {
       exitCode = await setupCommand(io);
+    });
+
+  program
+    .command('login')
+    .description('Pair this machine with your DemoFlow account')
+    .option(
+      '--server <url>',
+      'the DemoFlow server (default: DEMOFLOW_SERVER or staging)',
+    )
+    .option('--force', 'pair again, revoking the stored token first')
+    .action(async (flags: LoginFlags) => {
+      exitCode = await loginCommand(flags, io);
+    });
+
+  program
+    .command('logout')
+    .description('Revoke this machine and delete its credentials')
+    .action(async () => {
+      exitCode = await logoutCommand(io);
     });
 
   program

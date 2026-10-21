@@ -51,6 +51,35 @@ run; `generate_demo` takes the same list as `formats`. The files are
 | `demoflow run <scenario>` | run it in a browser and render the video |
 | `demoflow setup` | install Chromium now instead of on the first run |
 | `demoflow mcp` | serve demo generation to MCP clients over stdio |
+| `demoflow login` | pair this machine with your DemoFlow account |
+| `demoflow logout` | revoke this machine and delete its credentials |
+
+## Pair this machine with your account
+
+```sh
+npx demoflow login
+```
+
+The command prints a code such as `ABCD-1234` and opens
+`<server>/app/device?code=ABCD-1234`. Check that the code matches your
+terminal, then approve it while signed in with a verified email. Over SSH with
+no browser, open `<server>/app/device` yourself and type the code. The code
+expires after 10 minutes.
+
+- Already paired: `login` prints the account and machine name. `--force` pairs
+  again and revokes the old token first.
+- `demoflow logout` revokes the token on the server, then deletes the file. If
+  the server cannot be reached it still deletes the file; the machine stays
+  listed under `/app/machines` until you revoke it there.
+- The server is `https://demoflow-app.luna-realm.com` (staging) unless
+  `--server <url>` or `DEMOFLOW_SERVER` says otherwise. It is the website's
+  origin; the API is under `/api`. `logout` uses the server stored at login.
+- The token is in `credentials.json` (`{ server, token, runnerId }`, mode 0600)
+  next to the global `config.json`: `$XDG_CONFIG_HOME/demoflow/` or
+  `~/.config/demoflow/`, `~/Library/Application Support/demoflow/`, or
+  `%APPDATA%\demoflow\`. It is never printed or logged.
+- The cloud learns the machine's name, OS and release, CLI version and when the
+  token was last used. Nothing else.
 
 ## With Claude Code
 
