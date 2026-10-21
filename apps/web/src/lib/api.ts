@@ -14,6 +14,25 @@ export interface PublicUser {
   emailVerified: boolean;
 }
 
+/** What `me` returns: the user, and how they can sign in (spec #126). */
+export interface AccountUser extends PublicUser {
+  githubLinked: boolean;
+  hasPassword: boolean;
+}
+
+/** The sign-in providers the API has credentials for. */
+export interface Providers {
+  github: boolean;
+}
+
+/**
+ * Where the browser goes to sign in with, or link, GitHub. A navigation, not
+ * a fetch: the API answers with a redirect to GitHub.
+ */
+export function githubStartUrl(intent: 'sign-in' | 'link'): string {
+  return `/api/auth/github/start?intent=${intent}`;
+}
+
 interface Target {
   /** Origin to call instead of the same-origin `/api` prefix. */
   baseUrl?: string;
@@ -29,7 +48,7 @@ function errorFor(status: number): ApiError {
 
 async function request<T>(
   path: string,
-  init: { method: 'GET' | 'POST'; body?: unknown },
+  init: { method: 'GET' | 'POST' | 'DELETE'; body?: unknown },
   target: Target = {},
 ): Promise<ApiResult<T>> {
   const headers: Record<string, string> = {};
@@ -70,7 +89,15 @@ export function signOut() {
 }
 
 export function me(target?: Target) {
-  return request<{ user: PublicUser }>('/auth/me', { method: 'GET' }, target);
+  return request<{ user: AccountUser }>('/auth/me', { method: 'GET' }, target);
+}
+
+export function providers(target?: Target) {
+  return request<Providers>('/auth/providers', { method: 'GET' }, target);
+}
+
+export function unlinkGithub() {
+  return request<void>('/auth/github', { method: 'DELETE' });
 }
 
 export function verifyEmail(token: string) {

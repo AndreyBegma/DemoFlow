@@ -22,8 +22,10 @@ import {
 } from './auth.dto';
 import { AuthService } from './auth.service';
 import {
+  type AccountUser,
   type AuthContext,
   type PublicUser,
+  toAccountUser,
   toPublicUser,
 } from './auth-context';
 import {
@@ -33,6 +35,7 @@ import {
   THROTTLE_SIGN_IN,
 } from './auth-throttle';
 import { CurrentSession, CurrentUser } from './current-user.decorator';
+import { GithubAuthService } from './github/github-auth.service';
 import { SessionGuard } from './session.guard';
 import { SessionService } from './session.service';
 import { clearSessionCookie, setSessionCookie } from './session-cookie';
@@ -47,6 +50,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
+    private readonly github: GithubAuthService,
     private readonly clock: Clock,
   ) {}
 
@@ -90,8 +94,10 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(SessionGuard)
-  me(@CurrentUser() user: User): { user: PublicUser } {
-    return { user: toPublicUser(user) };
+  async me(@CurrentUser() user: User): Promise<{ user: AccountUser }> {
+    return {
+      user: toAccountUser(user, await this.github.isLinked(user.id)),
+    };
   }
 
   @Post('verify-email')

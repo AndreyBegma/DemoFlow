@@ -1,4 +1,4 @@
-import type { Type } from '@nestjs/common';
+import type { Abstract, Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../app.module';
@@ -22,6 +22,12 @@ export class FakeClock extends Clock {
   }
 }
 
+/** A provider a spec replaces, beyond the mailer and the clock. */
+export interface ProviderOverride {
+  provide: Type | Abstract<unknown>;
+  useValue: unknown;
+}
+
 export interface TestApp {
   app: NestExpressApplication;
   prisma: PrismaService;
@@ -35,6 +41,7 @@ export interface TestApp {
  */
 export async function createTestApp(
   controllers: Type[] = [],
+  overrides: ProviderOverride[] = [],
 ): Promise<TestApp> {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) {
@@ -48,7 +55,7 @@ export async function createTestApp(
 
   const mailer = new RecordingMailer();
   const clock = new FakeClock();
-  const moduleRef = await Test.createTestingModule({
+  const builder = Test.createTestingModule({
     // AuthModule again, so `controllers` can use its guards.
     imports: [AppModule, AuthModule],
     controllers,
@@ -56,8 +63,11 @@ export async function createTestApp(
     .overrideProvider(Mailer)
     .useValue(mailer)
     .overrideProvider(Clock)
-    .useValue(clock)
-    .compile();
+    .useValue(clock);
+  for (const { provide, useValue } of overrides) {
+    builder.overrideProvider(provide).useValue(useValue);
+  }
+  const moduleRef = await builder.compile();
 
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app);

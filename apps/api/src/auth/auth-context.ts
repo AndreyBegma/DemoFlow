@@ -25,3 +25,17 @@ export function toPublicUser(user: User): PublicUser {
     emailVerified: user.emailVerifiedAt !== null,
   };
 }
+
+/** What `me` returns: the user, and how they can sign in (spec #126). */
+export interface AccountUser extends PublicUser {
+  githubLinked: boolean;
+  hasPassword: boolean;
+}
+
+export function toAccountUser(user: User, githubLinked: boolean): AccountUser {
+  return {
+    ...toPublicUser(user),
+    githubLinked,
+    hasPassword: user.passwordHash !== null,
+  };
+}
