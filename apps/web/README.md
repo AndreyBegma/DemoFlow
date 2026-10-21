@@ -22,3 +22,11 @@ t('greeting', { name: user.name }); // for "Hello, {name}!"
   components.
 - Dates and numbers are formatted with `Intl` at the call site, not in the
   dictionary.
+
+## API access
+
+The browser only ever calls `/api/…` on its own origin. Locally `next.config.ts`
+rewrites `/api/:path*` to `API_URL` (default `http://localhost:8370`); on
+staging Caddy does the same. `/api` is therefore reserved for the API: do not
+add a Next route under it. Server components call `API_URL` directly and forward
+the request's cookies (`src/lib/session.ts`).
