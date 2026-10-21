@@ -14,12 +14,18 @@ const MINUTE_MS = 60 * 1000;
 export const THROTTLE_IP = 'ip';
 export const THROTTLE_SIGN_IN = 'sign-in-email';
 export const THROTTLE_MAIL = 'mail-email';
+/**
+ * `demoflow login` polling (spec #135). The CLI polls every 5 s for up to ten
+ * minutes, which the shared `ip` budget would cut off after 20 polls.
+ */
+export const THROTTLE_DEVICE_POLL = 'device-poll';
 
 /** Class-level: every throttler skipped until a route opts in. */
 export const SKIP_ALL_THROTTLERS = {
   [THROTTLE_IP]: true,
   [THROTTLE_SIGN_IN]: true,
   [THROTTLE_MAIL]: true,
+  [THROTTLE_DEVICE_POLL]: true,
 };
 
 export const authThrottlerOptions: ThrottlerModuleOptions = {
@@ -47,6 +53,13 @@ export const authThrottlerOptions: ThrottlerModuleOptions = {
         const request = req as AuthenticatedRequest;
         return `email:${request.auth?.user.email ?? bodyEmail(request)}`;
       },
+    },
+    {
+      name: THROTTLE_DEVICE_POLL,
+      // Two full ten-minute logins at once from one address (2 × 120 polls).
+      limit: 240,
+      ttl: 10 * MINUTE_MS,
+      getTracker: (req) => `ip:${(req as AuthenticatedRequest).ip ?? ''}`,
     },
   ],
   // The default key includes the route, which would give each endpoint its

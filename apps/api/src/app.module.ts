@@ -5,6 +5,7 @@ import { ClockModule } from './common/clock.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health.controller';
 import { MailModule } from './mail/mail.module';
+import { RunnerModule } from './runner/runner.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { MailModule } from './mail/mail.module';
     ClockModule,
     MailModule,
     AuthModule,
+    RunnerModule,
   ],
   controllers: [HealthController],
 })
