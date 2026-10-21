@@ -301,6 +301,9 @@ export const SCENES: readonly Scene[] = [
   transitioned('fade-navigation', 2466.67),
   // A scene card 166 ms into its dissolve from the page.
   transitioned('fade-card', 2866.67),
+  // Spec 146: the first frame of the loaded page alone, 2 600 ms. The masked
+  // field's box is gone with the page it was on.
+  transitioned('live-after-navigation', 2600),
 ];
 
 function transitioned(name: string, atMs: number): Scene {

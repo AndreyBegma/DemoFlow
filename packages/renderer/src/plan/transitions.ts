@@ -41,6 +41,7 @@ export function planHolds(input: {
     const startMs = first ? 0 : out(navigation.startMs);
     // After a failure the page has ended: this load never showed.
     if (startMs >= pageEndMs) break;
+    // `showsHeldPage` is this loop's rule for which holds show the old page; keep the two in step.
     const readyMs =
       navigation.endMs ??
       events.find((event) => event.startMs > navigation.startMs)?.startMs;
@@ -86,6 +87,20 @@ export function planHolds(input: {
     });
   }
   return holds;
+}
+
+/**
+ * Whether `planHolds` holds the page before navigation `index` on screen, with
+ * that page's masks: every navigation but the first (which holds the
+ * background), unless the page has ended before it starts.
+ */
+export function showsHeldPage(
+  index: number,
+  navigation: Navigation,
+  out: (timelineMs: number) => number,
+  pageEndMs: number,
+): boolean {
+  return index > 0 && out(navigation.startMs) < pageEndMs;
 }
 
 /**
