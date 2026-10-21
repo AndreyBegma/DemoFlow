@@ -26,6 +26,7 @@ import {
   type RecordFlags,
   recordCommand,
 } from './record/command.ts';
+import { registerRunnerCommands } from './runner/command.ts';
 import { packageVersion } from './version.ts';
 
 /**
@@ -122,6 +123,8 @@ export async function main(
       'the DemoFlow server (default: DEMOFLOW_SERVER or staging)',
     )
     .option('--force', 'pair again, revoking the stored token first')
+    .option('--start', 'start the runner afterwards, without asking')
+    .option('--no-start', 'do not start the runner, and do not ask')
     .action(async (flags: LoginFlags) => {
       exitCode = await loginCommand(flags, io);
     });
@@ -132,6 +135,10 @@ export async function main(
     .action(async () => {
       exitCode = await logoutCommand(io);
     });
+
+  registerRunnerCommands(program, io, (code) => {
+    exitCode = code;
+  });
 
   program
     .command('mcp')
