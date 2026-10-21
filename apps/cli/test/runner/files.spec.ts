@@ -9,8 +9,9 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { credentialsPath } from '../../src/auth/credentials.ts';
 import type { Io } from '../../src/commands/io.ts';
-import type { HostEnvironment } from '../../src/config/platform.ts';
+import { type HostEnvironment, pathFor } from '../../src/config/platform.ts';
 import {
   type ControlDeps,
   defaultControlDeps,
@@ -57,9 +58,10 @@ function deps(overrides: Partial<ControlDeps> = {}): ControlDeps {
 
 beforeEach(() => {
   tmp = mkdtempSync(path.join(tmpdir(), 'demoflow-files-'));
+  // The files below are real: build their paths with this OS's rules.
   host = {
-    platform: 'linux',
-    env: { XDG_CONFIG_HOME: tmp },
+    platform: process.platform,
+    env: { XDG_CONFIG_HOME: tmp, APPDATA: tmp },
     homedir: tmp,
   };
   out = '';
@@ -72,10 +74,34 @@ afterEach(() => {
 });
 
 describe('runner.lock', () => {
-  it('lives next to credentials.json', () => {
-    const paths = runnerPaths(host);
-    expect(paths.lock).toBe(path.join(tmp, 'demoflow', 'runner.lock'));
-    expect(paths.log).toBe(path.join(tmp, 'demoflow', 'runner.log'));
+  it.each([
+    ['linux', '/home/ada', { XDG_CONFIG_HOME: '/home/ada/.config' }],
+    ['darwin', '/Users/ada', {}],
+    [
+      'win32',
+      'C:\\Users\\ada',
+      { APPDATA: 'C:\\Users\\ada\\AppData\\Roaming' },
+    ],
+  ] as const)('lives next to credentials.json on %s', (platform, homedir, env) => {
+    const fake: HostEnvironment = { platform, env, homedir };
+    const p = pathFor(platform);
+    const dir = p.dirname(credentialsPath(fake));
+    const paths = runnerPaths(fake);
+    expect(paths.dir).toBe(dir);
+    for (const [file, name] of [
+      [paths.lock, 'runner.lock'],
+      [paths.log, 'runner.log'],
+      [paths.state, 'runner.state.json'],
+      [paths.stop, 'runner.stop'],
+    ]) {
+      expect(p.dirname(file)).toBe(dir);
+      expect(p.basename(file)).toBe(name);
+    }
+    if (platform === 'win32') {
+      expect(paths.lock).toBe(
+        'C:\\Users\\ada\\AppData\\Roaming\\demoflow\\runner.lock',
+      );
+    }
   });
 
   it('refuses a second holder while the first PID lives', () => {
