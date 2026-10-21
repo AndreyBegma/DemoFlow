@@ -6,7 +6,7 @@ it records; FFmpeg then renders the recording with captions and an end card.
 
 ## Requirements
 
-Node.js 20 or newer, on Linux, macOS or Windows. Chromium is downloaded on
+Node.js 22 or newer, on Linux, macOS or Windows. Chromium is downloaded on
 first use (about 250 MB, once); `demoflow setup` downloads it ahead of time.
 On Linux, Chromium also needs its system libraries:
 `npx playwright install-deps chromium`.
@@ -53,6 +53,8 @@ run; `generate_demo` takes the same list as `formats`. The files are
 | `demoflow mcp` | serve demo generation to MCP clients over stdio |
 | `demoflow login` | pair this machine with your DemoFlow account |
 | `demoflow logout` | revoke this machine and delete its credentials |
+| `demoflow runner start` | keep this machine connected, in the background |
+| `demoflow runner stop` / `status` / `logs` | stop it, check it, read its log |
 
 ## Pair this machine with your account
 
@@ -80,6 +82,31 @@ expires after 10 minutes.
   `%APPDATA%\demoflow\`. It is never printed or logged.
 - The cloud learns the machine's name, OS and release, CLI version and when the
   token was last used. Nothing else.
+
+## Keep the machine connected
+
+```sh
+npx demoflow runner start
+```
+
+The runner is a background process that holds one connection to the server,
+so `/app/machines` shows the machine online, with when and from which address
+it was last seen. After `login` the CLI asks whether to start it
+(`--start` / `--no-start` answer in advance; with no terminal it only prints
+the command). No jobs run over it yet.
+
+- `runner status` prints whether it runs (PID, uptime), the connection
+  (`connected`, `reconnecting in Ns`, `revoked`), the server and whether
+  autostart is installed. `--json` prints the same as one object.
+- `runner logs` prints `runner.log`; `--follow` keeps printing.
+- `runner stop` stops it; `logout` stops it first.
+- One runner per machine. A second `start` prints the running PID.
+- It reconnects with backoff (1 s doubling to 60 s) when the connection drops,
+  and exits for good when the machine is revoked on the website.
+- Every 30 days the server rotates the token over the connection; the runner
+  rewrites `credentials.json`.
+- `runner.log` (rotated at 5 MB, three files kept), `runner.lock` and
+  `runner.state.json` sit next to `credentials.json`. None holds the token.
 
 ## With Claude Code
 

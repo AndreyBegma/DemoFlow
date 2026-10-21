@@ -2,7 +2,8 @@
 // dist/npm/ — the same directory .woodpecker/release.yml publishes — installs
 // the tarball into an empty directory with npm, and runs the installed bin.
 //
-//   node scripts/smoke.mjs              pack, install, --version, validate, mcp tools/list
+//   node scripts/smoke.mjs              pack, install, --version, validate,
+//                                       runner status, mcp tools/list
 //   node scripts/smoke.mjs --browsers   also, with an empty PLAYWRIGHT_BROWSERS_PATH:
 //                                       `demoflow run` of the fixture's customers
 //                                       scenario (installs Chromium, then renders)
@@ -10,7 +11,7 @@
 //                                       Needs the fixture preview on :3680
 //                                       (.github/scripts/serve-fixture.mjs).
 //
-// Plain Node, no dependencies: it runs on the `engines` floor (Node 20) and on
+// Plain Node, no dependencies: it runs on the `engines` floor (Node 22) and on
 // Windows, where npm and the installed bin are .cmd shims.
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -178,6 +179,29 @@ function validate(bin, cwd) {
   console.log(result.stdout.trim());
 }
 
+/** The `runner` group loads on the floor; with no config dir, nothing runs. */
+function runnerStatus(bin, cwd) {
+  step('demoflow runner status --json');
+  const home = tempDir('home');
+  const env = {
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home,
+    XDG_CONFIG_HOME: path.join(home, '.config'),
+    APPDATA: path.join(home, 'AppData', 'Roaming'),
+  };
+  const result = run(bin, ['runner', 'status', '--json'], { cwd, env });
+  expectExit(result, 0, 'demoflow runner status --json');
+  const status = JSON.parse(result.stdout);
+  if (status.running !== false || status.autostart !== false) {
+    fail(`demoflow runner status --json printed ${result.stdout.trim()}`);
+  }
+  if (typeof WebSocket !== 'function') {
+    fail(`Node ${process.version} has no global WebSocket`);
+  }
+  console.log(result.stdout.trim());
+}
+
 /** `initialize`, then `tools/list`, over newline-delimited JSON-RPC on stdio. */
 function toolsList(bin, cwd) {
   step('demoflow mcp: tools/list');
@@ -290,6 +314,7 @@ try {
   const { dir, bin } = install(tarball);
   version(bin, dir, expected);
   validate(bin, dir);
+  runnerStatus(bin, dir);
   await toolsList(bin, dir);
   if (browsers) {
     runWithoutChromium(bin);
