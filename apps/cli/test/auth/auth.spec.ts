@@ -52,6 +52,9 @@ let err: string;
 let opened: string[];
 let slept: number[];
 let clock: number;
+let runnerCalls: string[];
+/** The answer to "Start the runner now?"; `null` is no terminal. */
+let answer: boolean | null;
 
 const io: Io = {
   stdout: (text) => {
@@ -99,6 +102,19 @@ function deps(overrides: Partial<AuthDeps> = {}): AuthDeps {
       os: 'linux 6.1',
       cliVersion: '0.1.0',
     }),
+    runner: {
+      askStart: async () => {
+        runnerCalls.push('ask');
+        return answer;
+      },
+      start: async () => {
+        runnerCalls.push('start');
+        return 0;
+      },
+      stop: async () => {
+        runnerCalls.push(`stop (${seen.length} requests sent)`);
+      },
+    },
     ...overrides,
   };
 }
@@ -126,6 +142,8 @@ beforeEach(async () => {
   slept = [];
   seen = [];
   clock = 0;
+  runnerCalls = [];
+  answer = null;
   routes = {};
   server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -375,7 +393,74 @@ describe('login', () => {
   });
 });
 
+describe('login and the runner (spec 151, Decision 3)', () => {
+  function approve() {
+    routes['POST /api/runner/device/code'] = (_r, _b, res) =>
+      json(res, 200, codeBody);
+    routes['POST /api/runner/device/token'] = pollRoute([[200, approved]]);
+  }
+
+  it('without a terminal, does not start the daemon and prints the command', async () => {
+    approve();
+    expect(await loginCommand({ server: base }, io, deps())).toBe(0);
+    expect(runnerCalls).toEqual(['ask']);
+    expect(err).toContain('Start the runner with: demoflow runner start');
+  });
+
+  it('starts it on a yes', async () => {
+    approve();
+    answer = true;
+    expect(await loginCommand({ server: base }, io, deps())).toBe(0);
+    expect(runnerCalls).toEqual(['ask', 'start']);
+  });
+
+  it('does nothing on a no', async () => {
+    approve();
+    answer = false;
+    expect(await loginCommand({ server: base }, io, deps())).toBe(0);
+    expect(runnerCalls).toEqual(['ask']);
+    expect(err).not.toContain('demoflow runner start');
+  });
+
+  it('--start and --no-start skip the question', async () => {
+    approve();
+    await loginCommand({ server: base, start: true }, io, deps());
+    expect(runnerCalls).toEqual(['start']);
+    runnerCalls = [];
+    rmSync(credentialsPath(host));
+    await loginCommand({ server: base, start: false }, io, deps());
+    expect(runnerCalls).toEqual([]);
+  });
+
+  it('passes on the exit code of a start that fails', async () => {
+    approve();
+    const failing = deps();
+    failing.runner = { ...failing.runner, start: async () => 1 };
+    expect(await loginCommand({ server: base, start: true }, io, failing)).toBe(
+      1,
+    );
+  });
+
+  it('never starts it when pairing fails', async () => {
+    routes['POST /api/runner/device/code'] = (_r, _b, res) =>
+      json(res, 200, codeBody);
+    routes['POST /api/runner/device/token'] = pollRoute([
+      [400, { error: 'access_denied' }],
+    ]);
+    await loginCommand({ server: base, start: true }, io, deps());
+    expect(runnerCalls).toEqual([]);
+  });
+});
+
 describe('logout', () => {
+  it('stops the runner before it revokes', async () => {
+    pairedFile();
+    routes['POST /api/runner/logout'] = (_r, _b, res) => json(res, 204);
+    expect(await logoutCommand(io, deps())).toBe(0);
+    expect(runnerCalls).toEqual(['stop (0 requests sent)']);
+    expect(seen).toEqual([`POST /api/runner/logout Bearer ${TOKEN}`]);
+  });
+
   it('revokes on the stored server and deletes the file', async () => {
     pairedFile();
     routes['POST /api/runner/logout'] = (_r, _b, res) => json(res, 204);

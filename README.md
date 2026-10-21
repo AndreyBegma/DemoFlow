@@ -51,9 +51,9 @@ an AI agent such as Claude Code ask for a demo over MCP.
 > `demoflow@0.1.0` on npm has `run`, `validate`, `setup` and `mcp`. `record`,
 > the `press` step, starting the app from `devCommand`, key badges and the
 > window frame are on `develop` and ship in the next release, with cards,
-> transitions and GIF/WebM export, as do `login` and `logout`. The vertical
-> 9:16 export and the Runner connection (jobs, heartbeats, online status) are
-> **not built yet** — see [Status and Roadmap](https://github.com/AndreyBegma/DemoFlow/wiki/Status-and-Roadmap).
+> transitions and GIF/WebM export, as do `login`, `logout` and the background
+> `runner` with online status. The vertical 9:16 export and jobs over the
+> Runner connection are **not built yet** — see [Status and Roadmap](https://github.com/AndreyBegma/DemoFlow/wiki/Status-and-Roadmap).
 
 ## How a demo flows
 
@@ -87,7 +87,7 @@ More in [Architecture](https://github.com/AndreyBegma/DemoFlow/wiki/Architecture
 
 ## Quick start
 
-Needs Node.js 20+. Create `demoflow.config.json` in your project:
+Needs Node.js 22+. Create `demoflow.config.json` in your project:
 
 ```json
 { "baseUrl": "http://localhost:3000" }
@@ -122,6 +122,10 @@ To connect Claude Code instead: `claude mcp add demoflow -- npx demoflow mcp`.
 device token once you approve the code there. `demoflow logout` revokes it.
 Every other command works without an account. See
 [`apps/cli/README.md`](apps/cli/README.md#pair-this-machine-with-your-account).
+
+`demoflow runner start` keeps the paired machine connected in the background,
+so `/app/machines` shows it online. See
+[`apps/cli/README.md`](apps/cli/README.md#keep-the-machine-connected).
 
 ## Documentation
 

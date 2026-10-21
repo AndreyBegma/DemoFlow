@@ -3,11 +3,15 @@ import { deleteCredentials, readCredentials } from '../auth/credentials.ts';
 import type { Io } from './io.ts';
 import { type AuthDeps, defaultAuthDeps } from './login.ts';
 
-/** `demoflow logout`: revokes the token on the server, then deletes the file. */
+/**
+ * `demoflow logout`: stops the runner daemon, revokes the token on the server,
+ * then deletes the file (spec 151, Decision 1).
+ */
 export async function logoutCommand(
   io: Io,
   deps: AuthDeps = defaultAuthDeps(),
 ): Promise<number> {
+  await deps.runner.stop(io);
   const stored = readCredentials(deps.host);
   if (stored === null) {
     io.stdout('Not logged in\n');

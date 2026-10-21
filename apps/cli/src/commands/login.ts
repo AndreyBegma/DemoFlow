@@ -1,4 +1,5 @@
 import { hostname, release } from 'node:os';
+import { createInterface } from 'node:readline/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { type OpenUrl, openUrl } from '../auth/browser.ts';
 import {
@@ -17,6 +18,11 @@ import {
 } from '../auth/credentials.ts';
 import { resolveServer } from '../auth/server.ts';
 import { currentHost, type HostEnvironment } from '../config/index.ts';
+import {
+  defaultControlDeps,
+  startRunner,
+  stopRunner,
+} from '../runner/control.ts';
 import { packageVersion } from '../version.ts';
 import { EXIT_STAGE_FAILED } from './errors.ts';
 import type { Io } from './io.ts';
@@ -27,6 +33,17 @@ const SLOW_DOWN_MS = 5_000;
 export interface LoginFlags {
   server?: string;
   force?: boolean;
+  /** `--start` / `--no-start`: skip the question (spec 151, Decision 3). */
+  start?: boolean;
+}
+
+/** The daemon, as `login` and `logout` drive it. */
+export interface RunnerControl {
+  /** The answer to "Start the runner now?", or `null` without a terminal. */
+  askStart(): Promise<boolean | null>;
+  start(io: Io): Promise<number>;
+  /** Stops a running daemon; silent when none runs. */
+  stop(io: Io): Promise<void>;
 }
 
 /** Everything `login` and `logout` touch outside the process; tests replace it. */
@@ -37,7 +54,16 @@ export interface AuthDeps {
   now(): number;
   openUrl: OpenUrl;
   machine(): MachineInfo;
+  runner: RunnerControl;
 }
+
+const processRunner: RunnerControl = {
+  askStart: askStartOnTerminal,
+  start: (io) => startRunner(io, defaultControlDeps()),
+  stop: async (io) => {
+    await stopRunner(io, defaultControlDeps(), { quiet: true });
+  },
+};
 
 export const defaultAuthDeps = (): AuthDeps => ({
   host: currentHost(),
@@ -50,6 +76,7 @@ export const defaultAuthDeps = (): AuthDeps => ({
     os: `${process.platform} ${release()}`.slice(0, 128),
     cliVersion: packageVersion().slice(0, 64),
   }),
+  runner: processRunner,
 });
 
 /** `demoflow login`: the device-code flow of spec 135. */
@@ -65,10 +92,17 @@ export async function loginCommand(
         await revokeQuietly(stored, deps);
       } else {
         const done = await reportPaired(stored, io, deps);
-        if (done) return 0;
+        if (done) {
+          return flags.start === true ? await deps.runner.start(io) : 0;
+        }
       }
     }
-    return await pair(resolveServer(flags.server, deps.host.env), io, deps);
+    const code = await pair(
+      resolveServer(flags.server, deps.host.env),
+      io,
+      deps,
+    );
+    return code === 0 ? await offerRunner(flags, io, deps) : code;
   } catch (error) {
     if (error instanceof ServerError) {
       io.stderr(`${error.message}\n`);
@@ -102,6 +136,38 @@ async function reportPaired(
     `Already logged in as ${self.email} on ${self.name} (use --force to pair again)\n`,
   );
   return true;
+}
+
+/** Decision 3: after pairing, start the daemon on `--start` or a yes. */
+async function offerRunner(
+  flags: LoginFlags,
+  io: Io,
+  deps: AuthDeps,
+): Promise<number> {
+  if (flags.start === false) return 0;
+  const yes = flags.start === true ? true : await deps.runner.askStart();
+  if (yes === true) return await deps.runner.start(io);
+  if (yes === null) {
+    io.stderr('Start the runner with: demoflow runner start\n');
+  }
+  return 0;
+}
+
+/** A yes/no on the terminal; no terminal, no question. */
+async function askStartOnTerminal(): Promise<boolean | null> {
+  if (process.stdin.isTTY !== true || process.stderr.isTTY !== true) {
+    return null;
+  }
+  const prompt = createInterface({
+    input: process.stdin,
+    output: process.stderr,
+  });
+  try {
+    const answer = await prompt.question('Start the runner now? [Y/n] ');
+    return /^(y|yes|)$/i.test(answer.trim());
+  } finally {
+    prompt.close();
+  }
 }
 
 async function revokeQuietly(stored: Credentials, deps: AuthDeps) {
