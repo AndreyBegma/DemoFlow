@@ -122,25 +122,25 @@ describe('output', () => {
     });
   });
 
-  it('the summary lists every stage, the video and the run directory', () => {
+  it('the summary lists every stage, every video in order and the run directory', () => {
     const run = result();
-    run.renders = [
-      {
-        renderer: 'ffmpeg',
-        file: 'render/ffmpeg.mp4',
-        durationMs: 1,
-        sizeBytes: 1,
-        width: 1,
-        height: 1,
-        fps: 30,
-      },
-    ];
+    run.renders = (['mp4', 'gif'] as const).map((format) => ({
+      renderer: 'ffmpeg',
+      format,
+      file: `render/ffmpeg.${format}`,
+      durationMs: 1,
+      sizeBytes: 1,
+      width: 1,
+      height: 1,
+      fps: 30,
+    }));
     const text = formatSummary(run, path.join('/runs', 'x'));
     expect(text).toContain('completed');
     expect(text).toContain('readiness');
-    expect(text).toContain(
-      `Video: ${path.join('/runs', 'x', 'render', 'ffmpeg.mp4')}`,
-    );
+    const mp4 = `Video (mp4): ${path.join('/runs', 'x', 'render', 'ffmpeg.mp4')}`;
+    const gif = `Video (gif): ${path.join('/runs', 'x', 'render', 'ffmpeg.gif')}`;
+    expect(text).toContain(mp4);
+    expect(text.indexOf(gif)).toBeGreaterThan(text.indexOf(mp4));
   });
 });
 

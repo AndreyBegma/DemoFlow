@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { RunResult } from '@demoflow/core';
+import type { RenderFormat, RunResult } from '@demoflow/core';
 import {
   createCaptureObserver,
   RUN_FILES,
@@ -35,6 +35,8 @@ export interface RunFlags {
   out?: string;
   headed?: boolean;
   json?: boolean;
+  /** `--format`: replaces `render.formats` for this run (spec 133). */
+  format?: RenderFormat[];
   /** Hidden: names the run directory so a caller knows it before the start. */
   runId?: string;
   /** Hidden: the project root, for a scenario file kept outside it (`demoflow mcp`). */
@@ -169,6 +171,8 @@ export async function runCommand(
           background: config.render.background,
           cards: config.render.cards,
           transitions: config.render.transitions,
+          formats: flags.format ?? config.render.formats,
+          gif: config.render.gif,
           scenario:
             scenario.description === undefined
               ? {}

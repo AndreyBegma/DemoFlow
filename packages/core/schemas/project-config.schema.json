@@ -264,6 +264,34 @@
             }
           },
           "additionalProperties": false
+        },
+        "formats": {
+          "default": ["mp4"],
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["mp4", "gif", "webm"]
+          }
+        },
+        "gif": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "width": {
+              "description": "Pixels, at most render.width. Default 800, or render.width when that is less.",
+              "type": "integer",
+              "minimum": 160,
+              "maximum": 9007199254740991
+            },
+            "fps": {
+              "description": "At most render.fps. Default 12, or render.fps when that is less.",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

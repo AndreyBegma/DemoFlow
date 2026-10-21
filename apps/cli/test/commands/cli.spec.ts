@@ -365,6 +365,53 @@ describe('demoflow run', () => {
     expect(JSON.parse(result.stdout).status).toBe('failed');
   });
 
+  it('--format gif renders only the GIF, whatever render.formats says', async () => {
+    const result = await demoflow(
+      ['run', scenario('customers'), '--json', '--out', out, '--format', 'gif'],
+      project,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.renders).toHaveLength(1);
+    expect(json.renders[0]).toMatchObject({
+      format: 'gif',
+      file: 'render/ffmpeg.gif',
+      width: 800,
+      height: 450,
+      fps: 12,
+    });
+    expect(await exists(path.join(json.runDir, 'render/ffmpeg.gif'))).toBe(
+      true,
+    );
+    expect(await exists(path.join(json.runDir, 'render/ffmpeg.mp4'))).toBe(
+      false,
+    );
+  });
+
+  it('--format with an unknown or repeated format is a usage error before any run', async () => {
+    for (const formats of [['avi'], ['gif', 'gif']]) {
+      const isolated = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-fmt-'));
+      try {
+        const result = await demoflow(
+          [
+            'run',
+            scenario('customers'),
+            '--out',
+            isolated,
+            ...formats.flatMap((format) => ['--format', format]),
+          ],
+          project,
+        );
+        expect(result.code).toBe(2);
+        expect(result.stderr).toContain('--format');
+        // Nothing ran: no run directory, so no browser and no app.
+        expect(await exists(path.join(isolated, 'runs'))).toBe(false);
+      } finally {
+        await rm(isolated, { recursive: true, force: true });
+      }
+    }
+  });
+
   it('exits 2 before a browser starts when valueFrom.env is missing', async () => {
     const result = await demoflow(
       ['run', scenario('login'), '--json', '--out', out],

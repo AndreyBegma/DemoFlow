@@ -234,6 +234,7 @@ describe('demoflow mcp', () => {
     >;
     expect(Object.keys(properties).sort()).toEqual([
       'file',
+      'formats',
       'project',
       'scenario',
       'timeoutMinutes',
@@ -265,6 +266,28 @@ describe('demoflow mcp', () => {
     expect(await exists(artifacts.video as string)).toBe(true);
     expect(await exists(artifacts.timeline as string)).toBe(true);
     expect(finished.failedStep).toBeUndefined();
+  });
+
+  it('generate_demo with formats renders only those, and get_task lists their paths', async () => {
+    const { isError, value } = await call(server.client, 'generate_demo', {
+      file: 'demoflow/customers.demo.json',
+      formats: ['webm'],
+    });
+    expect(isError, JSON.stringify(value)).toBe(false);
+    const done = await untilDone(server.client, value.taskId as string);
+    expect(done.status, JSON.stringify(done)).toBe('completed');
+    const artifacts = done.artifacts as {
+      runDir: string;
+      video?: string;
+      videos?: { format: string; path: string }[];
+    };
+    const webm = path.join(artifacts.runDir, 'render', 'ffmpeg.webm');
+    expect(artifacts.videos).toEqual([{ format: 'webm', path: webm }]);
+    expect(artifacts.video).toBe(webm);
+    expect(await exists(webm)).toBe(true);
+    expect(
+      await exists(path.join(artifacts.runDir, 'render', 'ffmpeg.mp4')),
+    ).toBe(false);
   });
 
   it('runs an inline scenario, writing only under the home', async () => {
@@ -398,6 +421,15 @@ describe('demoflow mcp', () => {
     expect(both.value.code).toBe('both-or-neither-scenario');
     const neither = await call(server.client, 'generate_demo', {});
     expect(neither.value.code).toBe('both-or-neither-scenario');
+
+    for (const formats of [[], ['gif', 'gif'], ['avi']]) {
+      const bad = await call(server.client, 'generate_demo', {
+        file: 'demoflow/customers.demo.json',
+        formats,
+      });
+      expect(bad.isError, JSON.stringify(formats)).toBe(true);
+      expect(typeof bad.value.code).toBe('string');
+    }
 
     const unknown = await call(server.client, 'get_task', {
       taskId: '20200101-000000-nosuch',

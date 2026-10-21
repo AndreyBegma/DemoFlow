@@ -4,6 +4,7 @@ import {
   JsonSchemaRefSchema,
   NonEmptyStringSchema,
 } from './common.ts';
+import { RENDER_FORMATS } from './run-result.ts';
 
 const OriginSchema = HttpUrlSchema.refine(
   (value) => new URL(value).origin === value,
@@ -124,6 +125,31 @@ export interface TransitionsConfig {
 
 const DEFAULT_TRANSITION_MS = 300;
 
+/**
+ * The GIF's own size and rate (spec 133); its height follows the render's
+ * aspect ratio. Used only when `formats` has `gif`.
+ */
+export const GifConfigSchema = z
+  .strictObject({
+    width: z.number().int().min(160).optional().meta({
+      description:
+        'Pixels, at most render.width. Default 800, or render.width when that is less.',
+    }),
+    fps: z.number().int().positive().optional().meta({
+      description:
+        'At most render.fps. Default 12, or render.fps when that is less.',
+    }),
+  })
+  .prefault({});
+
+/** The GIF of a parsed config: both values are always resolved. */
+export interface GifConfig {
+  width: number;
+  fps: number;
+}
+
+const DEFAULT_GIF = { width: 800, fps: 12 } as const;
+
 /** The durations of the cards that are on (spec 108): an outro only with a title. */
 function cardsOn(cards: CardsConfig): number[] {
   return [
@@ -149,8 +175,32 @@ export const RenderConfigSchema = z
     background: BackgroundConfigSchema.default({ preset: 'ocean' }),
     cards: CardsConfigSchema,
     transitions: TransitionsConfigSchema,
+    /** Every file a run writes, in this order (spec 133). */
+    formats: z
+      .array(z.enum(RENDER_FORMATS))
+      .min(1)
+      .refine(
+        (formats) => new Set(formats).size === formats.length,
+        'expected each format once',
+      )
+      .default(() => ['mp4' as const]),
+    gif: GifConfigSchema,
   })
-  .superRefine(({ cards, transitions }, ctx) => {
+  .superRefine(({ width, fps, cards, transitions, gif }, ctx) => {
+    if (gif.width !== undefined && gif.width > width) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `expected at most render.width (${width})`,
+        path: ['gif', 'width'],
+      });
+    }
+    if (gif.fps !== undefined && gif.fps > fps) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `expected at most render.fps (${fps})`,
+        path: ['gif', 'fps'],
+      });
+    }
     const { enabled, durationMs } = transitions;
     if (!enabled || durationMs === undefined) return;
     const shortest = Math.min(...cardsOn(cards));
@@ -162,7 +212,11 @@ export const RenderConfigSchema = z
       });
     }
   })
-  .transform(({ transitions, ...render }) => {
+  .transform(({ transitions, gif, ...render }) => {
+    const resolvedGif: GifConfig = {
+      width: gif.width ?? Math.min(DEFAULT_GIF.width, render.width),
+      fps: gif.fps ?? Math.min(DEFAULT_GIF.fps, render.fps),
+    };
     const resolved: TransitionsConfig = {
       enabled: transitions.enabled,
       durationMs:
@@ -172,7 +226,7 @@ export const RenderConfigSchema = z
           Math.floor(Math.min(...cardsOn(render.cards)) / 2),
         ),
     };
-    return { ...render, transitions: resolved };
+    return { ...render, transitions: resolved, gif: resolvedGif };
   })
   .prefault({});
 export type RenderConfig = z.infer<typeof RenderConfigSchema>;

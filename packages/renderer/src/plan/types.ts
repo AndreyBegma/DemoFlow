@@ -3,6 +3,8 @@ import type {
   Box,
   CardsConfig,
   FrameConfig,
+  GifConfig,
+  RenderFormat,
   TransitionsConfig,
   Viewport,
 } from '@demoflow/core';
@@ -48,6 +50,10 @@ export interface RenderPlanOptions {
   /** Camera zoom on a target. Default 1.6 on a 2× source, 1.25 below. */
   zoom?: number;
   output?: { width?: number; height?: number; fps?: number };
+  /** The files to write, in order (spec 133). Default: `['mp4']`. */
+  formats?: readonly RenderFormat[];
+  /** The GIF's width and rate. Default: 800 px and 12 fps, at most the output's. */
+  gif?: Partial<GifConfig>;
   /** The window around the page (spec 100). Default: on, as in `FrameConfigSchema`. */
   frame?: Partial<FrameConfig>;
   /** Behind the window, and behind every card. Default: the `ocean` preset. */
@@ -81,14 +87,44 @@ export interface FrameSpec {
   background: GradientSpec;
 }
 
+/** The frames every output is encoded from; MP4 and WebM keep this size and rate. */
 export interface OutputSpec {
   width: number;
   height: number;
   fps: number;
+  /** One file per requested format, in `formats` order, from one FFmpeg (spec 133). */
+  files: OutputFile[];
+}
+
+export type OutputFile = Mp4Spec | WebmSpec | GifSpec;
+
+/** H.264, BT.709: the default output (ADR-0004). */
+export interface Mp4Spec {
+  format: 'mp4';
   codec: 'h264';
   pixelFormat: 'yuv420p';
   /** `-movflags +faststart`: the index goes before the media data. */
   faststart: true;
+}
+
+/** VP9 at constant quality, BT.709. */
+export interface WebmSpec {
+  format: 'webm';
+  codec: 'vp9';
+  pixelFormat: 'yuv420p';
+  /** `-crf`, with `-b:v 0`: 0 (best) to 63. */
+  crf: number;
+  /** `-cpu-used`: higher is faster and larger. */
+  cpuUsed: number;
+}
+
+/** A looping GIF with a palette per frame, scaled down and slowed. */
+export interface GifSpec {
+  format: 'gif';
+  width: number;
+  /** Follows the output's aspect ratio, rounded to an even number. */
+  height: number;
+  fps: number;
 }
 
 export interface SourceSpec {

@@ -172,6 +172,20 @@ describe('parseProbe', () => {
     expect(parseProbe('', log).freezes).toEqual([]);
   });
 
+  it('reads a GIF at its tbr, not the rate of one rounded delay', () => {
+    const probe = parseProbe(
+      'progress=end\n',
+      '  Duration: 00:00:05.00, start: 0.000000, bitrate: 581 kb/s\n  Stream #0:0: Video: gif, bgra, 800x450 [SAR 1:1 DAR 16:9], 12.50 fps, 12 tbr, 100 tbn',
+    );
+    expect(probe).toMatchObject({
+      codec: 'gif',
+      width: 800,
+      height: 450,
+      fps: 12,
+      durationMs: 5000,
+    });
+  });
+
   it('reads an MP4 and falls back to the frame count without a duration', () => {
     const probe = parseProbe(
       'frame=10\nframe=90\nprogress=end\n',
@@ -322,26 +336,32 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
 
   it('records a render in result.json, and a failed one as a failed stage', async () => {
     const file = renderPath(customers, 'probe');
-    const output = await recordRender(customers, 'probe', file, async () => {
-      await runFfmpeg([
-        '-y',
-        '-i',
-        path.join(customers, customersPlan.source.file),
-        '-t',
-        '1',
-        '-vf',
-        'scale=1920:1080,fps=30',
-        '-c:v',
-        'libx264',
-        '-pix_fmt',
-        'yuv420p',
-        '-movflags',
-        '+faststart',
-        file,
-      ]);
-    });
+    const [output] = await recordRender(
+      customers,
+      'probe',
+      [{ format: 'mp4', file }],
+      async () => {
+        await runFfmpeg([
+          '-y',
+          '-i',
+          path.join(customers, customersPlan.source.file),
+          '-t',
+          '1',
+          '-vf',
+          'scale=1920:1080,fps=30',
+          '-c:v',
+          'libx264',
+          '-pix_fmt',
+          'yuv420p',
+          '-movflags',
+          '+faststart',
+          file,
+        ]);
+      },
+    );
     expect(output).toMatchObject({
       renderer: 'probe',
+      format: 'mp4',
       file: 'render/probe.mp4',
       width: 1920,
       height: 1080,
@@ -362,8 +382,11 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     expect(result.status).toBe('running');
 
     await expect(
-      recordRender(customers, 'broken', renderPath(customers, 'broken'), () =>
-        Promise.reject(new Error('compositor crashed')),
+      recordRender(
+        customers,
+        'broken',
+        [{ format: 'mp4', file: renderPath(customers, 'broken') }],
+        () => Promise.reject(new Error('compositor crashed')),
       ),
     ).rejects.toThrow('compositor crashed');
     result = await read();
@@ -396,8 +419,18 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
       ]);
     };
     await Promise.all([
-      recordRender(failing, 'a', renderPath(failing, 'a'), draw('a')),
-      recordRender(failing, 'b', renderPath(failing, 'b'), draw('b')),
+      recordRender(
+        failing,
+        'a',
+        [{ format: 'mp4', file: renderPath(failing, 'a') }],
+        draw('a'),
+      ),
+      recordRender(
+        failing,
+        'b',
+        [{ format: 'mp4', file: renderPath(failing, 'b') }],
+        draw('b'),
+      ),
     ]);
     const result = RunResultSchema.parse(
       JSON.parse(await readFile(file, 'utf8')),
