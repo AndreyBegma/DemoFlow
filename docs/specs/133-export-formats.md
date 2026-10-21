@@ -49,6 +49,12 @@ follow-camera is a later, separate slice.
    (rounded to an even number). The palette is generated and applied inside the
    same filtergraph (`split` → `palettegen` / `paletteuse`), so a GIF needs no
    second pass. GIFs loop forever.
+   *Amended in the implementation PR (orchestrator):* a palette **per frame**
+   (`palettegen=stats_mode=single`, `paletteuse=new=1`), not one per video.
+   One palette per video is emitted only at the end, and until then FFmpeg
+   queues the full-size frames of the GIF branch. For a 60 s render with MP4,
+   GIF and WebM that peaked at 13 GB RSS, against 1.5 GB per frame (the MP4 +
+   WebM baseline).
 4. **WebM is VP9.** (owner) Same width, height and fps as the MP4. No audio
    track.
 5. **File names**: `render/ffmpeg.mp4`, `render/ffmpeg.gif`,
@@ -115,7 +121,7 @@ adds optional formats. It needs no new ADR.
     speed are the slot's to pick and to state in the PR, with the measured file
     size and encode time on the fixture demo;
   - **gif**: `fps` → `scale` (lanczos) → `split` → `palettegen` /
-    `paletteuse`, `-loop 0`.
+    `paletteuse`, a palette per frame (Decision 3), `-loop 0`.
 - `recordRender` probes every output and writes one `renders` entry per file.
   A GIF is probed for width, height, duration and frame rate. Its codec is
   not compared.
@@ -144,7 +150,9 @@ adds optional formats. It needs no new ADR.
 - [ ] The fixture demo's GIF at defaults is under 10 MB. The size is stated in
       the PR.
 - [ ] `result.json` lists one `renders` entry per format, in `formats` order,
-      each with its `format`. The schema rejects an entry without it.
+      each with its `format`. *Amended (orchestrator):* an entry without
+      `format`, written before this change, reads as `mp4`, so older runs keep
+      showing in `list_demos` and `get_task`. Every new entry carries it.
 - [ ] Config validation rejects `formats: []`, a duplicate, an unknown format,
       `gif.width` above `render.width`, and `gif.fps` above `render.fps`. Each
       error names the field.
@@ -192,9 +200,14 @@ in `ffmpeg-static` on all three OSes is unverified.
 - **Encode time grows with three outputs** (low). VP9 is slower than x264.
   Mitigation: the PR states encode time for the fixture demo per format. The
   default stays MP4 only, so existing runs are unaffected.
-- **One slow output stalls the shared pipe** (low). FFmpeg backpressures stdin
-  across outputs. Mitigation: the existing stall handling in the pipeline
-  applies unchanged. A test renders all three under the real-run suite.
+- **One output holds frames back** (measured in the implementation PR).
+  FFmpeg does *not* backpressure stdin while one output of the shared graph
+  waits: the other outputs keep pulling input, and frames queue in front of
+  the waiting branch. One palette per GIF waited for the end and queued every
+  1080p frame (7.3 GB for 60 s of MP4 + GIF, 13 GB with WebM). Mitigation: no
+  output may wait for the end of the stream; the GIF uses a palette per frame
+  (Decision 3). Peak encoder RSS for a 60 s render is then bounded at
+  ~1.5 GB with all three outputs, the MP4 + WebM baseline.
 
 ## Open questions
 

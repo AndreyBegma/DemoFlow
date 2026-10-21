@@ -118,7 +118,7 @@ export interface WebmSpec {
   cpuUsed: number;
 }
 
-/** A looping GIF on one palette for the whole video, scaled down and slowed. */
+/** A looping GIF with a palette per frame, scaled down and slowed. */
 export interface GifSpec {
   format: 'gif';
   width: number;

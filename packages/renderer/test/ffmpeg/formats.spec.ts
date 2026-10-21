@@ -122,7 +122,9 @@ describe('encoderArgs', () => {
     expect(graph).toContain(
       '[s0]fps=12,scale=800:450:flags=lanczos,split[g0][h0];[g0]palettegen',
     );
-    expect(graph).toContain('paletteuse=');
+    // A palette per frame: one for the whole video queues every frame (spec 133).
+    expect(graph).toContain('[g0]palettegen=stats_mode=single[p0]');
+    expect(graph).toContain('[h0][p0]paletteuse=new=1:');
     // Each file follows its own `-map`, with its own encoder.
     const maps = args.flatMap((arg, i) => (arg === '-map' ? [i] : []));
     expect(maps.map((i) => args[i + 1])).toEqual(['[v0]', '[v1]', '[v2]']);

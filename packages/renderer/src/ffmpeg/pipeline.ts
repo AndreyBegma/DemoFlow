@@ -326,13 +326,14 @@ function branch(file: OutputFile, i: number): string {
       // default RGB → YUV conversion is BT.601 and leaves the file untagged.
       return `scale=in_range=pc:out_range=tv:out_color_matrix=bt709,format=${file.pixelFormat}[v${i}]`;
     case 'gif':
-      // One palette for the whole video, from frames that differ (spec 133,
-      // Decision 3); `palettegen` emits it only at the end, so `paletteuse`
-      // holds every GIF frame until then.
+      // A palette per frame (spec 133, Decision 3). One palette for the
+      // whole video comes only at the end, and until then FFmpeg queues the
+      // full-size frames of this branch: 13 GB for a 60 s render beside
+      // MP4 and WebM, against 1.5 GB this way.
       return [
         `fps=${file.fps},scale=${file.width}:${file.height}:flags=lanczos,split[g${i}][h${i}]`,
-        `[g${i}]palettegen=stats_mode=diff[p${i}]`,
-        `[h${i}][p${i}]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle[v${i}]`,
+        `[g${i}]palettegen=stats_mode=single[p${i}]`,
+        `[h${i}][p${i}]paletteuse=new=1:dither=bayer:bayer_scale=5:diff_mode=rectangle[v${i}]`,
       ].join(';');
   }
 }
