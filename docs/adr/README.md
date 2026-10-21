@@ -15,3 +15,4 @@ it is accepted: a later record supersedes it and says so.
 | [0008](0008-cloud-boundary.md) | What crosses to the cloud, and what the website may make a runner do | accepted |
 | [0009](0009-playback-relay-and-luna-player-adapter.md) | Playback through an API relay; Luna Player behind an adapter | accepted |
 | [0010](0010-source-video-at-viewport-size.md) | The source video is recorded at the viewport size (1×) | accepted |
+| [0011](0011-no-docker-socket-or-host-cache-on-pull-requests.md) | No Docker socket and no host cache on a pull request | accepted |

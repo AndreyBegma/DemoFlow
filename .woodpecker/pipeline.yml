@@ -20,11 +20,34 @@
 # The CI Postgres holds throwaway data. It runs on tmpfs, with fsync,
 # synchronous_commit and full_page_writes off.
 #
-# The repository is public. Host mounts need it "trusted → volumes" in
-# Woodpecker, and pull requests from forks must wait for approval
-# (require_approval: forks) — an unapproved fork would otherwise reach the
-# Docker socket of the host. deploy/README.md lists the repository settings.
-
+# A pull request runs the code of its branch with whatever this file grants,
+# so a step that can run on a pull request gets no Docker socket and no host
+# volume (ADR-0011):
+#   - `ci-image`, `build-staging` and `deploy-staging` mount the socket and run
+#     on push and manual events only. A pull request runs on the
+#     demoflow-ci:node-bun image the last push or manual run built on the
+#     agent host; a change to deploy/ci-image/ reaches pull requests once it is
+#     merged. On an agent that has never built the tag the pull request fails
+#     at image pull (docker.io/library/demoflow-ci does not exist) — a manual
+#     run on develop builds it. Not pinned by digest: the image never leaves
+#     the host, and a local image has no repository digest.
+#   - `install`, `build` and `test` exist twice. The push/manual steps mount
+#     the host caches under /home/archi/ci-cache/demoflow, as before. The
+#     `-pr` steps mount nothing: bun's install cache lives in the step's
+#     container, turbo's cache (.turbo/cache) and Chromium
+#     (PLAYWRIGHT_BROWSERS_PATH=0, inside node_modules) in the pipeline's
+#     workspace, and all of it dies with the pipeline. Nothing a pull request
+#     writes is read by another pipeline — a later pull request's turbo cache
+#     replay, a push build or the staging deploy in particular. Pull requests
+#     pay for it: a cold bun install, a full turbo build and a Chromium
+#     download every run.
+#
+# The repository is public. The socket, staging and cache mounts and the
+# postgres tmpfs need it "trusted → volumes" in Woodpecker, and pull requests
+# from forks must wait for approval (require_approval: forks). Woodpecker
+# reads this file from the pull request's own branch, so a same-repository
+# pull request that edits it could still mount the socket: only forks wait
+# for approval. deploy/README.md lists the repository settings.
 when:
   - event: pull_request
   - event: push
@@ -51,6 +74,12 @@ variables:
     PLAYWRIGHT_BROWSERS_PATH: /ci-cache/playwright
     TURBO_CACHE_DIR: /ci-cache/turbo
     TURBO_TELEMETRY_DISABLED: '1'
+  # Pull requests: no host cache. Chromium goes into node_modules (`0`), turbo
+  # uses its default .turbo/cache, bun its in-container cache — all of it in
+  # the pipeline's workspace or the step's container, gone with the pipeline.
+  - &pr_env
+    PLAYWRIGHT_BROWSERS_PATH: '0'
+    TURBO_TELEMETRY_DISABLED: '1'
   # A pull request that touches only these skips `build` and `test`.
   - &docs_only
     exclude: ['docs/**', '**/*.md', '.github/**']
@@ -71,18 +100,24 @@ services:
       - docker-entrypoint.sh postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
 
 steps:
+  # Never on a pull request: the socket is root on the host (ADR-0011).
   - name: ci-image
     image: *docker_image
+    when:
+      - event: [push, manual]
     volumes: *socket
     commands:
       - docker build -t demoflow-ci:node-bun deploy/ci-image
 
+  # Push and manual: the host caches.
   - name: install
     image: *ci_image
     depends_on: [ci-image]
+    when:
+      - event: [push, manual]
     volumes: *caches
     environment: *cache_env
-    commands:
+    commands: &install_commands
       - bun --version
       - bun install --frozen-lockfile
       - bun run db:generate
@@ -96,9 +131,19 @@ steps:
           echo "playwright not installed: skipping the Chromium install"
         fi
 
+  # Pull request: the image the last push built, no host mount.
+  - name: install-pr
+    image: *ci_image
+    when:
+      - event: pull_request
+    environment: *pr_env
+    commands: *install_commands
+
   - name: check
     image: *ci_image
-    depends_on: [install]
+    depends_on:
+      - { name: install, optional: true }
+      - { name: install-pr, optional: true }
     commands:
       - bun run check
 
@@ -107,13 +152,20 @@ steps:
     image: *ci_image
     depends_on: [install]
     when:
-      - event: pull_request
-        path: *docs_only
       - event: [push, manual]
     volumes: *caches
     environment: *cache_env
-    commands:
+    commands: &build_commands
       - bun run build -- --concurrency=2
+
+  - name: build-pr
+    image: *ci_image
+    depends_on: [install-pr]
+    when:
+      - event: pull_request
+        path: *docs_only
+    environment: *pr_env
+    commands: *build_commands
 
   # `$$` keeps a variable from Woodpecker's own substitution, so the shell
   # expands it.
@@ -121,8 +173,6 @@ steps:
     image: *ci_image
     depends_on: [build]
     when:
-      - event: pull_request
-        path: *docs_only
       - event: push
         branch: main
       - event: manual
@@ -132,7 +182,7 @@ steps:
       TEST_DATABASE_URL: postgresql://postgres:ci@postgres:5432/demoflow_test?schema=public
       DATABASE_URL: postgresql://postgres:ci@postgres:5432/demoflow?schema=public
       APP_ENV: test
-    commands:
+    commands: &test_commands
       - until node -e "require('net').connect(5432,'postgres').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"; do sleep 1; done
       # A shallow clone has no merge base: fetch the target branch's history
       # (commits only, no trees). Any failure means the full suite, never none.
@@ -158,6 +208,19 @@ steps:
           echo "test mode: full ($${CI_PIPELINE_EVENT} event)"
         fi
         bun run test $${FILTER}
+
+  - name: test-pr
+    image: *ci_image
+    depends_on: [build-pr]
+    when:
+      - event: pull_request
+        path: *docs_only
+    environment:
+      <<: *pr_env
+      TEST_DATABASE_URL: postgresql://postgres:ci@postgres:5432/demoflow_test?schema=public
+      DATABASE_URL: postgresql://postgres:ci@postgres:5432/demoflow?schema=public
+      APP_ENV: test
+    commands: *test_commands
 
   # On a push to develop `test` is filtered out and the optional dependency is
   # dropped. On a manual run, the deploy waits for the full suite.
