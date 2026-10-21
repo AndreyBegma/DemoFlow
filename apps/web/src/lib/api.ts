@@ -25,6 +25,12 @@ export interface Runner {
   cliVersion: string;
   createdAt: string;
   lastUsedAt: string | null;
+  /** Has an open socket right now (spec #151). */
+  online: boolean;
+  /** The last frame heard from the daemon. */
+  lastSeenAt: string | null;
+  /** The client IP at connect; shown only to the owner. */
+  lastSeenIp: string | null;
 }
 
 export interface PublicUser {
