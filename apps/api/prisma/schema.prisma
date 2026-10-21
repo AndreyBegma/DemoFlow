@@ -18,6 +18,7 @@ model User {
   sessions        Session[]
   emailTokens     EmailToken[]
   githubIdentity  GithubIdentity?
+  runners         Runner[]
 }
 
 // The GitHub account a user signs in with (spec #126). At most one per user,
@@ -64,4 +65,46 @@ model EmailToken {
   createdAt DateTime          @default(now())
 
   @@index([userId, purpose])
+}
+
+// A machine paired with an account (spec #135). Holds machine metadata only
+// (ADR-0008): no paths, no usernames, no address. Only the SHA-256 hash of the
+// `dfr_` device token is stored. A revoked row stays until the account goes.
+model Runner {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  // `process.platform` and release, e.g. "linux 6.19.10".
+  os         String
+  cliVersion String
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+// A pending `demoflow login` (RFC 8628). Only the SHA-256 hash of the polling
+// secret is stored. `approvedById` is a plain column: the row lives at most
+// ten minutes and is deleted once its token is issued.
+model DeviceCode {
+  id             String    @id @default(uuid())
+  deviceCodeHash String    @unique
+  // "ABCD1234": stored without the dash.
+  userCode       String    @unique
+  hostname       String
+  os             String
+  cliVersion     String
+  expiresAt      DateTime
+  lastPolledAt   DateTime?
+  approvedAt     DateTime?
+  deniedAt       DateTime?
+  approvedById   String?
+  // The name the approver chose.
+  runnerName     String?
+  // Token issued; the row is dead.
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
 }
