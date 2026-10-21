@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "name": "Sign in and add a customer",
+  "description": "A demo made with DemoFlow, from one JSON scenario.",
+  "viewport": { "width": 1280, "height": 720 },
+  "steps": [
+    { "action": "navigate", "path": "/login" },
+    { "action": "marker", "title": "Sign in", "kind": "scene" },
+    {
+      "action": "fill",
+      "target": { "label": "Email" },
+      "value": "ada@example.com",
+      "caption": "Sign in"
+    },
+    {
+      "action": "fill",
+      "target": { "label": "Password" },
+      "valueFrom": { "env": "FIXTURE_PASSWORD" },
+      "caption": "The password stays masked"
+    },
+    { "action": "click", "target": { "role": "button", "name": "Sign in" } },
+    {
+      "action": "assertText",
+      "target": { "role": "heading", "name": "Welcome" },
+      "text": "Welcome, ada@example.com"
+    },
+    { "action": "navigate", "path": "/customers" },
+    { "action": "marker", "title": "Customers", "kind": "scene" },
+    {
+      "action": "fill",
+      "target": { "label": "Search customers" },
+      "value": "Ada",
+      "caption": "Filter the list"
+    },
+    {
+      "action": "fill",
+      "target": { "label": "Search customers" },
+      "value": ""
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "New customer" },
+      "caption": "Add a customer"
+    },
+    {
+      "action": "fill",
+      "target": { "label": "Name" },
+      "value": "Ada Lovelace"
+    },
+    {
+      "action": "fill",
+      "target": { "label": "Email" },
+      "value": "ada@example.com"
+    },
+    { "action": "select", "target": { "label": "Plan" }, "option": "Pro" },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Create", "exact": true },
+      "caption": "Create it"
+    },
+    {
+      "action": "assertVisible",
+      "target": { "text": "Ada Lovelace" }
+    }
+  ]
+}

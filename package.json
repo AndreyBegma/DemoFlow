@@ -19,6 +19,7 @@
     "db:setup": "sh scripts/db-start-docker.sh",
     "format": "biome format --write .",
     "check": "biome check .",
+    "landing:record": "node apps/web/scripts/landing-record.mjs",
     "test:release": "node --test 'scripts/release/*.test.mjs'"
   },
   "devDependencies": {
