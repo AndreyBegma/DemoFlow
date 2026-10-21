@@ -4,7 +4,9 @@ import type { Issue } from '@demoflow/core';
 export type CliErrorCode =
   | 'no-project-config'
   | 'invalid-config'
-  | 'invalid-global-config';
+  | 'invalid-global-config'
+  | 'invalid-credentials'
+  | 'invalid-server';
 
 export const EXIT_INVALID_INPUT = 2;
 

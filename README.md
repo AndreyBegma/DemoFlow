@@ -51,8 +51,9 @@ an AI agent such as Claude Code ask for a demo over MCP.
 > `demoflow@0.1.0` on npm has `run`, `validate`, `setup` and `mcp`. `record`,
 > the `press` step, starting the app from `devCommand`, key badges and the
 > window frame are on `develop` and ship in the next release, with cards,
-> transitions and GIF/WebM export. The vertical 9:16 export, the website and
-> Runner pairing are **not built yet** — see [Status and Roadmap](https://github.com/AndreyBegma/DemoFlow/wiki/Status-and-Roadmap).
+> transitions and GIF/WebM export, as do `login` and `logout`. The vertical
+> 9:16 export and the Runner connection (jobs, heartbeats, online status) are
+> **not built yet** — see [Status and Roadmap](https://github.com/AndreyBegma/DemoFlow/wiki/Status-and-Roadmap).
 
 ## How a demo flows
 
@@ -114,6 +115,13 @@ npx demoflow run demoflow/first.demo.json
 
 Chromium is downloaded on first use. The summary prints the path of the video.
 To connect Claude Code instead: `claude mcp add demoflow -- npx demoflow mcp`.
+
+### Pair a machine with your account
+
+`demoflow login` prints a code, opens the website, and stores a revocable
+device token once you approve the code there. `demoflow logout` revokes it.
+Every other command works without an account. See
+[`apps/cli/README.md`](apps/cli/README.md#pair-this-machine-with-your-account).
 
 ## Documentation
 
