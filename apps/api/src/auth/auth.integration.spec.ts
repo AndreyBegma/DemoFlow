@@ -91,6 +91,8 @@ describe('auth (integration)', () => {
         id: expect.any(String),
         email,
         emailVerified: false,
+        githubLinked: false,
+        hasPassword: true,
       });
 
       await request(http)
