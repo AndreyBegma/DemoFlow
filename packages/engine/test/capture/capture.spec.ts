@@ -21,6 +21,7 @@ import {
   type FixtureServer,
   startFixtureServer,
 } from '../execute/fixture-server.ts';
+import { mouseUps } from '../execute/mouse-ups.ts';
 import { webmFrameSize } from './webm.ts';
 
 const SCENARIO_DIR = path.join(FIXTURE_DIST, '..', 'demoflow');
@@ -209,10 +210,11 @@ describe('customers.demo.json', () => {
 
 describe('login.demo.json', () => {
   it('masks the password in the timeline and leaves it in no file', async () => {
+    const ups = mouseUps();
     const { runDir } = await record(
       await loadScenario('login.demo.json'),
       'demoflow/login.demo.json',
-      { env: { FIXTURE_PASSWORD: PASSWORD } },
+      { env: { FIXTURE_PASSWORD: PASSWORD }, observers: [ups.observer] },
     );
 
     const timeline = TimelineSchema.parse(
@@ -225,15 +227,23 @@ describe('login.demo.json', () => {
     expect(fills[0].masked).toBeUndefined();
     expect(fills[0].maskVisibility).toBeUndefined();
 
-    // Signing in re-renders the page without the form: the mask ends with the click.
+    // Signing in re-renders the page without the form, on the same URL: the
+    // mask ends where the form left the screen, not where the click step
+    // ends after its navigation wait (#155).
     const signIn = timeline.events.find((event) => event.action === 'click');
-    expect(password.maskVisibility).toEqual([
-      {
-        startMs: password.startMs,
-        endMs: signIn?.endMs,
-        box: password.target?.box,
-      },
-    ]);
+    const upMs = ups.times.get(signIn?.stepIndex ?? -1);
+    if (signIn === undefined || upMs === undefined) {
+      throw new Error('login has no click with a mouse up');
+    }
+    expect(password.maskVisibility).toHaveLength(1);
+    const [interval] = password.maskVisibility ?? [];
+    expect(interval).toMatchObject({
+      startMs: password.startMs,
+      box: password.target?.box,
+    });
+    const endMs = interval?.endMs ?? Number.NaN;
+    expect(Math.abs(endMs - upMs)).toBeLessThanOrEqual(50);
+    expect(endMs).toBeLessThan(signIn.endMs);
 
     const needle = Buffer.from(PASSWORD);
     const files = await filesIn(runDir);
