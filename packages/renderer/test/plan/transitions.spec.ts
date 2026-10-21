@@ -63,8 +63,8 @@ function cards(scenes: boolean): CardsConfig {
 /**
  * A sign-in: the first load (0–700), a masked password, a click whose
  * navigation loads 1950–2900, a scene marker at 2000 inside that load. The
- * password's field leaves with the navigation: its mask ends at the click's
- * end plus the trail, long before the new page is ready.
+ * password's field was last measured at the click's end, long before the new
+ * page is ready: the old page, and its field, stay on screen until 2900.
  */
 const EVENTS: Omit<TimelineEvent, 'stepIndex'>[] = [
   { action: 'navigate', startMs: 0, endMs: 800 },
@@ -103,9 +103,10 @@ function plan(
   options: RenderPlanOptions & {
     navigations?: Navigation[] | undefined;
     failedAt?: number;
+    events?: Omit<TimelineEvent, 'stepIndex'>[];
   } = {},
 ): RenderPlan {
-  const { navigations: given, failedAt, ...rest } = options;
+  const { navigations: given, failedAt, events = EVENTS, ...rest } = options;
   // `navigations: undefined` is a timeline from before #114.
   const navigations = 'navigations' in options ? given : NAVIGATIONS;
   return planRender(
@@ -115,7 +116,7 @@ function plan(
         viewport: { width: 1280, height: 720 },
         deviceScaleFactor: 2,
         videoFile: 'source.webm',
-        events: EVENTS.map((event, stepIndex) => ({ ...event, stepIndex })),
+        events: events.map((event, stepIndex) => ({ ...event, stepIndex })),
         ...(navigations === undefined ? {} : { navigations }),
       },
       result: result(failedAt),
@@ -199,7 +200,7 @@ describe('page-load holds (spec 114)', () => {
     }
     // 1 250 ms of page frames and 600 ms of card dissolves: 55 frames.
     expect(held).toBe(55);
-    // The live page's own mask ended at 2 200: after the hold, none.
+    // The live page's own mask ended with the hold's start: after the hold, none.
     expect(frameAt(transitioned, Math.ceil((4500 * FPS) / 1000)).masks).toEqual(
       [],
     );
@@ -304,6 +305,129 @@ describe('card dissolves (spec 114)', () => {
     const out = frameAt(transitioned, Math.round((1900 * FPS) / 1000));
     expect(out.card?.title).toBe('Sign in');
     expect(out.fade?.from.backdrop).toBeDefined();
+  });
+});
+
+describe('a masked field across a document navigation (spec 146)', () => {
+  const NO_CARDS = { cards: cards(false) };
+  const OFF = { ...NO_CARDS, transitions: { enabled: false, durationMs: 300 } };
+  const ON = { ...NO_CARDS, transitions: FADE };
+  const LEAD_TRAIL_MS = 200;
+  const [, LOGIN] = NAVIGATIONS;
+  const LOGIN_END_MS = (LOGIN.endMs ?? 0) + LEAD_TRAIL_MS;
+
+  const fill = EVENTS[1];
+  /** The field measured as still there when the load is under way: the end of the `waitFor`. */
+  const LATE: typeof EVENTS = EVENTS.map((event) =>
+    event === fill
+      ? {
+          ...event,
+          maskVisibility: [{ startMs: 800, endMs: 3000, box: FIELD }],
+        }
+      : event,
+  );
+  /** A timeline from before `maskVisibility` (#18): the landing video's shape. */
+  const UNMEASURED: typeof EVENTS = EVENTS.map((event) => {
+    if (event !== fill) return event;
+    const { maskVisibility: _, ...rest } = event;
+    return rest;
+  });
+  const SHAPES = { measured: EVENTS, late: LATE, unmeasured: UNMEASURED };
+
+  /** Every frame from `fromMs` on draws no mask on the live page. */
+  function expectNoLiveMask(of: RenderPlan, fromMs: number): void {
+    const heldMs = of.transitions?.holds[1]?.sourceMs;
+    let checked = 0;
+    for (const { atMs, state } of frames(of)) {
+      if (atMs < fromMs) continue;
+      for (const layer of layers(state)) {
+        if (layer.sourceMs === heldMs || layer.sourceMs === null) continue;
+        expect(layer.masks, `${atMs}`).toEqual([]);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  }
+
+  for (const [shape, events] of Object.entries(SHAPES)) {
+    it(`draws no live-page mask once the hold shows the old page, transitions on (${shape})`, () => {
+      const transitioned = plan({ ...ON, events });
+      const [, hold] = transitioned.transitions?.holds ?? [];
+      expect(transitioned.masks.map((mask) => mask.endMs)).toEqual([
+        LOGIN.startMs,
+      ]);
+      // The held frame keeps the hold's mask, as #114 drew it.
+      expect(hold.masks).toEqual([MASKED]);
+      expectNoLiveMask(transitioned, hold.startMs);
+    });
+
+    it(`masks every frame of the old page until the new one loads, then none, transitions off (${shape})`, () => {
+      const plain = plan({ ...OFF, events });
+      expect(plain.masks.map((mask) => mask.endMs)).toEqual([LOGIN_END_MS]);
+      for (const { atMs, state } of frames(plain)) {
+        if (atMs < 800 - LEAD_TRAIL_MS) continue;
+        if (atMs >= LOGIN_END_MS) break;
+        expect(state.masks, `${atMs}`).toHaveLength(1);
+      }
+      expectNoLiveMask(plain, LOGIN_END_MS);
+    });
+
+    it(`keeps today's span for a same-document route change (${shape})`, () => {
+      // A pushState has no entry in `navigations`: only the first load is there.
+      for (const options of [ON, OFF]) {
+        expect(
+          plan({ ...options, events, navigations: [NAVIGATIONS[0]] }).masks,
+        ).toEqual(plan({ ...options, events, navigations: undefined }).masks);
+      }
+    });
+  }
+
+  it('plans exactly what it planned before for a timeline without navigations', () => {
+    for (const options of [ON, OFF]) {
+      const before = plan({ ...options, navigations: undefined });
+      expect(before.masks).toEqual([
+        { startMs: 600, endMs: 2200, keys: [{ atMs: 600, box: MASKED }] },
+      ]);
+      expect(
+        plan({ ...options, events: UNMEASURED, navigations: undefined }).masks,
+      ).toEqual([
+        { startMs: 600, endMs: 6000, keys: [{ atMs: 600, box: MASKED }] },
+      ]);
+    }
+  });
+
+  it('keeps an open navigation to today’s span with transitions off', () => {
+    const open = [NAVIGATIONS[0], { startMs: LOGIN.startMs }];
+    expect(plan({ ...OFF, navigations: open }).masks[0].endMs).toBe(2200);
+    expect(plan({ ...ON, navigations: open }).masks[0].endMs).toBe(
+      LOGIN.startMs,
+    );
+  });
+
+  it('never ends a span on the load that starts as its field is measured', () => {
+    // The load at 800 brings in the page the field is measured on; the login's ends it.
+    const navigations = [NAVIGATIONS[0], { startMs: 800, endMs: 850 }, LOGIN];
+    expect(plan({ ...OFF, navigations }).masks[0].endMs).toBe(LOGIN_END_MS);
+  });
+
+  it('keeps the measured spans of a field the navigation left on screen', () => {
+    const MOVED = { x: 200, y: 300, width: 320, height: 60 };
+    const stays: typeof EVENTS = EVENTS.map((event) =>
+      event === fill
+        ? {
+            ...event,
+            maskVisibility: [
+              { startMs: 800, endMs: 2000, box: FIELD },
+              { startMs: 1990, box: MOVED },
+            ],
+          }
+        : event,
+    );
+    for (const options of [ON, OFF]) {
+      expect(plan({ ...options, events: stays }).masks).toEqual(
+        plan({ ...options, events: stays, navigations: undefined }).masks,
+      );
+    }
   });
 });
 
