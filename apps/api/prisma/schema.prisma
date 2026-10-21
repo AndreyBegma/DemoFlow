@@ -1,5 +1,5 @@
 generator client {
-  provider        = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -9,12 +9,12 @@ datasource db {
 // An account. `passwordHash` is null for a user who signs in only with GitHub
 // (slice 3). `email` is stored trimmed and lower-cased.
 model User {
-  id              String       @id @default(cuid())
-  email           String       @unique
+  id              String          @id @default(cuid())
+  email           String          @unique
   passwordHash    String?
   emailVerifiedAt DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
   sessions        Session[]
   emailTokens     EmailToken[]
   githubIdentity  GithubIdentity?
@@ -68,20 +68,29 @@ model EmailToken {
 }
 
 // A machine paired with an account (spec #135). Holds machine metadata only
-// (ADR-0008): no paths, no usernames, no address. Only the SHA-256 hash of the
-// `dfr_` device token is stored. A revoked row stays until the account goes.
+// (ADR-0008): no paths, no usernames, and of addresses only the last one seen,
+// for its owner (spec #151). Only the SHA-256 hash of the `dfr_` device token
+// is stored. A revoked row stays until the account goes.
 model Runner {
-  id         String    @id @default(uuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name       String
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
   // `process.platform` and release, e.g. "linux 6.19.10".
-  os         String
-  cliVersion String
-  tokenHash  String    @unique
-  createdAt  DateTime  @default(now())
-  lastUsedAt DateTime?
-  revokedAt  DateTime?
+  os               String
+  cliVersion       String
+  tokenHash        String    @unique
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime?
+  revokedAt        DateTime?
+  // The age rotation is measured from (spec #151 Decision 8).
+  tokenIssuedAt    DateTime  @default(now())
+  // A rotation in flight: the token sent in `rotate`, until `rotated`.
+  pendingTokenHash String?   @unique
+  pendingIssuedAt  DateTime?
+  // Latest values only, shown to the owner (Decision 10).
+  lastSeenAt       DateTime?
+  lastSeenIp       String?
 
   @@index([userId])
 }
