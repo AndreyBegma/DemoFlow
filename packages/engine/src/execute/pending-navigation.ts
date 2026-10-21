@@ -15,7 +15,7 @@ const NAVIGATION_START_MS = 100;
 interface Probe {
   reset(): void;
   /** The destination of a document navigation that has not committed yet, if any. */
-  pending(): string | null;
+  pending(): Promise<string | null>;
 }
 
 /**
@@ -51,7 +51,7 @@ export async function withNavigation(
   const end = watchEnd(page);
   try {
     await input();
-    // Runs after the page's input handlers, so a slow submit handler has navigated by now.
+    // Runs after the page's input handlers, and after the submission task they queue (#143).
     const read = await race(
       page.evaluate(callProbe, { key: PROBE_KEY, reset: false }),
       end.settled,
@@ -71,6 +71,27 @@ export async function withNavigation(
     cap.clear();
     end.dispose();
   }
+}
+
+/**
+ * Submits the form `selector` names and reads the probe in the same page
+ * task, ahead of the task the submission queues: the gap a loaded renderer
+ * leaves between a key press and its `navigate` event (#143). For tests.
+ */
+export async function pendingAfterSubmit(
+  page: Page,
+  selector: string,
+): Promise<string | null> {
+  return page.evaluate(
+    async ({ key, selector }) => {
+      document.querySelector<HTMLFormElement>(selector)?.requestSubmit();
+      const api = (window as unknown as Record<symbol, Probe | undefined>)[
+        Symbol.for(key)
+      ];
+      return (await api?.pending()) ?? null;
+    },
+    { key: PROBE_KEY, selector },
+  );
 }
 
 const TIMED_OUT = Symbol('timed out');
@@ -114,7 +135,11 @@ function probe(key: string): void {
     reset() {
       last = null;
     },
-    pending() {
+    async pending() {
+      // #143: a form submission navigates in a task it queues behind the key
+      // or click event, so its `navigate` event can still be ahead of this
+      // read. One task turn lets the queued submission run first.
+      await new Promise((resolve) => setTimeout(resolve, 0));
       const event = last;
       if (
         event === null ||
@@ -131,13 +156,13 @@ function probe(key: string): void {
   Object.defineProperty(window, Symbol.for(key), { value: api });
 }
 
-function callProbe({
+async function callProbe({
   key,
   reset,
 }: {
   key: string;
   reset: boolean;
-}): string | null {
+}): Promise<string | null> {
   const api = (window as unknown as Record<symbol, Probe | undefined>)[
     Symbol.for(key)
   ];
@@ -145,7 +170,7 @@ function callProbe({
     api?.reset();
     return null;
   }
-  return api?.pending() ?? null;
+  return (await api?.pending()) ?? null;
 }
 
 interface End {
