@@ -63,6 +63,7 @@ decisions live in [../adr/](../adr/README.md).
 | [#100](https://github.com/AndreyBegma/DemoFlow/issues/100) | [The page in a rounded window on a background](100-window-frame-background.md) | #91 |
 | [#108](https://github.com/AndreyBegma/DemoFlow/issues/108) | [Intro, scene and outro cards](108-cards.md) | #100 |
 | [#114](https://github.com/AndreyBegma/DemoFlow/issues/114) | [Fade transitions](114-transitions.md) | #108 |
+| [#133](https://github.com/AndreyBegma/DemoFlow/issues/133) | [GIF and WebM export](133-export-formats.md) | — |
 
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.
