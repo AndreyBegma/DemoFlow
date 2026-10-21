@@ -26,7 +26,12 @@ import { DEFAULT_SERVER, resolveServer } from '../../src/auth/server.ts';
 import type { Io } from '../../src/commands/io.ts';
 import { type AuthDeps, loginCommand } from '../../src/commands/login.ts';
 import { logoutCommand } from '../../src/commands/logout.ts';
-import { CliError, type HostEnvironment } from '../../src/config/index.ts';
+import {
+  CliError,
+  globalConfigPath,
+  type HostEnvironment,
+  pathFor,
+} from '../../src/config/index.ts';
 
 const TOKEN = 'dfr_secret-token-value';
 
@@ -148,11 +153,22 @@ function pairedFile() {
 }
 
 describe('credentials', () => {
-  it('lives next to config.json', () => {
-    expect(path.dirname(credentialsPath(host))).toBe(
-      path.join(tmp, 'demoflow'),
+  it.each([
+    ['linux', '/home/ada', { XDG_CONFIG_HOME: '/cfg' }],
+    ['linux', '/home/ada', {}],
+    ['darwin', '/Users/ada', {}],
+    [
+      'win32',
+      'C:\\Users\\ada',
+      { APPDATA: 'C:\\Users\\ada\\AppData\\Roaming' },
+    ],
+  ] as const)('lives next to config.json on %s', (platform, homedir, env) => {
+    const fake: HostEnvironment = { platform, homedir, env };
+    const p = pathFor(platform);
+    expect(p.dirname(credentialsPath(fake))).toBe(
+      p.dirname(globalConfigPath(fake)),
     );
-    expect(path.basename(credentialsPath(host))).toBe('credentials.json');
+    expect(p.basename(credentialsPath(fake))).toBe('credentials.json');
   });
 
   it('is under %APPDATA% on Windows', () => {
