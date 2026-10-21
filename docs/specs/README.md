@@ -75,6 +75,7 @@ decisions live in [../adr/](../adr/README.md).
 | [#126](https://github.com/AndreyBegma/DemoFlow/issues/126) | [GitHub sign-in](126-github-sign-in.md) | #120, #124 |
 | [#135](https://github.com/AndreyBegma/DemoFlow/issues/135) | [Runner pairing, slice 1](135-runner-pairing.md) | #133 (cli slot) |
 | [#137](https://github.com/AndreyBegma/DemoFlow/issues/137) | [Public landing page](137-landing-page.md) | — |
+| [#151](https://github.com/AndreyBegma/DemoFlow/issues/151) | [Runner daemon and live connection](151-runner-daemon.md) | #135 |
 
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.
