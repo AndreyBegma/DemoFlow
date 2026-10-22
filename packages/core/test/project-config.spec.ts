@@ -26,6 +26,26 @@ describe('parseProjectConfig', () => {
           transitions: { enabled: true, durationMs: 300 },
           formats: ['mp4'],
           gif: { width: 800, fps: 12 },
+          vertical: { followMs: 400, deadZone: 0.1, captionBand: 0.22 },
+        },
+      },
+    });
+  });
+
+  it('keeps the vertical format and its settings, filling the rest (spec 176)', () => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: {
+        formats: ['mp4', 'mp4-vertical'],
+        vertical: { followMs: 250 },
+      },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        render: {
+          formats: ['mp4', 'mp4-vertical'],
+          vertical: { followMs: 250, deadZone: 0.1, captionBand: 0.22 },
         },
       },
     });
@@ -66,6 +86,12 @@ describe('parseProjectConfig', () => {
     [{ gif: { width: 159 } }, 'render.gif.width'],
     [{ gif: { fps: 31 } }, 'render.gif.fps'],
     [{ width: 1280, height: 720, gif: { width: 1281 } }, 'render.gif.width'],
+    [{ vertical: { followMs: -1 } }, 'render.vertical.followMs'],
+    [{ vertical: { followMs: 2001 } }, 'render.vertical.followMs'],
+    [{ vertical: { deadZone: 0.5 } }, 'render.vertical.deadZone'],
+    [{ vertical: { captionBand: 0 } }, 'render.vertical.captionBand'],
+    [{ vertical: { captionBand: 0.51 } }, 'render.vertical.captionBand'],
+    [{ vertical: { zoom: 2 } }, 'render.vertical.zoom'],
   ])('rejects the render %o at %s', (render, path) => {
     const result = parseProjectConfig({ baseUrl: 'https://a.example', render });
     expect(result.ok).toBe(false);

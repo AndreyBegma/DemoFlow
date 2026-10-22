@@ -150,6 +150,29 @@ export interface GifConfig {
 
 const DEFAULT_GIF = { width: 800, fps: 12 } as const;
 
+/**
+ * The 9:16 output (spec 176): a crop of the page that follows each step's
+ * target, with captions in a band at the bottom. Used only when `formats`
+ * has `mp4-vertical`.
+ */
+export const VerticalConfigSchema = z
+  .strictObject({
+    followMs: z.number().int().min(0).max(2000).default(400).meta({
+      description:
+        'Milliseconds the crop takes to move to the next target, eased in and out.',
+    }),
+    deadZone: z.number().min(0).lt(0.5).default(0.1).meta({
+      description:
+        'A move shorter than this share of the crop width is skipped, so the camera does not jitter.',
+    }),
+    captionBand: z.number().gt(0).max(0.5).default(0.22).meta({
+      description:
+        'The share of the frame height, at the bottom, that captions sit in.',
+    }),
+  })
+  .prefault({});
+export type VerticalConfig = z.infer<typeof VerticalConfigSchema>;
+
 /** The durations of the cards that are on (spec 108): an outro only with a title. */
 function cardsOn(cards: CardsConfig): number[] {
   return [
@@ -185,6 +208,7 @@ export const RenderConfigSchema = z
       )
       .default(() => ['mp4' as const]),
     gif: GifConfigSchema,
+    vertical: VerticalConfigSchema,
   })
   .superRefine(({ width, fps, cards, transitions, gif }, ctx) => {
     if (gif.width !== undefined && gif.width > width) {

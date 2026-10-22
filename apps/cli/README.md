@@ -43,7 +43,28 @@ as well, all encoded in one pass; the GIF is 800 px wide at 12 fps unless
 
 `demoflow run --format gif --format mp4` replaces `render.formats` for one
 run; `generate_demo` takes the same list as `formats`. The files are
-`render/ffmpeg.mp4`, `render/ffmpeg.gif` and `render/ffmpeg.webm`.
+`render/ffmpeg.mp4`, `render/ffmpeg.gif`, `render/ffmpeg.webm` and
+`render/ffmpeg.vertical.mp4`.
+
+`mp4-vertical` is a 1080×1920 MP4 for phones, rendered from the same run. The
+page is still recorded at its normal size. A 9:16 crop follows each step's
+target and stays on the page. Each step's `zoom` still applies inside it, and
+captions sit larger in a band at the bottom. `render.vertical` tunes it, all
+optional:
+
+```json
+{
+  "render": {
+    "formats": ["mp4", "mp4-vertical"],
+    "vertical": { "followMs": 400, "deadZone": 0.1, "captionBand": 0.22 }
+  }
+}
+```
+
+`followMs` is how long the crop takes to move to the next target. A move
+shorter than `deadZone` (a share of the crop width) is skipped, so the camera
+does not jitter. `captionBand` is the share of the frame height, at the
+bottom, that captions sit in.
 
 `demoflow record` writes a scenario from what you do in the app. To post the
 same thing for several items, tick a run of steps in the recording panel and

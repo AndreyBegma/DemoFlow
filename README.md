@@ -51,9 +51,9 @@ an AI agent such as Claude Code ask for a demo over MCP.
 > `demoflow@0.1.0` on npm has `run`, `validate`, `setup` and `mcp`. `record`,
 > the `press` step, starting the app from `devCommand`, key badges and the
 > window frame are on `develop` and ship in the next release, with cards,
-> transitions and GIF/WebM export, as do `login`, `logout` and the background
-> `runner` with online status. The vertical 9:16 export and jobs over the
-> Runner connection are **not built yet** — see [Status and Roadmap](https://github.com/AndreyBegma/DemoFlow/wiki/Status-and-Roadmap).
+> transitions, GIF/WebM export and the vertical 9:16 MP4 (`mp4-vertical`), as
+> do `login`, `logout` and the background `runner` with online status. Jobs
+> over the Runner connection are **not built yet** — see [Status and Roadmap](https://github.com/AndreyBegma/DemoFlow/wiki/Status-and-Roadmap).
 
 ## How a demo flows
 

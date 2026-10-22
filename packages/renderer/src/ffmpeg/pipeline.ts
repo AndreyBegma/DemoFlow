@@ -1,14 +1,14 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import type { Writable } from 'node:stream';
 import { ENCODERS, missingEncoders, resolveFfmpeg } from '../plan/ffmpeg.ts';
-import { frameAt, frameCount } from '../plan/frame.ts';
+import { frameAt, frameCount, type Layout } from '../plan/frame.ts';
 import type {
   OutputFile,
   OutputSpec,
   RenderPlan,
   SourceSpec,
 } from '../plan/types.ts';
-import { createCompositor, renderStage } from './compose.ts';
+import { type Compositor, createCompositor, renderStage } from './compose.ts';
 import { drawLayers, sourcesOf } from './layers.ts';
 import { createPicture, type Picture } from './raster.ts';
 
@@ -16,7 +16,9 @@ import { createPicture, type Picture } from './raster.ts';
  * Writes every frame of `plan` to `out`, one path per `plan.output.files`
  * entry: one FFmpeg decodes `sourceFile` into raw frames, each output frame
  * is drawn from `frameAt(plan, frame)` alone, and a second FFmpeg encodes
- * them into every file.
+ * them into every file. The vertical MP4 (spec 176) is drawn from the same
+ * source frames at its own size, `frameAt(plan, frame, 'vertical')`, into an
+ * FFmpeg of its own.
  */
 export async function drawPlan(
   sourceFile: string,
@@ -24,58 +26,143 @@ export async function drawPlan(
   out: readonly string[],
 ): Promise<void> {
   const { output } = plan;
+  if (output.files.length === 0 || output.files.length !== out.length) {
+    throw new Error(`expected one path per output, got ${out.length}`);
+  }
   const binary = encoderBinary(output);
-  const compositor = createCompositor(output, renderStage(plan));
   const kept = keptFrames(plan);
   const source = openSource(sourceFile, plan.source, kept);
-  const encoder = startEncoder(binary, plan, out);
-  // Two pictures: one is drawn while FFmpeg still reads the other.
-  const pictures = [0, 1].map(() => createPicture(output.width, output.height));
-  const pending: (Promise<void> | undefined)[] = [undefined, undefined];
-  const scratch: Picture[] = [];
+  const lanes: Lane[] = [];
   try {
+    for (const layout of ['landscape', 'vertical'] as const) {
+      const lane = openLane(binary, plan, out, layout);
+      if (lane !== undefined) lanes.push(lane);
+    }
     const frames = frameCount(plan);
     for (let frame = 0; frame < frames; frame++) {
       const slot = frame % 2;
-      await pending[slot];
-      const state = frameAt(plan, frame);
       const drawn = new Map<number, Picture>();
-      for (const sourceMs of sourcesOf(state)) {
-        drawn.set(
-          sourceMs,
-          await source.at(sourceFrameIndex(sourceMs, plan.source)),
+      for (const lane of lanes) {
+        await lane.pending[slot];
+        const state = frameAt(plan, frame, lane.layout);
+        // Both layouts show the same source times: only the first fetches.
+        for (const sourceMs of sourcesOf(state)) {
+          if (drawn.has(sourceMs)) continue;
+          drawn.set(
+            sourceMs,
+            await source.at(sourceFrameIndex(sourceMs, plan.source)),
+          );
+        }
+        drawLayers(
+          lane.compositor,
+          lane.pictures[slot],
+          state,
+          (sourceMs) => {
+            const picture = drawn.get(sourceMs);
+            if (picture === undefined) {
+              throw new Error(`source ${sourceMs} ms was not fetched`);
+            }
+            return picture;
+          },
+          lane.scratch,
+        );
+        lane.pending[slot] = write(
+          lane.encoder.input,
+          lane.pictures[slot].data,
         );
       }
-      drawLayers(
-        compositor,
-        pictures[slot],
-        state,
-        (sourceMs) => {
-          const picture = drawn.get(sourceMs);
-          if (picture === undefined) {
-            throw new Error(`source ${sourceMs} ms was not fetched`);
-          }
-          return picture;
-        },
-        scratch,
-      );
-      pending[slot] = write(encoder.input, pictures[slot].data);
       for (const [index, lastFrame] of kept) {
         if (lastFrame <= frame) source.forget(index);
       }
     }
-    await Promise.all(pending);
-    encoder.input.end();
-    await encoder.done;
+    for (const lane of lanes) {
+      await Promise.all(lane.pending);
+      lane.encoder.input.end();
+    }
+    await Promise.all(lanes.map((lane) => lane.encoder.done));
   } catch (error) {
-    // A broken pipe means the encoder died: its own error says why.
-    if (isPipeError(error)) await encoder.done;
-    encoder.input.destroy();
-    await release(encoder.process, encoder.done);
-    throw error;
+    // A broken pipe means an encoder died: its own error says why. It is the
+    // first to settle — the others still wait on their input.
+    const reason = isPipeError(error)
+      ? await Promise.race(
+          lanes.map((lane) =>
+            lane.encoder.done.then(
+              () => undefined,
+              (failure: unknown) => failure,
+            ),
+          ),
+        )
+      : undefined;
+    await settle(lanes);
+    throw reason ?? error;
   } finally {
     await source.close();
   }
+}
+
+/** Stops every lane's encoder and waits for it to exit. */
+async function settle(lanes: readonly Lane[]): Promise<void> {
+  for (const lane of lanes) {
+    lane.encoder.input.destroy();
+    await release(lane.encoder.process, lane.encoder.done);
+  }
+}
+
+/** The frames of one layout, from drawing to their encoder. */
+interface Lane {
+  layout: Layout;
+  compositor: Compositor;
+  encoder: Encoder;
+  /** Two pictures: one is drawn while FFmpeg still reads the other. */
+  pictures: Picture[];
+  pending: (Promise<void> | undefined)[];
+  scratch: Picture[];
+}
+
+/**
+ * The lane of `layout`: the landscape one writes every file but the vertical
+ * MP4, at the output's size; the vertical one only that, at its own.
+ * `undefined` when the plan has no file of that layout.
+ */
+function openLane(
+  binary: string,
+  plan: RenderPlan,
+  out: readonly string[],
+  layout: Layout,
+): Lane | undefined {
+  const { output } = plan;
+  const chosen = output.files.flatMap((file, i) =>
+    (file.format === 'mp4-vertical') === (layout === 'vertical')
+      ? [{ file, path: out[i] }]
+      : [],
+  );
+  if (chosen.length === 0) return undefined;
+  const size =
+    layout === 'vertical' && plan.vertical !== undefined
+      ? plan.vertical
+      : output;
+  const spec: OutputSpec = {
+    width: size.width,
+    height: size.height,
+    fps: output.fps,
+    files: chosen.map(({ file }) => file),
+  };
+  const compositor =
+    layout === 'vertical'
+      ? createCompositor(spec, undefined, plan.vertical?.caption)
+      : createCompositor(spec, renderStage(plan));
+  return {
+    layout,
+    compositor,
+    encoder: startEncoder(
+      binary,
+      spec,
+      chosen.map(({ path }) => path),
+    ),
+    pictures: [0, 1].map(() => createPicture(spec.width, spec.height)),
+    pending: [undefined, undefined],
+    scratch: [],
+  };
 }
 
 /** The source frame on screen at `sourceMs`. */
@@ -250,22 +337,22 @@ function encoderBinary(output: OutputSpec): string {
 }
 
 /**
- * One FFmpeg reading RGB24 frames on stdin and writing every file of
- * `plan.output`, `out[i]` for `files[i]`.
+ * One FFmpeg reading RGB24 frames of `output`'s size on stdin and writing
+ * every file of `output`, `out[i]` for `files[i]`.
  */
 function startEncoder(
   binary: string,
-  plan: RenderPlan,
+  output: OutputSpec,
   out: readonly string[],
 ): Encoder {
-  const child = spawn(binary, encoderArgs(plan.output, out), {
+  const child = spawn(binary, encoderArgs(output, out), {
     stdio: ['pipe', 'ignore', 'pipe'],
     windowsHide: true,
   });
   if (child.stdin === null) throw new Error('the encoder has no stdin');
   // A write after FFmpeg died fails with EPIPE; `done` carries the reason.
   child.stdin.on('error', () => undefined);
-  const formats = plan.output.files.map((file) => file.format).join(', ');
+  const formats = output.files.map((file) => file.format).join(', ');
   const done = exited(child, `encoding the ${formats}`);
   done.catch(() => undefined);
   return { process: child, input: child.stdin, done };
@@ -321,6 +408,7 @@ export function encoderArgs(
 function branch(file: OutputFile, i: number): string {
   switch (file.format) {
     case 'mp4':
+    case 'mp4-vertical':
     case 'webm':
       // BT.709, limited range, tagged in the stream: FFmpeg's
       // default RGB → YUV conversion is BT.601 and leaves the file untagged.
@@ -353,10 +441,11 @@ const BT709_TAGS = [
 function fileArgs(file: OutputFile): string[] {
   switch (file.format) {
     case 'mp4':
+    case 'mp4-vertical':
       return [
         ...BT709_TAGS,
         '-c:v',
-        ENCODERS.mp4,
+        ENCODERS[file.format],
         '-preset',
         'medium',
         '-crf',

@@ -139,6 +139,22 @@ describe('encoderArgs', () => {
     expect(args.at(-1)).toBe('c.webm');
   });
 
+  it('encodes the vertical MP4 as the MP4 is encoded, at its own size (spec 176)', () => {
+    const vertical: OutputSpec = {
+      width: 1080,
+      height: 1920,
+      fps: 30,
+      files: [{ ...MP4, format: 'mp4-vertical' }],
+    };
+    const args = encoderArgs(vertical, ['out.vertical.mp4']);
+    const landscape = encoderArgs(OUTPUT, ['out.vertical.mp4']);
+    expect(args[args.indexOf('-s') + 1]).toBe('1080x1920');
+    // Past the input size, the same filters and encoder settings.
+    expect(args.slice(args.indexOf('-r'))).toEqual(
+      landscape.slice(landscape.indexOf('-r')),
+    );
+  });
+
   it('refuses a path count that does not match the files', () => {
     expect(() => encoderArgs(OUTPUT, [])).toThrow('one path per output');
   });

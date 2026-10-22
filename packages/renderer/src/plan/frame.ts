@@ -3,11 +3,19 @@ import { toSourceMs } from './time-map.ts';
 import type {
   CameraKeyframe,
   CursorMove,
+  FollowKey,
   FrameState,
   MaskSpan,
   Point,
   RenderPlan,
+  VerticalSpec,
 } from './types.ts';
+
+/**
+ * Which picture a frame is for: the landscape output every format but one
+ * shares, or the 9:16 crop of `mp4-vertical` (spec 176).
+ */
+export type Layout = 'landscape' | 'vertical';
 
 /** How many frames the video has. */
 export function frameCount(plan: RenderPlan): number {
@@ -22,16 +30,23 @@ export function easeInOut(t: number): number {
 
 /**
  * Everything to draw on output frame `frame` — the one interpretation of the
- * plan both renderers share, so they differ in drawing, not in timing.
+ * plan both renderers share, so they differ in drawing, not in timing. The
+ * vertical layout differs only in geometry: the same cards, holds, overlays
+ * and captions at the same times (spec 176).
  */
-export function frameAt(plan: RenderPlan, frame: number): FrameState {
+export function frameAt(
+  plan: RenderPlan,
+  frame: number,
+  layout: Layout = 'landscape',
+): FrameState {
   const atMs = (frame * 1000) / plan.output.fps;
   const card = plan.failure?.endCard;
   const watermark = plan.failure !== undefined;
+  const view = viewOf(plan, layout);
 
   // No fade into the failure card (spec 114, Decision 4).
   if (card !== undefined && atMs >= card.startMs) {
-    const { crop, content, scale, stage } = geometryAt(plan, card.startMs);
+    const { crop, content, scale, stage } = view.geometryAt(card.startMs);
     return {
       sourceMs: null,
       crop,
@@ -51,7 +66,7 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
   );
   if (titleCard !== undefined) {
     const state: FrameState = {
-      ...backgroundAt(plan),
+      ...backgroundAt(plan, view),
       card: {
         title: titleCard.title,
         ...(titleCard.subtitle === undefined
@@ -60,17 +75,43 @@ export function frameAt(plan: RenderPlan, frame: number): FrameState {
         background: plan.cardBackground,
       },
     };
-    const fade = cardFade(plan, titleCard, atMs);
+    const fade = cardFade(plan, view, titleCard, atMs);
     return fade === undefined ? state : { ...state, fade };
   }
 
-  return pageAt(plan, atMs);
+  return pageAt(plan, view, atMs);
+}
+
+/** A layout's frame size and where the page lands on it over time. */
+interface View {
+  width: number;
+  height: number;
+  geometryAt: (atMs: number) => Geometry;
+}
+
+function viewOf(plan: RenderPlan, layout: Layout): View {
+  if (layout === 'landscape') {
+    return {
+      width: plan.output.width,
+      height: plan.output.height,
+      geometryAt: (atMs) => geometryAt(plan, atMs),
+    };
+  }
+  const { vertical } = plan;
+  if (vertical === undefined) {
+    throw new Error('a vertical frame needs a plan with mp4-vertical');
+  }
+  return {
+    width: vertical.width,
+    height: vertical.height,
+    geometryAt: (atMs) => verticalGeometryAt(plan, vertical, atMs),
+  };
 }
 
 /** Nothing of the page: the background, at zoom 1 — the window as the stage shows it. */
-function backgroundAt(plan: RenderPlan): FrameState {
+function backgroundAt(plan: RenderPlan, view: View): FrameState {
   // Before every camera key, so at zoom 1.
-  const { content, scale } = geometryAt(plan, -1);
+  const { content, scale } = view.geometryAt(-1);
   return {
     sourceMs: null,
     crop: { x: 0, y: 0, width: plan.source.width, height: plan.source.height },
@@ -92,6 +133,7 @@ function backgroundAt(plan: RenderPlan): FrameState {
  */
 function cardFade(
   plan: RenderPlan,
+  view: View,
   card: RenderPlan['cards'][number],
   atMs: number,
 ): FrameState['fade'] {
@@ -100,13 +142,13 @@ function cardFade(
   const endMs = card.startMs + card.durationMs;
   if (card.kind !== 'intro' && atMs < card.startMs + fadeMs) {
     return {
-      from: pageAt(plan, card.startMs - CUT_EPSILON_MS),
+      from: pageAt(plan, view, card.startMs - CUT_EPSILON_MS),
       progress: (atMs - card.startMs) / fadeMs,
     };
   }
   if (card.kind !== 'outro' && atMs >= endMs - fadeMs) {
     return {
-      from: pageAt(plan, endMs),
+      from: pageAt(plan, view, endMs),
       progress: (endMs - atMs) / fadeMs,
     };
   }
@@ -120,20 +162,20 @@ const CUT_EPSILON_MS = 1e-6;
  * The page at `atMs`: the live page, or — while a page load holds (spec 114)
  * — the held frame, dissolving into the live page once it is ready.
  */
-function pageAt(plan: RenderPlan, atMs: number): FrameState {
-  const live = liveAt(plan, atMs);
+function pageAt(plan: RenderPlan, view: View, atMs: number): FrameState {
+  const live = liveAt(plan, view, atMs);
   const hold = plan.transitions?.holds.find(
     (entry) => atMs >= entry.startMs && atMs < entry.fadeEndMs,
   );
   if (hold === undefined) return live;
   const held: FrameState =
     hold.sourceMs === undefined
-      ? { ...backgroundAt(plan), backdrop: plan.cardBackground }
+      ? { ...backgroundAt(plan, view), backdrop: plan.cardBackground }
       : {
           ...live,
           sourceMs: hold.sourceMs,
           // The held page's masks, where the camera now shows that page.
-          masks: maskBoxes(hold.masks, geometryAt(plan, atMs), plan.output),
+          masks: maskBoxes(hold.masks, view.geometryAt(atMs), view),
         };
   if (atMs < hold.endMs || hold.fadeMs <= 0) return held;
   const progress = pageMsBetween(plan, hold.endMs, atMs) / hold.fadeMs;
@@ -180,8 +222,8 @@ function maskBoxes(
 }
 
 /** The live page at `atMs`, with everything drawn over it. */
-function liveAt(plan: RenderPlan, atMs: number): FrameState {
-  const geometry = geometryAt(plan, atMs);
+function liveAt(plan: RenderPlan, view: View, atMs: number): FrameState {
+  const geometry = view.geometryAt(atMs);
   const { crop, content, scale, toOutput, stage } = geometry;
   const watermark = plan.failure !== undefined;
   const cursor = cursorAt(plan.cursor, atMs);
@@ -196,7 +238,7 @@ function liveAt(plan: RenderPlan, atMs: number): FrameState {
       atMs < mask.startMs || atMs >= mask.endMs ? [] : [maskBoxAt(mask, atMs)],
     ),
     geometry,
-    plan.output,
+    view,
   );
   const caption = plan.captions.find(
     (entry) => atMs >= entry.startMs && atMs < entry.endMs,
@@ -304,6 +346,85 @@ export function stageViewAt(plan: RenderPlan, atMs: number): Box {
     width,
     height,
   };
+}
+
+/**
+ * The vertical output (spec 176): the crop `verticalViewAt` gives fills the
+ * frame. No window, no background: the page is all there is.
+ */
+function verticalGeometryAt(
+  plan: RenderPlan,
+  vertical: VerticalSpec,
+  atMs: number,
+): Geometry {
+  const { source } = plan;
+  const view = verticalViewAt(plan, vertical, atMs);
+  const scale = vertical.width / view.width;
+  return {
+    crop: {
+      x: view.x * source.scale,
+      y: view.y * source.scale,
+      width: view.width * source.scale,
+      height: view.height * source.scale,
+    },
+    content: { x: 0, y: 0, width: vertical.width, height: vertical.height },
+    scale,
+    toOutput: (point) => ({
+      x: (point.x - view.x) * scale,
+      y: (point.y - view.y) * scale,
+    }),
+  };
+}
+
+/**
+ * The vertical crop at zoom 1, in viewport CSS pixels: the full viewport
+ * height and the output's aspect ratio — or, on a viewport narrower than
+ * that, its full width.
+ */
+export function verticalCropSize(
+  viewport: { width: number; height: number },
+  output: { width: number; height: number },
+): { width: number; height: number } {
+  const aspect = output.width / output.height;
+  const height = Math.min(viewport.height, viewport.width / aspect);
+  return { width: height * aspect, height };
+}
+
+/**
+ * The part of the viewport the vertical output shows at `atMs`: centred
+ * across on the follow camera and down on the steps' camera, narrowed by
+ * its zoom, and clamped to the page — it never leaves it.
+ */
+export function verticalViewAt(
+  plan: RenderPlan,
+  vertical: VerticalSpec,
+  atMs: number,
+): Box {
+  const { viewport } = plan;
+  const { centre, zoom } = cameraStateAt(plan.camera, atMs);
+  const base = verticalCropSize(viewport, vertical);
+  const width = base.width / zoom;
+  const height = base.height / zoom;
+  const x = followAt(vertical.follow, atMs) ?? viewport.width / 2;
+  return {
+    x: Math.min(viewport.width - width, Math.max(0, x - width / 2)),
+    y: Math.min(viewport.height - height, Math.max(0, centre.y - height / 2)),
+    width,
+    height,
+  };
+}
+
+/** The follow camera's horizontal centre at `atMs`, eased between keys; `undefined` without keys. */
+export function followAt(
+  keys: readonly FollowKey[],
+  atMs: number,
+): number | undefined {
+  const next = keys.findIndex((key) => key.atMs > atMs);
+  if (next === 0) return keys[0].x;
+  if (next === -1) return keys.at(-1)?.x;
+  const a = keys[next - 1];
+  const b = keys[next];
+  return a.x + (b.x - a.x) * easeInOut((atMs - a.atMs) / (b.atMs - a.atMs));
 }
 
 /** The part of the viewport the camera shows at `atMs`, in viewport CSS pixels. */
