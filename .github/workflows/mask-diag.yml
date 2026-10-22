@@ -14,7 +14,7 @@ permissions:
 
 env:
   # diag: measure the login mask edge; verify: run the mask tests repeatedly.
-  MODE: diag
+  MODE: verify
   RUNS: '10'
 
 jobs:
