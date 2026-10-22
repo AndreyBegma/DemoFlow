@@ -9,7 +9,6 @@ import { t } from '@/i18n';
 import { getSessionUser } from '@/lib/session';
 
 const REPO_URL = 'https://github.com/AndreyBegma/DemoFlow';
-const DOCS_URL = `${REPO_URL}#readme`;
 
 const BENEFITS = [
   {
@@ -66,12 +65,12 @@ export default async function LandingPage() {
             aria-label={t('landing.nav.label')}
             className="flex items-center gap-2"
           >
-            <a
-              href={DOCS_URL}
+            <Link
+              href="/docs"
               className={buttonClassName({ variant: 'ghost', size: 'sm' })}
             >
               {t('landing.nav.docs')}
-            </a>
+            </Link>
             <Link
               href={user ? '/app' : '/sign-in'}
               className={buttonClassName({ variant: 'solid', size: 'sm' })}
@@ -131,9 +130,9 @@ export default async function LandingPage() {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
           <p>{t('landing.footer.license')}</p>
           <nav className="flex gap-4">
-            <a href={DOCS_URL} className="underline">
+            <Link href="/docs" className="underline">
               {t('landing.footer.docs')}
-            </a>
+            </Link>
             <a href={REPO_URL} className="underline">
               {t('landing.footer.github')}
             </a>

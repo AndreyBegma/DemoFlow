@@ -1,0 +1,84 @@
+export const metadata = { title: 'Getting started' };
+
+# Getting started
+
+DemoFlow drives your running web app in Chromium through a short JSON
+scenario, checks every step, and renders the recording into a demo video. If an
+assertion fails, the run fails. Everything runs on your machine.
+
+You need Node.js 22 or newer, on Linux, macOS or Windows. Chromium is
+downloaded on first use (about 250 MB, once); `npx demoflow setup` downloads it
+ahead of time. On Linux, Chromium also needs its system libraries:
+`npx playwright install-deps chromium`.
+
+## Describe your project
+
+Create `demoflow.config.json` at the root of your project. Only `baseUrl` is
+required:
+
+```json
+{ "baseUrl": "http://localhost:3000" }
+```
+
+See [Project config](/docs/config) for everything else, including how DemoFlow
+can start your app for you.
+
+## Write the first scenario
+
+Save this as `demoflow/first.demo.json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "Open the settings",
+  "steps": [
+    { "action": "navigate", "path": "/" },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Settings" },
+      "caption": "Open the settings"
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Settings" }
+    }
+  ]
+}
+```
+
+Or do not write it at all: `npx demoflow record first` opens your app in a
+browser and writes the scenario while you click through it. See
+[Recording](/docs/record). A scenario is plain JSON, so an AI agent can write
+one too, over [MCP](/docs/mcp).
+
+Check it before you run it:
+
+```sh
+npx demoflow validate demoflow/first.demo.json
+```
+
+## Run it
+
+With your app running:
+
+```sh
+npx demoflow run demoflow/first.demo.json
+```
+
+The run starts Chromium, executes the steps, records the page, and renders the
+video. The summary at the end prints the path of the video. A run renders an
+MP4 by default; [Project config](/docs/config#output-formats) shows how to ask
+for a GIF or a WebM as well.
+
+Every run leaves its files in a `runs/<id>/` directory of the artifacts home:
+the video under `render/`, the timeline, and a `result.json` with the status
+and exit code of each stage. The exit code is `0` when the run completed, `1`
+when a step or an assertion failed, `2` when the input was invalid and `3` when
+recording, rendering or storage failed.
+
+## Where next
+
+- [Scenarios](/docs/scenarios): every step, captions, zoom, data lists and masking.
+- [Project config](/docs/config): the window frame, background, cards, transitions and formats.
+- [CLI](/docs/cli): every command and flag.
+- [MCP tools](/docs/mcp): let Claude Code generate demos.
