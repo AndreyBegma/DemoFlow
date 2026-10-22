@@ -133,6 +133,22 @@ export const en = {
     },
     loadFailed: 'We could not load your machines. Try again in a moment.',
   },
+  // Account deletion (spec #177).
+  accountDeletion: {
+    title: 'Delete account',
+    body: 'Deletes your account and everything DemoFlow keeps about it, at once. This cannot be undone.',
+    open: 'Delete account',
+    dialogTitle: 'Delete your account?',
+    consequence:
+      'This deletes your account, your sessions and every paired machine. Those machines are signed out and cannot connect again. Videos on your machines are not touched.',
+    emailLabel: 'Type {email} to confirm',
+    confirm: 'Delete',
+    deleting: 'Deleting…',
+    cancel: 'Cancel',
+    mismatch: 'That is not the email of this account.',
+    failed: 'We could not delete your account. Try again in a moment.',
+    deleted: 'Your account was deleted.',
+  },
   meta: {
     title: 'DemoFlow',
   },
