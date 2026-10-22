@@ -298,20 +298,21 @@ describe('sync mark', () => {
     });
   }
 
-  it('measures the offset on the clear and pads masks by one source frame', () => {
+  it('measures the offset on the clear and pads masks by three source frames', () => {
     const rendered = planWith(mark, 120);
     expect(rendered.offsetMs).toBe(120 - 180);
     expect(rendered.offsetMeasured).toBe(true);
-    expect(rendered.maskLeadMs).toBe(40);
+    expect(rendered.maskLeadMs).toBe(120);
     // The output starts on the first frame after the mark (Decision 6).
     expect(rendered.timeMap[0].sourceStartMs).toBe(120);
     expect(frameAt(rendered, 0).sourceMs).toBe(120);
-    // Field on the page at 600 → source 540 → output 420; less one frame.
-    expect(rendered.masks[0].startMs).toBeCloseTo(540 - 120 - 40);
+    // Field on the page at 600 → source 540 → output 420; less three frames.
+    expect(rendered.masks[0].startMs).toBeCloseTo(540 - 120 - 120);
   });
 
-  // #48: an end padded like the start, so a field never shows for the last frame.
-  it('ends a mask one source frame after out(endMs) when the offset is measured, 200 ms when not', () => {
+  // #48: an end padded like the start, so a field never shows for the last
+  // frame; three frames, for a source frame that lands late (#185).
+  it('ends a mask three source frames after out(endMs) when the offset is measured, 200 ms when not', () => {
     const closed = events.map((item) =>
       item.masked === true
         ? {
@@ -336,9 +337,9 @@ describe('sync mark', () => {
       });
 
     const measured = render(120);
-    expect(measured.maskTrailMs).toBe(40);
-    // Off the page at 2000 → source 1940 → output 1820; plus one frame.
-    expect(measured.masks[0].endMs).toBeCloseTo(1940 - 120 + 40);
+    expect(measured.maskTrailMs).toBe(120);
+    // Off the page at 2000 → source 1940 → output 1820; plus three frames.
+    expect(measured.masks[0].endMs).toBeCloseTo(1940 - 120 + 120);
 
     const unmeasured = render(undefined);
     expect(unmeasured.maskTrailMs).toBe(200);
