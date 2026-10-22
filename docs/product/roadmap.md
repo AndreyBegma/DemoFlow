@@ -113,6 +113,11 @@ All four, in this order:
 3. annotations — the application sets scenes and captions through a JS API;
 4. reuse of existing Playwright tests as demo scenarios.
 
+- The page-side contract of items 1–2 is
+  [ADR-0013](../adr/0013-page-side-contract.md).
+- Specs: [197](../specs/197-mask-attribute.md) (`data-demoflow-mask`),
+  [198](../specs/198-ready-signal.md) (`window.demoflow.ready`, `waitForReady`).
+
 ## Cross-cutting
 
 - **npm release** — the luna-player pattern
