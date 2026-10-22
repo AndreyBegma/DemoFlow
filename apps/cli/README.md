@@ -140,6 +140,19 @@ claude mcp add demoflow -- npx demoflow mcp
 The server offers `generate_demo`, `get_task`, `cancel_task`,
 `validate_scenario`, `list_demos` and `check_project`.
 
+## Updates
+
+A globally installed `demoflow` asks npm for the latest version while a
+command runs, and after the command finishes asks
+`Update now? [Y/n/never]` on stderr. Yes installs it with the manager that
+installed it (`npm install -g`, `bun add -g`, `pnpm add -g` or
+`yarn global add`); `never` skips that version until a newer one appears. A
+project install, or one whose manager it cannot tell, prints the command
+instead. The check gives up after 1.5 s, never changes a command's output or
+exit code, and stays silent without a terminal, under `CI`, for `mcp` and the
+runner, and under npx / bunx / pnpm dlx. `DEMOFLOW_NO_UPDATE_CHECK=1` turns it
+off.
+
 ## Licence
 
 MIT. The bundled Inter font files are under the SIL Open Font License 1.1 —

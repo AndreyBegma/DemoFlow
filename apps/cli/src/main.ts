@@ -27,6 +27,7 @@ import {
   recordCommand,
 } from './record/command.ts';
 import { registerRunnerCommands } from './runner/command.ts';
+import { defaultUpdateDeps, withUpdateCheck } from './update/check.ts';
 import { packageVersion } from './version.ts';
 
 /**
@@ -196,5 +197,11 @@ if (
   entry !== undefined &&
   import.meta.url === pathToFileURL(realpathSync(entry)).href
 ) {
-  process.exitCode = await main(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  // Spec 166: the npm check runs beside the command and asks after it.
+  process.exitCode = await withUpdateCheck(
+    argv,
+    () => main(argv),
+    defaultUpdateDeps(),
+  );
 }
