@@ -188,6 +188,18 @@
                 "type": "string",
                 "enum": ["visible", "hidden"]
               },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
               "caption": {
                 "type": "string",
                 "maxLength": 120
@@ -200,7 +212,15 @@
               }
             },
             "required": ["action", "target"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "not": {
+              "required": ["state", "zoom"],
+              "properties": {
+                "state": {
+                  "const": "hidden"
+                }
+              }
+            }
           },
           {
             "type": "object",
@@ -291,6 +311,18 @@
                     },
                     "required": ["css"],
                     "additionalProperties": false
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
                   }
                 ]
               },
@@ -397,6 +429,18 @@
                     },
                     "required": ["css"],
                     "additionalProperties": false
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
                   }
                 ]
               },
@@ -531,6 +575,18 @@
               "option": {
                 "type": "string"
               },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
               "caption": {
                 "type": "string",
                 "maxLength": 120
@@ -634,6 +690,18 @@
                     },
                     "required": ["css"],
                     "additionalProperties": false
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
                   }
                 ]
               },
@@ -746,6 +814,18 @@
                   }
                 ]
               },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
               "caption": {
                 "type": "string",
                 "maxLength": 120
@@ -758,7 +838,10 @@
               }
             },
             "required": ["action", "key"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "dependentRequired": {
+              "zoom": ["target"]
+            }
           },
           {
             "type": "object",
@@ -1055,6 +1138,18 @@
                   }
                 ]
               },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
               "caption": {
                 "type": "string",
                 "maxLength": 120
@@ -1158,6 +1253,18 @@
                     },
                     "required": ["css"],
                     "additionalProperties": false
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
                   }
                 ]
               },

@@ -170,6 +170,7 @@ describe('the customers flow', () => {
             action: 'click',
             target: { role: 'button', name: 'Create', exact: true },
             caption: 'Create the customer',
+            zoom: 2,
           },
           {
             action: 'assertText',
@@ -238,6 +239,8 @@ describe('the customers flow', () => {
     expect(clicks).toHaveLength(2);
     expect(clicks[0].pointer?.from).toEqual({ x: 960, y: 540 });
     expect(clicks[1].pointer?.from).toEqual(clicks[0].pointer?.to);
+    // Only a step that asks for zoom carries it (#163).
+    expect(clicks[0]).not.toHaveProperty('zoom');
     for (const click of clicks) {
       expect(click.pointer?.to).toBeDefined();
       expect(click.target?.box).toBeDefined();
@@ -247,6 +250,7 @@ describe('the customers flow', () => {
   it('records the Create box within 1 px of the box pressed at click time', () => {
     const create = outcome.events[8] as TimelineEvent;
     expect(create.caption).toBe('Create the customer');
+    expect(create.zoom).toBe(2);
     const pressed = pointerDowns.get(8);
     expect(pressed).toBeDefined();
     expectWithin1px(create.target?.box, pressed as Box);

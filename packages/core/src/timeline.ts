@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { NonEmptyStringSchema, ViewportSchema } from './common.ts';
-import { MarkerKindSchema, StepActionSchema } from './step.ts';
+import { MarkerKindSchema, StepActionSchema, ZoomSchema } from './step.ts';
 
 /** The value a masked `fill` writes to the timeline instead of the secret. */
 export const MASKED_VALUE = '***';
@@ -132,6 +132,8 @@ export const TimelineEventSchema = z
       .strictObject({ title: NonEmptyStringSchema, kind: MarkerKindSchema })
       .optional(),
     caption: z.string().optional(),
+    // The step's `zoom`, verbatim: the renderer resolves `true` (ADR-0012).
+    zoom: ZoomSchema.optional(),
     error: z.strictObject({ message: z.string() }).optional(),
     // Only on a masked `fill`: when its field was on the page (ADR-0004; #18).
     maskVisibility: MaskVisibilitySchema.optional(),

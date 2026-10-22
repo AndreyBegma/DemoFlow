@@ -277,14 +277,15 @@ describe('cards (spec 108)', () => {
     it('holds a zoom-out under way at the cut through the card', () => {
       // The zoom-out after the press (2 500 → 2 900 ms) is cut halfway, at 2 700.
       const events = [
-        click(2000, 2600, { x: 300, y: 200 }),
+        { ...click(2000, 2600, { x: 300, y: 200 }), zoom: true },
         scene(2700, 'Invoices'),
-        click(6000, 6600, { x: 900, y: 500 }),
+        { ...click(6000, 6600, { x: 900, y: 500 }), zoom: true },
       ];
       const carded = plan(events, { cards: cards(SCENES_ON) });
       const plain = plan(events, { cards: cards() });
       const atCut = zoomAt(plain, 2700);
-      expect(atCut).toBeGreaterThan(1.2);
+      // Halfway out of 1.35× on the 2× source.
+      expect(atCut).toBeCloseTo(1.175, 3);
       // It eases into the cut and out of it: the same zoom on both sides.
       expect(zoomAt(carded, 2700 - 1)).toBeCloseTo(atCut, 3);
       expect(zoomAt(carded, 2700 + 1500)).toBeCloseTo(atCut, 6);

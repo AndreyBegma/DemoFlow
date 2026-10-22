@@ -163,6 +163,27 @@ describe('key', () => {
   });
 });
 
+describe('zoom', () => {
+  const click = {
+    stepIndex: 0,
+    action: 'click',
+    startMs: 0,
+    endMs: 300,
+    target: { box: { x: 0, y: 0, width: 80, height: 32 } },
+  };
+  const parse = (event: Record<string, unknown>) =>
+    TimelineSchema.safeParse({ ...timeline, events: [event] });
+
+  it.each([true, false, 1, 1.35, 3])('carries the step value %j', (zoom) => {
+    expect(parse({ ...click, zoom }).data?.events[0]?.zoom).toBe(zoom);
+  });
+
+  it.each([0.5, 3.5, 'yes'])('rejects %j at the zoom', (zoom) => {
+    const parsed = parse({ ...click, zoom });
+    expect(parsed.error?.issues[0]?.path).toEqual(['events', 0, 'zoom']);
+  });
+});
+
 describe('maskVisibility', () => {
   const box = { x: 100, y: 260, width: 300, height: 32 };
   const moved = { x: 100, y: 420, width: 300, height: 32 };

@@ -56,7 +56,8 @@
     {
       "action": "click",
       "target": { "role": "button", "name": "Create", "exact": true },
-      "caption": "Create it"
+      "caption": "Create it",
+      "zoom": true
     },
     {
       "action": "assertVisible",
