@@ -97,3 +97,11 @@ renderer.
 | [#177](https://github.com/AndreyBegma/DemoFlow/issues/177) | [Delete my account](177-account-deletion.md) | — |
 | [#178](https://github.com/AndreyBegma/DemoFlow/issues/178) | [Projects and the demo library](178-projects-and-library.md) | — |
 | [#179](https://github.com/AndreyBegma/DemoFlow/issues/179) | [Documentation section](179-docs-section.md) | — |
+
+## Phase 6 — Playback through the relay
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#191](https://github.com/AndreyBegma/DemoFlow/issues/191) | [Video relay (API) and its protocol](191-video-relay-api.md) | — |
+| [#192](https://github.com/AndreyBegma/DemoFlow/issues/192) | [The runner daemon streams a reported run's video](192-runner-serves-video.md) | #191 (merge order) |
+| [#193](https://github.com/AndreyBegma/DemoFlow/issues/193) | [Run page and the `VideoPlayer` adapter](193-run-video-page.md) | #191 |
