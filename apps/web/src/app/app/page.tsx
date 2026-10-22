@@ -17,6 +17,9 @@ export default async function AppPage() {
           {t('app.shell.signedInAs', { email: user.email })}
         </p>
         <div className="flex items-center gap-3">
+          <Link href="/app/projects" className="text-sm text-ink underline">
+            {t('projects.nav')}
+          </Link>
           <Link href="/app/machines" className="text-sm text-ink underline">
             {t('app.shell.machines')}
           </Link>
