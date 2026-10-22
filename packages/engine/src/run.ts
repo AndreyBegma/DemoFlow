@@ -23,7 +23,7 @@ import { MarkedMasks } from './execute/marked-masks.ts';
 import { MaskTracker } from './execute/mask.ts';
 import { NavigationRecorder } from './execute/navigations.ts';
 import type { EngineObserver, RunOutcome } from './execute/observer.ts';
-import { installNavigationProbe } from './execute/pending-navigation.ts';
+import { installPageScripts } from './execute/page-scripts.ts';
 import { type Point, viewportCentre } from './execute/pointer.ts';
 import {
   checkReadiness,
@@ -110,10 +110,8 @@ export async function runScenario(
   try {
     await emit('onBrowserLaunched', { browser });
     const context = await browser.newContext(toContextOptions(recording));
-    // The scripts every document of the run gets, before its own (#117, #197).
     const marked = new MarkedMasks(scenario.viewport);
-    await installNavigationProbe(context);
-    await marked.install(context);
+    await installPageScripts(context, marked);
     const guard = new OriginGuard(options.allowedOrigins);
     const navigation = watchNavigation(context, guard);
 

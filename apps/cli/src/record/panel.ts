@@ -94,6 +94,8 @@ export function describeStep(step: ScenarioStepInput): string {
       return `wait ${step.ms} ms`;
     case 'screenshot':
       return `screenshot ${step.name}`;
+    case 'waitForReady':
+      return `wait for ready ${step.name}`;
     default:
       return `${step.action} ${describeLocator(step.target)}`;
   }

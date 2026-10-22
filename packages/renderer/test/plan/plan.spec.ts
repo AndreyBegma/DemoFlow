@@ -176,6 +176,18 @@ describe('time map', () => {
     expect(toOutputMs(rendered.timeMap, 4000)).toBe(1400);
   });
 
+  it('compresses a frozen waitForReady like a wait (#198)', () => {
+    const rendered = plan(
+      [
+        click(0, 1000, { x: 300, y: 200 }),
+        event({ action: 'waitForReady', startMs: 1000, endMs: 4000 }),
+        click(4000, 4600, { x: 900, y: 500 }),
+      ],
+      [{ startMs: 1000, endMs: 4000 }],
+    );
+    expect(toOutputMs(rendered.timeMap, 4000)).toBe(1400);
+  });
+
   it('keeps a 1 500 ms spinner: the frame changes, so it is never frozen', () => {
     const rendered = plan(
       [
