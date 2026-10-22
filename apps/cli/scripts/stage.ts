@@ -6,6 +6,8 @@
 // dist/npm/
 //   package.json      generated: no workspace references (manifest.ts)
 //   dist/bin/main.js  src/main.ts with every @demoflow/* package bundled in
+//   dist/playwright/  `demoflow/playwright` (ADR-0015): packages/playwright
+//                     bundled, @playwright/test external, and its declarations
 //   fonts/            the renderer's Inter files and their licence
 //   README.md, LICENSE
 //
@@ -21,6 +23,8 @@ import { build, type Plugin } from 'esbuild';
 import {
   BIN,
   type Manifest,
+  PLAYWRIGHT_ENTRY,
+  PLAYWRIGHT_TYPES,
   publishManifest,
   WORKSPACE_SCOPE,
 } from './manifest.ts';
@@ -28,6 +32,8 @@ import {
 const CLI = path.resolve(import.meta.dirname, '..');
 const ROOT = path.resolve(CLI, '../..');
 const OUT = path.join(CLI, 'dist', 'npm');
+const PLAYWRIGHT = path.join(ROOT, 'packages', 'playwright');
+const PLAYWRIGHT_PEER = '@playwright/test';
 const FONTS = path.join(ROOT, 'packages', 'renderer', 'fonts');
 const FONT_REFERENCE = '../../fonts/';
 
@@ -82,9 +88,20 @@ function externals(dependencies: Record<string, string>): Plugin {
   };
 }
 
+/** The module specifiers a declaration file imports or re-exports from. */
+function declarationImports(text: string): string[] {
+  const specifiers = [
+    ...text.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g),
+    ...text.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
+    ...text.matchAll(/^\s*import\s+['"]([^'"]+)['"]/gm),
+  ].map((match) => match[1] ?? '');
+  return [...new Set(specifiers)];
+}
+
 const cli = await readManifest(CLI);
 const manifest = publishManifest(cli, await workspaceManifests());
 const dependencies = manifest.dependencies as Record<string, string>;
+const peers = manifest.peerDependencies as Record<string, string>;
 
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
@@ -101,11 +118,40 @@ await build({
   logLevel: 'warning',
 });
 
-if (!(await readFile(bundle, 'utf8')).includes(FONT_REFERENCE)) {
+const bundleText = await readFile(bundle, 'utf8');
+if (!bundleText.includes(FONT_REFERENCE)) {
   throw new Error(
     `the bundle no longer reads its fonts from ${FONT_REFERENCE}: update scripts/stage.ts to where the renderer looks now`,
   );
 }
+// The CLI never loads the fixture (spec 208, Decision 9).
+if (bundleText.includes(PLAYWRIGHT_PEER)) {
+  throw new Error(`${BIN} references ${PLAYWRIGHT_PEER}`);
+}
+
+// `demoflow/playwright`: the peer stays external, @demoflow/core is bundled in.
+await build({
+  entryPoints: [path.join(PLAYWRIGHT, 'src', 'index.ts')],
+  outfile: path.join(OUT, PLAYWRIGHT_ENTRY),
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: 'node20',
+  plugins: [externals({ ...dependencies, ...peers })],
+  logLevel: 'warning',
+});
+// Its public types come from tsc (packages/playwright's build) and may
+// reference the peer only: anything else would not resolve once installed.
+const declarations = (
+  await readFile(path.join(PLAYWRIGHT, 'dist', 'index.d.ts'), 'utf8')
+).replace(/^\/\/# sourceMappingURL=.*\n?/m, '');
+const imported = declarationImports(declarations);
+if (imported.some((specifier) => specifier !== PLAYWRIGHT_PEER)) {
+  throw new Error(
+    `packages/playwright/dist/index.d.ts imports ${imported.join(', ')}: its public types may reference ${PLAYWRIGHT_PEER} only`,
+  );
+}
+await writeFile(path.join(OUT, PLAYWRIGHT_TYPES), declarations);
 await cp(FONTS, path.join(OUT, 'fonts'), { recursive: true });
 const fonts = await readdir(path.join(OUT, 'fonts'));
 if (!fonts.includes('OFL.txt') || !fonts.some((f) => f.endsWith('.ttf'))) {

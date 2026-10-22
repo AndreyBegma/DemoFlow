@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "name": "create a customer",
+  "description": "Recorded from test/playwright/customers.pw.ts by demoflow/playwright.",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "path": "/customers"
+    },
+    {
+      "action": "marker",
+      "title": "Customers",
+      "kind": "scene"
+    },
+    {
+      "action": "fill",
+      "target": {
+        "label": "Search customers"
+      },
+      "value": "Ada"
+    },
+    {
+      "action": "fill",
+      "target": {
+        "label": "Search customers"
+      },
+      "value": ""
+    },
+    {
+      "action": "marker",
+      "title": "Create",
+      "kind": "scene"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "New customer"
+      }
+    },
+    {
+      "action": "fill",
+      "target": {
+        "label": "Name"
+      },
+      "value": "Ada Lovelace"
+    },
+    {
+      "action": "fill",
+      "target": {
+        "label": "Email"
+      },
+      "value": "ada@example.com"
+    },
+    {
+      "action": "select",
+      "target": {
+        "label": "Plan"
+      },
+      "option": "Pro"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Create",
+        "exact": true
+      }
+    },
+    {
+      "action": "assertText",
+      "target": {
+        "css": "tbody"
+      },
+      "text": "Ada Lovelace",
+      "match": "contains"
+    },
+    {
+      "action": "assertVisible",
+      "target": {
+        "text": "ada@example.com"
+      }
+    }
+  ]
+}

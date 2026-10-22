@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   BIN,
   type Manifest,
+  PLAYWRIGHT_ENTRY,
+  PLAYWRIGHT_TYPES,
+  peerDependencies,
   publishManifest,
   runtimeDependencies,
 } from '../../scripts/manifest.ts';
@@ -102,5 +105,58 @@ describe('publishManifest', () => {
     expect(manifest.bin).toEqual({ demoflow: BIN });
     expect(manifest.files).toEqual(['dist', 'fonts']);
     expect(manifest.version).toBe('0.1.0');
+  });
+
+  it('exports demoflow/playwright and the manifest, nothing else', () => {
+    expect(publishManifest(cli, workspace).exports).toEqual({
+      './playwright': {
+        types: `./${PLAYWRIGHT_TYPES}`,
+        import: `./${PLAYWRIGHT_ENTRY}`,
+      },
+      './package.json': './package.json',
+    });
+    expect(PLAYWRIGHT_ENTRY).toBe('dist/playwright/index.js');
+    expect(PLAYWRIGHT_TYPES).toBe('dist/playwright/index.d.ts');
+  });
+
+  it('carries the optional peer dependency, never as a dependency', () => {
+    const manifest = publishManifest(withPeer, workspace);
+    expect(manifest.peerDependencies).toEqual({
+      '@playwright/test': '>=1.62.0 <2.0.0',
+    });
+    expect(manifest.peerDependenciesMeta).toEqual({
+      '@playwright/test': { optional: true },
+    });
+    expect(manifest.dependencies).not.toHaveProperty('@playwright/test');
+  });
+
+  it('has empty peer fields when the CLI declares none', () => {
+    const manifest = publishManifest(cli, workspace);
+    expect(manifest.peerDependencies).toEqual({});
+    expect(manifest.peerDependenciesMeta).toEqual({});
+  });
+});
+
+const withPeer: Manifest = {
+  ...cli,
+  peerDependencies: { '@playwright/test': '>=1.62.0 <2.0.0' },
+  peerDependenciesMeta: { '@playwright/test': { optional: true } },
+};
+
+describe('peerDependencies', () => {
+  it('rejects a peer that is not optional', () => {
+    expect(() =>
+      peerDependencies({ ...withPeer, peerDependenciesMeta: {} }),
+    ).toThrow(/@playwright\/test is a peer dependency: mark it optional/);
+  });
+
+  it('rejects a peer that is also a runtime dependency', () => {
+    const both: Manifest = {
+      ...withPeer,
+      dependencies: { ...cli.dependencies, '@playwright/test': '1.64.1' },
+    };
+    expect(() => publishManifest(both, workspace)).toThrow(
+      /@playwright\/test is a peer dependency and a runtime dependency/,
+    );
   });
 });
