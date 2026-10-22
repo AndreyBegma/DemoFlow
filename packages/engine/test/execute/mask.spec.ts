@@ -9,7 +9,7 @@ import {
   runScenario,
 } from '../../src/index.ts';
 import { type FixtureServer, startFixtureServer } from './fixture-server.ts';
-import { mouseUps } from './mouse-ups.ts';
+import { pageFrames } from './page-frames.ts';
 import { scenario } from './scenario.ts';
 
 const SECRET = 'correct-horse-battery';
@@ -130,20 +130,36 @@ function intervalsOf(event: TimelineEvent) {
 }
 
 /**
- * An end the page saw (#155): within 50 ms of the click's mouse up, before
- * the click step's own end, and never before the click began.
+ * An end the page saw (#155), by the page's own frames (#173): mapped into
+ * page time, not before the first frame drawn without the field, and before
+ * the frame after it — each widened by the clock exchange's uncertainty, the
+ * only tolerance. A wall-clock margin after the click does not hold on a
+ * runner that skips frames for 100 ms. Also before the click step's own end,
+ * and never before the click began.
  */
 function expectPreciseEnd(
   endMs: number | undefined,
   click: TimelineEvent,
-  times: ReadonlyMap<number, number>,
+  frames: ReturnType<typeof pageFrames>,
 ): void {
-  const upMs = times.get(click.stepIndex);
-  expect(upMs).toBeDefined();
   expect(endMs).toBeDefined();
-  expect(Math.abs((endMs ?? 0) - (upMs ?? 0))).toBeLessThanOrEqual(50);
   expect(endMs).toBeLessThan(click.endMs);
   expect(endMs).toBeGreaterThan(click.startMs);
+  const read = frames.reads.get(click.stepIndex);
+  expect(read).toBeDefined();
+  if (endMs === undefined || read === undefined) return;
+  // The last time the field left the screen by the click step's end.
+  const drawn = read.frames;
+  const hidden = drawn.findLastIndex(
+    ([, shown], i) => !shown && i > 0 && drawn[i - 1][1],
+  );
+  expect(hidden).toBeGreaterThan(0);
+  expect(hidden).toBeLessThan(drawn.length - 1);
+  const { minMs, maxMs } = read.shift;
+  const uncertaintyMs = maxMs - minMs;
+  const pageEndMs = endMs + frames.zeroMs() - maxMs;
+  expect(pageEndMs).toBeGreaterThanOrEqual(drawn[hidden][0] - uncertaintyMs);
+  expect(pageEndMs).toBeLessThan(drawn[hidden + 1][0] + uncertaintyMs);
 }
 
 describe('mask visibility', () => {
@@ -161,7 +177,7 @@ describe('mask visibility', () => {
   });
 
   it('opens a second interval, with its own box, when the field comes back', async () => {
-    const ups = mouseUps();
+    const frames = pageFrames('secret');
     const { events } = await run(
       [
         { action: 'navigate', path: '/toggle' },
@@ -171,7 +187,7 @@ describe('mask visibility', () => {
         { action: 'click', target: { role: 'button', name: 'Show' } },
         { action: 'wait', ms: 200 },
       ],
-      [ups.observer],
+      [frames.observer],
     );
     const [fill, hide, show] = [events[1], events[2], events[4]];
     const intervals = intervalsOf(fill);
@@ -180,14 +196,14 @@ describe('mask visibility', () => {
       startMs: fill.startMs,
       box: fill.target?.box,
     });
-    expectPreciseEnd(intervals[0].endMs, hide, ups.times);
+    expectPreciseEnd(intervals[0].endMs, hide, frames);
     expect(intervals[1].startMs).toBe(show.startMs);
     expect(intervals[1].endMs).toBeUndefined();
     expect(intervals[1].box.y - intervals[0].box.y).toBeCloseTo(200, 0);
   });
 
   it('ends both intervals where the page hid the field: display none, shown, hidden again', async () => {
-    const ups = mouseUps();
+    const frames = pageFrames('secret');
     const { events } = await run(
       [
         { action: 'navigate', path: '/display' },
@@ -199,7 +215,7 @@ describe('mask visibility', () => {
         { action: 'click', target: { role: 'button', name: 'Hide' } },
         { action: 'wait', ms: 200 },
       ],
-      [ups.observer],
+      [frames.observer],
     );
     const [fill, hide, show, hideAgain] = [
       events[1],
@@ -213,13 +229,13 @@ describe('mask visibility', () => {
       startMs: fill.startMs,
       box: fill.target?.box,
     });
-    expectPreciseEnd(intervals[0].endMs, hide, ups.times);
+    expectPreciseEnd(intervals[0].endMs, hide, frames);
     // A field that comes back starts as before: at the step that found it (#155, Decision 3).
     expect(intervals[1]).toMatchObject({
       startMs: show.startMs,
       box: fill.target?.box,
     });
-    expectPreciseEnd(intervals[1].endMs, hideAgain, ups.times);
+    expectPreciseEnd(intervals[1].endMs, hideAgain, frames);
   });
 
   it('ends at the step boundary when the page that held the field is replaced', async () => {
