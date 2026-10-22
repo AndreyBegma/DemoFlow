@@ -15,7 +15,8 @@ import { readCredentials } from '../auth/credentials.ts';
 import type { Io } from '../commands/io.ts';
 import { currentHost, type HostEnvironment } from '../config/platform.ts';
 import { CLI_ENTRY } from '../entry.ts';
-import { type Autostart, noAutostart } from './autostart.ts';
+import type { Autostart } from './autostart.ts';
+import { platformAutostart } from './install/autostart.ts';
 import { isAlive, type LockHolder, readLock, releaseLock } from './lock.ts';
 import { redact } from './log.ts';
 import { type RunnerPaths, runnerPaths } from './paths.ts';
@@ -55,7 +56,7 @@ export const defaultControlDeps = (): ControlDeps => ({
   sleep: (ms) => delay(ms),
   alive: isAlive,
   kill: hardKill,
-  autostart: noAutostart,
+  autostart: platformAutostart(),
   startWaitMs: START_WAIT_MS,
   stopWaitMs: STOP_WAIT_MS,
 });
