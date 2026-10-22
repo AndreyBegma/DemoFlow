@@ -1,0 +1,55 @@
+export const metadata = { title: 'Recording' };
+
+# Recording
+
+`demoflow record` writes a scenario from what you do in the app, so you do not
+have to write the JSON.
+
+```sh
+npx demoflow record signup
+```
+
+The scenario is saved as `demoflow/signup.demo.json`. Without a name it is
+`demoflow/recording.demo.json`.
+
+| Flag | Meaning |
+|---|---|
+| `--force` | Overwrite an existing scenario file. Without it, an existing file is left alone. |
+| `--no-run` | Do not offer to run the scenario after saving it. |
+| `--viewport <WxH>` | The browser size, written into the scenario. Default `1280x720`. |
+
+## How a recording goes
+
+1. DemoFlow reads `demoflow.config.json`. If it has a [`devCommand`](/docs/config#starting-your-app), it starts your app and waits for it.
+2. It opens two windows: your app in a browser, and a **panel**.
+3. Use the app as a user would. Clicks, typing, selects and key presses become steps. Navigation stays inside `allowedOrigins`.
+4. Use the panel for what a click cannot say, then choose **Stop and save**.
+5. The scenario is written and DemoFlow offers to run it.
+
+Nothing is written if no steps were recorded.
+
+## The panel
+
+| Control | Adds |
+|---|---|
+| **Scene**, **Caption** | A `marker` step with the text in the title field. |
+| **Wait** | A `wait` step of the given milliseconds. |
+| **Pick: visible**, **Pick: text** | An `assertVisible` or `assertText` on the next element you click. |
+| **Hover next** | A `hover` on the next element you point at. |
+| **Secret next** | The next typed value is recorded as `valueFrom.env` with the variable named in the panel, and the value is not saved. |
+
+The panel also lists the recorded steps so you can check them as you go.
+
+## Repeat over data
+
+To post the same thing for several items, tick a run of steps in the panel and
+choose **Repeat over data**:
+
+1. Name the list.
+2. For each typed value in the ticked steps, give one line per item. The first line is what you recorded.
+3. Choose **Create repeat**.
+
+The panel writes the `data` block and wraps the steps in a `repeat`, with
+`{{item.text}}` in place of each typed value. Secret fills are left as
+recorded. See [Repeat over data](/docs/scenarios#repeat-over-data) for the
+format.
