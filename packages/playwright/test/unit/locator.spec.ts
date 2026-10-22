@@ -4,7 +4,11 @@ import { derivedReason, describeLocator } from '../../src/locator.ts';
 describe('describeLocator: the rows of Decision 3', () => {
   it.each([
     ['getByRole', ['button'], { role: 'button' }],
-    ['getByRole', ['button', { name: 'Sign in' }], { role: 'button', name: 'Sign in' }],
+    [
+      'getByRole',
+      ['button', { name: 'Sign in' }],
+      { role: 'button', name: 'Sign in' },
+    ],
     [
       'getByRole',
       ['button', { name: 'Create', exact: true }],
@@ -16,7 +20,11 @@ describe('describeLocator: the rows of Decision 3', () => {
     ['getByText', ['Report ready'], { text: 'Report ready' }],
     ['getByText', ['Ready', { exact: true }], { text: 'Ready', exact: true }],
     ['getByPlaceholder', ['Search'], { placeholder: 'Search' }],
-    ['getByPlaceholder', ['Search', { exact: true }], { placeholder: 'Search', exact: true }],
+    [
+      'getByPlaceholder',
+      ['Search', { exact: true }],
+      { placeholder: 'Search', exact: true },
+    ],
     ['getByTestId', ['hover-card'], { testId: 'hover-card' }],
     ['locator', ['tbody'], { css: 'tbody' }],
     ['locator', ['form > button'], { css: 'form > button' }],
@@ -28,7 +36,11 @@ describe('describeLocator: the rows of Decision 3', () => {
 describe('describeLocator: no scenario form (Decision 4)', () => {
   it.each([
     ['getByRole', [/button/], /regular expression as the role/],
-    ['getByRole', ['button', { name: /Sign/ }], /regular expression as the name/],
+    [
+      'getByRole',
+      ['button', { name: /Sign/ }],
+      /regular expression as the name/,
+    ],
     ['getByRole', ['button', { checked: true }], /option checked/],
     ['getByRole', ['heading', { level: 1 }], /option level/],
     ['getByRole', ['button', { includeHidden: true }], /option includeHidden/],

@@ -79,7 +79,9 @@ describe('WrittenPaths', () => {
     written.claim(file, 'Signs in', 'demoflow/a.demo.json');
     expect(() =>
       written.claim(file, 'Signs  in', 'demoflow/a.demo.json'),
-    ).toThrow('demoflow: demoflow/a.demo.json is already written by "Signs in"');
+    ).toThrow(
+      'demoflow: demoflow/a.demo.json is already written by "Signs in"',
+    );
   });
 
   it('lets the same test write again (a retry)', () => {

@@ -31,7 +31,11 @@ describe('lineIn', () => {
 });
 
 describe('envNameOf', () => {
-  const env = { B_SECRET: 'correct-horse', A_SECRET: 'correct-horse', SHORT: 'abc' };
+  const env = {
+    B_SECRET: 'correct-horse',
+    A_SECRET: 'correct-horse',
+    SHORT: 'abc',
+  };
 
   it('is the first variable in sorted order holding the value', () => {
     expect(envNameOf('correct-horse', env)).toBe('A_SECRET');
