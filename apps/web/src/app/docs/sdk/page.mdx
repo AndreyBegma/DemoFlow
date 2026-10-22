@@ -1,0 +1,67 @@
+export const metadata = { title: 'Application SDK' };
+
+# Application SDK
+
+Your app can take part in a run, with no package to install. Everything here is
+optional.
+
+- `window.demoflow` exists only while DemoFlow runs your app, so call it as
+  `window.demoflow?.…`. In production the call does nothing.
+- Nothing is sent anywhere. The text stays in the run directory on your machine.
+- Only the main frame is covered. Iframes and shadow DOM are not.
+
+## Mask an element
+
+Add `data-demoflow-mask` to any element that must not appear in the video: an
+API key, an e-mail address, a balance. DemoFlow blurs the element's box whenever
+it is on screen.
+
+```html
+<span data-demoflow-mask>sk_live_51H8…</span>
+```
+
+- Any value masks, including `data-demoflow-mask="false"`. To unmask, remove the
+  attribute.
+- The attribute masks the rendered video only. The raw recording in the run
+  directory and `screenshot` images are not masked.
+- Content in iframes or shadow DOM, and content that overflows the marked
+  element's box, is not covered. Mark the element that holds it.
+
+## Tell a scenario you are ready
+
+Call `window.demoflow?.ready('<name>')` once your app reaches a state, and wait
+for it with a `waitForReady` step.
+
+```js
+await loadDashboard();
+window.demoflow?.ready('dashboard');
+```
+
+```json
+{ "action": "waitForReady", "name": "dashboard" }
+```
+
+- A name is letters, digits and `. _ : -`, starts with a letter or a digit, and
+  is up to 64 characters. A call with any other name is ignored.
+- A signal lasts until the page is reloaded or another page is opened. A step
+  that waits for a signal that already happened passes at once.
+- If the signal does not arrive within the step's `timeoutMs`, the step fails
+  with `ready-timeout <name>`.
+
+## Scenes and captions from your app
+
+Your app can label its own flow.
+
+```js
+window.demoflow?.scene('Checkout');
+window.demoflow?.caption('Payment goes through');
+```
+
+- `scene('<title>')` starts a scene. DemoFlow puts a scene card in the video, as
+  a `scene` marker does. [`cards.scenes.enabled: false`](/docs/config#cards)
+  turns the cards off, whichever way the scene started.
+- `caption('<text>')` shows a caption for 3 seconds, or until the next caption.
+- Text is up to 120 characters after trimming. DemoFlow keeps at most 100
+  annotations per run. Other calls are ignored, and the methods never throw.
+- Annotation text appears in the video as written and is never masked, so keep
+  secrets out of it.
