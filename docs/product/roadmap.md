@@ -114,9 +114,15 @@ All four, in this order:
 4. reuse of existing Playwright tests as demo scenarios.
 
 - The page-side contract of items 1–2 is
-  [ADR-0013](../adr/0013-page-side-contract.md).
+  [ADR-0013](../adr/0013-page-side-contract.md); item 3 extends it in
+  [ADR-0014](../adr/0014-page-annotations.md).
 - Specs: [197](../specs/197-mask-attribute.md) (`data-demoflow-mask`),
-  [198](../specs/198-ready-signal.md) (`window.demoflow.ready`, `waitForReady`).
+  [198](../specs/198-ready-signal.md) (`window.demoflow.ready`, `waitForReady`),
+  [201](../specs/201-page-annotations.md) (`window.demoflow.scene`, `caption`),
+  [202](../specs/202-playwright-reuse-spike.md) (item 4: a spike first, with a
+  written report; the approach is not known yet),
+  [203](../specs/203-sdk-docs.md) (the website's Application SDK page, after
+  197, 198 and 201).
 
 ## Cross-cutting
 
