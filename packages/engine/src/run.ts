@@ -1,10 +1,13 @@
 import { mkdir } from 'node:fs/promises';
 import {
   deriveRunStatus,
+  type ExpandedStep,
+  expandScenario,
   type Navigation,
   type Scenario,
   type Stage,
   type Stages,
+  type StepOrigin,
   type TimelineEvent,
 } from '@demoflow/core';
 import { type BrowserContext, chromium, type Page } from 'playwright';
@@ -117,16 +120,16 @@ export async function runScenario(
     const syncMark = await recordSyncMark(page, clock);
 
     const events: TimelineEvent[] = [];
-    const hasAssertions = scenario.steps.some((step) =>
-      ASSERTIONS.has(step.action),
-    );
+    // A `repeat` runs as its expanded steps (spec 165); `stepIndex` counts them.
+    const { steps } = expandScenario(scenario);
+    const hasAssertions = steps.some((step) => ASSERTIONS.has(step.action));
     stages.execution = { status: 'running', startedAt: timestamp() };
     if (hasAssertions) {
       stages.verification = { status: 'running', startedAt: timestamp() };
     }
 
     const failure = await executeSteps({
-      scenario,
+      steps,
       page,
       clock,
       baseUrl,
@@ -152,6 +155,7 @@ export async function runScenario(
       stages[failure.stage] = finish(stages[failure.stage], 'failed', {
         message: failure.message,
         stepIndex: failure.stepIndex,
+        ...(failure.origin === undefined ? {} : { origin: failure.origin }),
       });
       stages[other] = { ...stages[other], status: 'skipped' };
     }
@@ -186,7 +190,7 @@ export async function runScenario(
 }
 
 interface ExecuteInput {
-  scenario: Scenario;
+  steps: readonly ExpandedStep[];
   page: Page;
   clock: Clock;
   baseUrl: string | undefined;
@@ -208,13 +212,14 @@ interface Failure {
   stage: FailedStage;
   message: string;
   stepIndex: number;
+  origin: StepOrigin | undefined;
 }
 
 /** Runs the steps in order and returns the first failure, if any. */
 async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
   const { clock, emit, scrub } = input;
   let pointer = input.pointer;
-  for (const [stepIndex, step] of input.scenario.steps.entries()) {
+  for (const [stepIndex, step] of input.steps.entries()) {
     const startMs = clock.now();
     await emit('onStepStarted', { stepIndex, step, startMs });
 
@@ -256,6 +261,7 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
 
     const event: TimelineEvent = {
       stepIndex,
+      ...(step.origin === undefined ? {} : { origin: step.origin }),
       action: step.action,
       startMs,
       endMs,
@@ -285,6 +291,7 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
         stage: failure.stage,
         message: scrub(failure.message),
         stepIndex,
+        origin: step.origin,
       };
     }
   }

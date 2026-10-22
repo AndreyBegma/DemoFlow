@@ -141,6 +141,26 @@ describe('demoflow validate', () => {
     expect(result.code).toBe(2);
     expect(result.stderr).toContain(`steps[${index}].target`);
   });
+
+  it('exits 2 with the step path for a field missing in an item, before any run', async () => {
+    const bad = JSON.parse(
+      await readFile(scenario('customers-repeat'), 'utf8'),
+    );
+    bad.data.customers[3] = { name: 'Barbara Liskov' };
+    const file = path.join(project, 'demoflow', 'bad-repeat.demo.json');
+    await writeFile(file, JSON.stringify(bad));
+
+    for (const args of [
+      ['validate', file],
+      ['run', file, '--out', out],
+    ]) {
+      const result = await demoflow(args, project);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain(
+        'steps[1].steps[2].value: unknown field customer.email: missing in data.customers[3]',
+      );
+    }
+  });
 });
 
 describe('demoflow run', () => {
@@ -354,6 +374,40 @@ describe('demoflow run', () => {
     } finally {
       await rm(faded, { recursive: true, force: true });
     }
+  });
+
+  it('runs a repeat once per item: five customers typed, each event tagged', async () => {
+    const result = await demoflow(
+      ['run', scenario('customers-repeat'), '--json', '--out', out],
+      project,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.status).toBe('completed');
+    const timeline = JSON.parse(
+      await readFile(path.join(json.runDir, 'timeline.json'), 'utf8'),
+    );
+    // navigate, the repeat's caption, then 5 steps × 5 customers.
+    expect(timeline.events).toHaveLength(27);
+    expect(timeline.events[1]).toMatchObject({
+      action: 'marker',
+      origin: { repeatIndex: 1, iteration: 0 },
+    });
+    const names = timeline.events.filter(
+      (event: { action: string; value?: string }) =>
+        event.action === 'fill' && !event.value?.includes('@'),
+    );
+    expect(names.map((event: { value: string }) => event.value)).toEqual([
+      'Grace Hopper',
+      'Alan Turing',
+      'Edsger Dijkstra',
+      'Barbara Liskov',
+      'Ken Thompson',
+    ]);
+    expect(timeline.events.at(-1).origin).toEqual({
+      repeatIndex: 1,
+      iteration: 4,
+    });
   });
 
   it('a failing scenario exits 1 with status failed', async () => {

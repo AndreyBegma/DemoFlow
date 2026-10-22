@@ -17,6 +17,16 @@ export type Box = z.infer<typeof BoxSchema>;
 
 const msSchema = z.number().nonnegative();
 
+/**
+ * Where an expanded step came from (spec 165): the `repeat` at
+ * `steps[repeatIndex]` of the scenario, in its 0-based `iteration`.
+ */
+export const StepOriginSchema = z.strictObject({
+  repeatIndex: z.number().int().nonnegative(),
+  iteration: z.number().int().nonnegative(),
+});
+export type StepOrigin = z.infer<typeof StepOriginSchema>;
+
 /** A stretch of time a masked field was on the page, and where it was then. */
 const MaskIntervalSchema = z
   .strictObject({
@@ -103,7 +113,10 @@ const NavigationsSchema = z
  */
 export const TimelineEventSchema = z
   .strictObject({
+    // Counts expanded steps: a `repeat` adds one per step per iteration.
     stepIndex: z.number().int().nonnegative(),
+    // Only on a step that came from a `repeat`.
+    origin: StepOriginSchema.optional(),
     action: StepActionSchema,
     startMs: msSchema,
     endMs: msSchema,

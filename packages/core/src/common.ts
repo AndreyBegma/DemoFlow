@@ -27,8 +27,8 @@ export const JsonSchemaRefSchema = z.string().optional();
  * Pair it with `exactlyOneJsonSchema(keys)` so editors enforce the same rule.
  */
 export function exactlyOne<K extends string>(keys: readonly K[]) {
-  return (value: Partial<Record<K, unknown>>, ctx: z.RefinementCtx): void => {
-    const present = keys.filter((key) => value[key] !== undefined);
+  return (value: object, ctx: z.RefinementCtx): void => {
+    const present = keys.filter((key) => Reflect.get(value, key) !== undefined);
     if (present.length !== 1) {
       ctx.addIssue({
         code: 'custom',

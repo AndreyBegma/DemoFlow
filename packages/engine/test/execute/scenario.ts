@@ -1,11 +1,17 @@
-import { parseScenario, type Scenario, type StepInput } from '@demoflow/core';
+import {
+  parseScenario,
+  type Scenario,
+  type ScenarioInput,
+  type ScenarioStepInput,
+} from '@demoflow/core';
 
 /** An inline scenario, validated and with defaults applied. */
 export function scenario(
-  steps: StepInput[],
+  steps: ScenarioStepInput[],
   extra: {
     baseUrl?: string;
     viewport?: { width: number; height: number };
+    data?: ScenarioInput['data'];
   } = {},
 ): Scenario {
   const parsed = parseScenario({
