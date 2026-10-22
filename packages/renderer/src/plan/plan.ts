@@ -55,8 +55,8 @@ export const DEFAULTS = {
   idleThresholdMs: 1_000,
   idleCompressToMs: 400,
   output: { width: 1920, height: 1080, fps: 30 },
-  /** Zoom on a source with at least two pixels per CSS pixel (ADR-0004 §1). */
-  zoom: 1.6,
+  /** What `zoom: true` means on a source with at least two pixels per CSS pixel (ADR-0012). */
+  zoom: 1.35,
   /** Zoom on a 1× source: past the source pixels already, so kept gentle (spec 4, Risks). */
   zoomOnLowResSource: 1.25,
 } as const;
@@ -98,7 +98,6 @@ const ACTIVE: ReadonlySet<StepAction> = new Set([
   'select',
   'scroll',
 ]);
-const CAMERA: ReadonlySet<StepAction> = new Set(['click', 'fill', 'select']);
 
 export interface PlanInput {
   timeline: Timeline;
@@ -194,7 +193,8 @@ export function planRender(
       ? fitInto(viewport, output)
       : fitWindow(viewport, output, frameConfig.marginRatio * output.height);
   const sourceScale = source.width / viewport.width;
-  const maxZoom =
+  // What a step's `zoom: true` resolves to; a number on the step overrides it.
+  const defaultZoom =
     options.zoom ??
     (sourceScale >= 2 ? DEFAULTS.zoom : DEFAULTS.zoomOnLowResSource);
 
@@ -252,7 +252,7 @@ export function planRender(
     {
       cursor: cursorMoves(events, out),
       clicks: clickRings(events, out),
-      camera: cameraKeyframes(events, out, viewport, maxZoom),
+      camera: cameraKeyframes(events, out, viewport, defaultZoom),
       masks,
       captions: captions(events, out, pageEndMs),
       keys: keyBadges(events, out, pageEndMs, viewport),
@@ -510,30 +510,40 @@ interface Shot {
 }
 
 /**
- * Zoom on the target of every `click`, `fill` and `select`: in over 500 ms
+ * Zoom on the target of every step that asks for it (ADR-0012): in over 500 ms
  * before the action, out over 400 ms after. A target near the previous one,
  * or one whose zoom-in would start before the previous zoom-out ends, keeps
- * the zoom and pans instead.
+ * the zoom and pans instead. A targeted step without zoom between them ends
+ * the zoom; a step without a target (a wait, a marker) leaves it to that rule.
  */
 function cameraKeyframes(
   events: readonly TimelineEvent[],
   out: (timelineMs: number) => number,
   viewport: { width: number; height: number },
-  maxZoom: number,
+  defaultZoom: number,
 ): CameraKeyframe[] {
-  const shots: Shot[] = events.flatMap((event) => {
-    if (!CAMERA.has(event.action) || event.target === undefined) return [];
+  // `null`: a targeted step that does not zoom.
+  const shots: (Shot | null)[] = events.flatMap((event) => {
+    if (event.target === undefined) return [];
+    const strength =
+      event.zoom === true
+        ? defaultZoom
+        : event.zoom === false
+          ? 1
+          : (event.zoom ?? 1);
     const { box } = event.target;
     const zoom = Math.max(
       1,
       Math.min(
-        maxZoom,
+        strength,
         (TIMING.targetFill * viewport.width) / Math.max(box.width, 1),
         (TIMING.targetFill * viewport.height) / Math.max(box.height, 1),
       ),
     );
+    if (zoom === 1) return [null];
+    // A click and a press zoom for the moment of the press.
     const action =
-      event.action === 'click'
+      event.action === 'click' || event.action === 'press'
         ? { startMs: out(pressMs(event)), endMs: out(pressMs(event)) }
         : { startMs: out(event.startMs), endMs: out(event.endMs) };
     return [{ ...action, centre: centreOf(box), zoom }];
@@ -544,17 +554,30 @@ function cameraKeyframes(
     const last = keys.at(-1);
     keys.push({ atMs: Math.max(atMs, last?.atMs ?? 0, 0), centre, zoom });
   };
+  // Out over 400 ms from the action's end, or from a late arrival: a zoom
+  // that eased in after its action still eases out instead of snapping.
   const zoomOut = (shot: Shot): void => {
     push(shot.endMs, shot.centre, shot.zoom);
-    push(shot.endMs + TIMING.zoomOutMs, shot.centre, 1);
+    const heldMs = keys.at(-1)?.atMs ?? shot.endMs;
+    push(heldMs + TIMING.zoomOutMs, shot.centre, 1);
   };
   let previous: Shot | undefined;
   for (const shot of shots) {
+    if (shot === null) {
+      if (previous !== undefined) zoomOut(previous);
+      previous = undefined;
+      continue;
+    }
     // The camera arrives as the action starts, or later when it has no room to
-    // ease: a shot in the first 500 ms, a pan right after the previous action.
+    // ease: a shot in the first 500 ms, a pan right after the previous action,
+    // a zoom-in that would start before the last zoom-out ends.
     let arriveMs = shot.startMs;
     if (previous === undefined) {
-      const fromMs = Math.max(0, shot.startMs - TIMING.zoomInMs);
+      const fromMs = Math.max(
+        0,
+        shot.startMs - TIMING.zoomInMs,
+        keys.at(-1)?.atMs ?? 0,
+      );
       push(fromMs, shot.centre, 1);
       arriveMs = Math.max(arriveMs, fromMs + TIMING.zoomInMs);
     } else if (

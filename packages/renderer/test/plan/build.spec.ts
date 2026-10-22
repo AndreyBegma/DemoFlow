@@ -228,7 +228,7 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     await rm(parent, { recursive: true, force: true });
   });
 
-  it('records the source at the viewport size (1×), so the zoom is 1.25', () => {
+  it('records the source at the viewport size (1×), so zoom: true is 1.25', () => {
     // `videoSize` is the viewport: Playwright pads a larger canvas instead of
     // upscaling (#47).
     expect(customersPlan.source).toMatchObject({

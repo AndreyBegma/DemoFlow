@@ -34,6 +34,29 @@ const common = {
   timeoutMs: z.number().int().min(100).max(60_000).default(10_000),
 };
 
+/**
+ * Camera zoom on the step's target (ADR-0012): `true` for the renderer's
+ * default strength, a number for that strength (`1` is no zoom). Only on steps
+ * whose timeline event carries the target's box.
+ */
+export const ZoomSchema = z.union([z.boolean(), z.number().min(1).max(3)]);
+export type Zoom = z.infer<typeof ZoomSchema>;
+
+const zoom = { zoom: ZoomSchema.optional() };
+
+/** Reports a `zoom` the step has no target box for. */
+function zoomNeedsTarget(reason: string) {
+  return (
+    value: { zoom?: Zoom; target?: unknown; state?: string },
+    ctx: z.RefinementCtx,
+  ): void => {
+    const targeted = value.target !== undefined && value.state !== 'hidden';
+    if (value.zoom !== undefined && !targeted) {
+      ctx.addIssue({ code: 'custom', message: reason, path: ['zoom'] });
+    }
+  };
+}
+
 function step<A extends StepAction, S extends z.ZodRawShape>(
   action: A,
   shape: S,
@@ -108,10 +131,22 @@ export const StepSchema = z.discriminatedUnion(
     step('waitFor', {
       target: LocatorSchema,
       state: z.enum(['visible', 'hidden']).default('visible'),
-    }),
-    step('click', { target: LocatorSchema }),
+      ...zoom,
+    })
+      .superRefine(
+        zoomNeedsTarget('expected no zoom on a waitFor for a hidden target'),
+      )
+      // Not both `state: hidden` and `zoom`.
+      .meta({
+        not: {
+          required: ['state', 'zoom'],
+          properties: { state: { const: 'hidden' } },
+        },
+      }),
+    step('click', { target: LocatorSchema, ...zoom }),
     step('fill', {
       target: LocatorSchema,
+      ...zoom,
       value: z.string().optional(),
       // Secrets never appear in a scenario (ADR-0003 §5).
       valueFrom: z
@@ -127,10 +162,18 @@ export const StepSchema = z.discriminatedUnion(
     })
       .superRefine(exactlyOne(fillKeys))
       .meta(exactlyOneJsonSchema(fillKeys)),
-    step('select', { target: LocatorSchema, option: z.string() }),
-    step('hover', { target: LocatorSchema }),
+    step('select', { target: LocatorSchema, option: z.string(), ...zoom }),
+    step('hover', { target: LocatorSchema, ...zoom }),
     // No target: the key goes to the focused element.
-    step('press', { key: PressKeySchema, target: LocatorSchema.optional() }),
+    step('press', {
+      key: PressKeySchema,
+      target: LocatorSchema.optional(),
+      ...zoom,
+    })
+      .superRefine(
+        zoomNeedsTarget('expected zoom only on a press with a target'),
+      )
+      .meta({ dependentRequired: { zoom: ['target'] } }),
     step('scroll', {
       to: z.enum(['top', 'bottom']).optional(),
       target: LocatorSchema.optional(),
@@ -139,9 +182,10 @@ export const StepSchema = z.discriminatedUnion(
     })
       .superRefine(exactlyOne(scrollKeys))
       .meta(exactlyOneJsonSchema(scrollKeys)),
-    step('assertVisible', { target: LocatorSchema }),
+    step('assertVisible', { target: LocatorSchema, ...zoom }),
     step('assertText', {
       target: LocatorSchema,
+      ...zoom,
       text: NonEmptyStringSchema,
       match: z.enum(['exact', 'contains']).default('contains'),
     }),

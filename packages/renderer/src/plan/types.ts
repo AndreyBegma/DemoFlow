@@ -47,7 +47,10 @@ export interface RenderPlanOptions {
     /** An idle stretch plays in this long. Default 400. */
     compressToMs?: number;
   };
-  /** Camera zoom on a target. Default 1.6 on a 2× source, 1.25 below. */
+  /**
+   * What a step's `zoom: true` resolves to; it does not make a step zoom
+   * (ADR-0012). Default 1.35 on a 2× source, 1.25 below.
+   */
   zoom?: number;
   output?: { width?: number; height?: number; fps?: number };
   /** The files to write, in order (spec 133). Default: `['mp4']`. */

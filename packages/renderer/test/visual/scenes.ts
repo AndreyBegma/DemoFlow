@@ -149,6 +149,7 @@ export function framedPlan(
       endMs: 1600,
       target: { box: { x: 700, y: 300, width: 200, height: 120 } },
       pointer: { from: { x: 640, y: 560 }, to: { x: 800, y: 360 } },
+      zoom: true,
     },
     { stepIndex: 2, action: 'wait', startMs: 1600, endMs: 3000 },
   ];

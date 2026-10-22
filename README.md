@@ -28,7 +28,7 @@ the video says so; a demo that shows a broken feature never looks like a
 working one.
 
 The recording is then rendered into an MP4 with a smooth drawn cursor, click
-rings, camera zoom on the action, captions, idle time compressed, and the page
+rings, camera zoom on the steps that ask for it, captions, idle time compressed, and the page
 in a rounded window on a background. Passwords come from environment
 variables, never touch disk or logs, and are blurred in the video.
 

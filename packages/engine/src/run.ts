@@ -262,6 +262,7 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
       ...result,
       ...(failure === undefined ? {} : failure.detail),
       ...(step.caption === undefined ? {} : { caption: step.caption }),
+      ...('zoom' in step && step.zoom !== undefined ? { zoom: step.zoom } : {}),
     };
     if (failure !== undefined && failure.stage === 'execution') {
       event.error = { message: scrub(failure.message) };
