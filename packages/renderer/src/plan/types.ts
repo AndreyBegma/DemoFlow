@@ -6,6 +6,7 @@ import type {
   GifConfig,
   RenderFormat,
   TransitionsConfig,
+  VerticalConfig,
   Viewport,
 } from '@demoflow/core';
 
@@ -67,6 +68,8 @@ export interface RenderPlanOptions {
   transitions?: TransitionsConfig;
   /** The intro card's subtitle; its title is the run's scenario name. */
   scenario?: { description?: string };
+  /** The 9:16 output's camera and captions (spec 176). Default: as in `VerticalConfigSchema`. */
+  vertical?: Partial<VerticalConfig>;
 }
 
 /** A two-stop linear gradient; a solid colour has `from` equal to `to`. */
@@ -90,7 +93,10 @@ export interface FrameSpec {
   background: GradientSpec;
 }
 
-/** The frames every output is encoded from; MP4 and WebM keep this size and rate. */
+/**
+ * The frames every output is encoded from; MP4 and WebM keep this size and
+ * rate. The vertical MP4 is drawn at `RenderPlan.vertical`'s size instead.
+ */
 export interface OutputSpec {
   width: number;
   height: number;
@@ -99,7 +105,15 @@ export interface OutputSpec {
   files: OutputFile[];
 }
 
-export type OutputFile = Mp4Spec | WebmSpec | GifSpec;
+export type OutputFile = Mp4Spec | WebmSpec | GifSpec | Mp4VerticalSpec;
+
+/** The 9:16 MP4 (spec 176): H.264 like `mp4`, drawn at `RenderPlan.vertical`'s size. */
+export interface Mp4VerticalSpec {
+  format: 'mp4-vertical';
+  codec: 'h264';
+  pixelFormat: 'yuv420p';
+  faststart: true;
+}
 
 /** H.264, BT.709: the default output (ADR-0004). */
 export interface Mp4Spec {
@@ -236,6 +250,26 @@ export interface TransitionsSpec {
   holds: NavigationHold[];
 }
 
+/** The crop's horizontal centre eases from each key to the next (viewport CSS pixels). */
+export interface FollowKey {
+  atMs: number;
+  x: number;
+}
+
+/**
+ * The 9:16 output (spec 176): a crop of the page, the full viewport height at
+ * zoom 1, whose horizontal centre follows `follow` and which the steps' zoom
+ * (`RenderPlan.camera`) narrows. It fills the frame: no window, no background.
+ */
+export interface VerticalSpec {
+  width: number;
+  height: number;
+  /** Starts at the page centre; the crop is clamped to the page wherever it is. */
+  follow: FollowKey[];
+  /** The band at the bottom the captions sit in, output pixels. */
+  caption: { top: number; height: number; fontPx: number; maxLines: number };
+}
+
 export interface FailureSpec {
   stage: 'readiness' | 'execution' | 'verification' | 'recording';
   /** 1-based, as a person counts steps; absent when the failure has no step. */
@@ -287,6 +321,8 @@ export interface RenderPlan {
   /** Absent when transitions are off: the cuts are hard, as before spec 114. */
   transitions?: TransitionsSpec;
   failure?: FailureSpec;
+  /** Present when `output.files` has `mp4-vertical`. */
+  vertical?: VerticalSpec;
 }
 
 /** Everything a renderer draws on one output frame; geometry in output pixels. */

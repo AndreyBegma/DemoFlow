@@ -74,8 +74,11 @@ export function deriveRunStatus(
   return warnings.length > 0 ? 'completed_with_warnings' : 'completed';
 }
 
-/** The files a run can render (spec 133); `mp4` is the default. */
-export const RENDER_FORMATS = ['mp4', 'gif', 'webm'] as const;
+/**
+ * The files a run can render (spec 133); `mp4` is the default.
+ * `mp4-vertical` is a 9:16 MP4 cropped from the same page (spec 176).
+ */
+export const RENDER_FORMATS = ['mp4', 'gif', 'webm', 'mp4-vertical'] as const;
 export type RenderFormat = (typeof RENDER_FORMATS)[number];
 
 export const RenderOutputSchema = z.strictObject({
