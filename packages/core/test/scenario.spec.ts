@@ -143,6 +143,82 @@ describe('parseScenario — press', () => {
   });
 });
 
+describe('parseScenario — zoom', () => {
+  const zoomOf = (step: Record<string, unknown>) => {
+    const result = parseScenario(scenario(step));
+    if (!result.ok) throw new Error('expected the scenario to parse');
+    const [parsed] = result.value.steps;
+    return parsed !== undefined && 'zoom' in parsed ? parsed.zoom : undefined;
+  };
+
+  it.each([
+    { action: 'click', target },
+    { action: 'fill', target, value: 'Ada' },
+    { action: 'select', target, option: 'Monthly' },
+    { action: 'hover', target },
+    { action: 'waitFor', target },
+    { action: 'press', key: 'Enter', target },
+    { action: 'assertVisible', target },
+    { action: 'assertText', target, text: 'Saved' },
+  ])('accepts zoom on $action', (step) => {
+    expect(zoomOf({ ...step, zoom: true })).toBe(true);
+  });
+
+  it.each([true, false, 1, 2, 3])('accepts zoom %j', (zoom) => {
+    expect(zoomOf({ action: 'click', target, zoom })).toBe(zoom);
+  });
+
+  it('is absent unless the step sets it', () => {
+    expect(zoomOf({ action: 'click', target })).toBeUndefined();
+  });
+
+  it.each([0, 0.9, 3.1, 'yes'])('rejects zoom %j at steps[n].zoom', (zoom) => {
+    expect(errorsOf(scenario({ action: 'click', target, zoom }))).toEqual([
+      expect.objectContaining({ path: 'steps[0].zoom' }),
+    ]);
+  });
+
+  it.each([
+    { action: 'navigate', path: '/login' },
+    { action: 'scroll', to: 'bottom' },
+    { action: 'screenshot', name: 'done' },
+    { action: 'marker', title: 'Sign in' },
+    { action: 'wait', ms: 500 },
+  ])('rejects zoom on $action, which has no target', (step) => {
+    expect(errorsOf(scenario(step, { ...step, zoom: true }))).toEqual([
+      {
+        path: 'steps[1].zoom',
+        code: 'unrecognized_keys',
+        message: 'unknown field',
+      },
+    ]);
+  });
+
+  it('rejects zoom on a press without a target', () => {
+    expect(
+      errorsOf(scenario({ action: 'press', key: 'Enter', zoom: true })),
+    ).toEqual([
+      expect.objectContaining({
+        path: 'steps[0].zoom',
+        message: 'expected zoom only on a press with a target',
+      }),
+    ]);
+  });
+
+  it('rejects zoom on a waitFor for a hidden target', () => {
+    expect(
+      errorsOf(
+        scenario({ action: 'waitFor', target, state: 'hidden', zoom: true }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        path: 'steps[0].zoom',
+        message: 'expected no zoom on a waitFor for a hidden target',
+      }),
+    ]);
+  });
+});
+
 describe('parseScenario — every action', () => {
   it('covers every action of ADR-0003', () => {
     expect(actions.map((row) => row.action).sort()).toEqual(

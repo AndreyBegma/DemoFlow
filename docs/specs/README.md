@@ -46,6 +46,7 @@ decisions live in [../adr/](../adr/README.md).
 | [#92](https://github.com/AndreyBegma/DemoFlow/issues/92) | [MCP: terminal only after cleanup](92-mcp-staged-cleanup.md) | — |
 | [#91](https://github.com/AndreyBegma/DemoFlow/issues/91) | [A `press` step](91-press-step.md) | #85 |
 | [#103](https://github.com/AndreyBegma/DemoFlow/issues/103) | [`record`: no extra step on a slow runner](103-record-extra-step.md) | — |
+| [#105](https://github.com/AndreyBegma/DemoFlow/issues/105) | [`npx demoflow` inside the monorepo](105-workspace-package-name.md) | — |
 
 ## Before Phase 4 (roadmap)
 
@@ -61,6 +62,38 @@ decisions live in [../adr/](../adr/README.md).
 | [#85](https://github.com/AndreyBegma/DemoFlow/issues/85) | [Spike: pipelined screenshots or a zoomed large viewport](85-device-pixel-capture-spike.md) | #82 |
 | [#100](https://github.com/AndreyBegma/DemoFlow/issues/100) | [The page in a rounded window on a background](100-window-frame-background.md) | #91 |
 | [#108](https://github.com/AndreyBegma/DemoFlow/issues/108) | [Intro, scene and outro cards](108-cards.md) | #100 |
+| [#114](https://github.com/AndreyBegma/DemoFlow/issues/114) | [Fade transitions](114-transitions.md) | #108 |
+| [#133](https://github.com/AndreyBegma/DemoFlow/issues/133) | [GIF and WebM export](133-export-formats.md) | — |
+
+## Phase 5 — Website and Runner pairing
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#120](https://github.com/AndreyBegma/DemoFlow/issues/120) | [Accounts API](120-accounts-api.md) | — |
+| [#121](https://github.com/AndreyBegma/DemoFlow/issues/121) | [i18n dictionary](121-i18n-dictionary.md) | — |
+| [#124](https://github.com/AndreyBegma/DemoFlow/issues/124) | [Sign-in pages](124-sign-in-pages.md) | #120, #121 |
+| [#126](https://github.com/AndreyBegma/DemoFlow/issues/126) | [GitHub sign-in](126-github-sign-in.md) | #120, #124 |
+| [#135](https://github.com/AndreyBegma/DemoFlow/issues/135) | [Runner pairing, slice 1](135-runner-pairing.md) | #133 (cli slot) |
+| [#137](https://github.com/AndreyBegma/DemoFlow/issues/137) | [Public landing page](137-landing-page.md) | — |
+| [#151](https://github.com/AndreyBegma/DemoFlow/issues/151) | [Runner daemon and live connection](151-runner-daemon.md) | #135 |
 
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.
+
+## Camera
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#163](https://github.com/AndreyBegma/DemoFlow/issues/163) | [Zoom set per step, no automatic zoom](163-step-zoom.md) | — |
+| [#165](https://github.com/AndreyBegma/DemoFlow/issues/165) | [Scenario data and `repeat`](165-scenario-data-repeat.md) | #163 |
+| [#173](https://github.com/AndreyBegma/DemoFlow/issues/173) | [Mask timing test flakes on macOS](173-mask-timing-flake.md) | — |
+
+## Phase 4–5 remainder
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#150](https://github.com/AndreyBegma/DemoFlow/issues/150) | [Real-run hold test flake](150-real-run-hold-flake.md) | — |
+| [#176](https://github.com/AndreyBegma/DemoFlow/issues/176) | [Vertical 9:16 export](176-vertical-export.md) | — |
+| [#177](https://github.com/AndreyBegma/DemoFlow/issues/177) | [Delete my account](177-account-deletion.md) | — |
+| [#178](https://github.com/AndreyBegma/DemoFlow/issues/178) | [Projects and the demo library](178-projects-and-library.md) | — |
+| [#179](https://github.com/AndreyBegma/DemoFlow/issues/179) | [Documentation section](179-docs-section.md) | — |

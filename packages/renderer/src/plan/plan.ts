@@ -3,30 +3,47 @@ import path from 'node:path';
 import {
   type Box,
   FrameConfigSchema,
+  type MaskInterval,
+  type Navigation,
+  type RenderFormat,
   type RunResult,
   RunResultSchema,
   type StepAction,
   type Timeline,
   type TimelineEvent,
   TimelineSchema,
+  VerticalConfigSchema,
 } from '@demoflow/core';
 import { resolveBackground } from './background.ts';
+import { placeCards, shiftOverlays } from './cards.ts';
 import { probeVideo } from './ffmpeg.ts';
+import { verticalCropSize } from './frame.ts';
+import { measuredMaskMarginMs } from './mask-margin.ts';
 import { findSyncClear, syncOffset } from './sync-mark.ts';
-import { buildTimeMap, idleStretches, toOutputMs } from './time-map.ts';
+import {
+  buildTimeMap,
+  idleStretches,
+  insertCards,
+  toOutputMs,
+} from './time-map.ts';
+import { planHolds, shiftHolds, showsHeldPage } from './transitions.ts';
 import type {
   CameraKeyframe,
   Caption,
   ClickRing,
   CursorMove,
   FailureSpec,
+  FollowKey,
   FrameSpec,
   Interval,
   KeyBadge,
   MaskSpan,
+  OutputFile,
   Point,
   RenderPlan,
   RenderPlanOptions,
+  TransitionsSpec,
+  VerticalSpec,
   VideoProbe,
 } from './types.ts';
 
@@ -43,8 +60,8 @@ export const DEFAULTS = {
   idleThresholdMs: 1_000,
   idleCompressToMs: 400,
   output: { width: 1920, height: 1080, fps: 30 },
-  /** Zoom on a source with at least two pixels per CSS pixel (ADR-0004 §1). */
-  zoom: 1.6,
+  /** What `zoom: true` means on a source with at least two pixels per CSS pixel (ADR-0012). */
+  zoom: 1.35,
   /** Zoom on a 1× source: past the source pixels already, so kept gentle (spec 4, Risks). */
   zoomOnLowResSource: 1.25,
 } as const;
@@ -64,7 +81,7 @@ const TIMING = {
   minPanMs: 400,
   /** The engine waits up to this long for a navigation after the press. */
   pressToEndMs: 100,
-  /** Masks start this early, to absorb the residual clock offset; one source frame when it is measured. */
+  /** Masks start this early, to absorb the residual clock offset; `measuredMaskMarginMs` when it is measured. */
   maskLeadMs: 200,
   /** Masks end this late, for the same reason: an early end leaks, a late one is safe (#48). */
   maskTrailMs: 200,
@@ -86,7 +103,6 @@ const ACTIVE: ReadonlySet<StepAction> = new Set([
   'select',
   'scroll',
 ]);
-const CAMERA: ReadonlySet<StepAction> = new Set(['click', 'fill', 'select']);
 
 export interface PlanInput {
   timeline: Timeline;
@@ -151,8 +167,12 @@ export function planRender(
   const offsetMs = options.offsetMs ?? measuredMs ?? DEFAULT_OFFSET_MS;
   const offsetMeasured =
     options.offsetMs === undefined && measuredMs !== undefined;
-  const maskLeadMs = offsetMeasured ? 1000 / source.fps : TIMING.maskLeadMs;
-  const maskTrailMs = offsetMeasured ? 1000 / source.fps : TIMING.maskTrailMs;
+  const maskLeadMs = offsetMeasured
+    ? measuredMaskMarginMs(source.fps)
+    : TIMING.maskLeadMs;
+  const maskTrailMs = offsetMeasured
+    ? measuredMaskMarginMs(source.fps)
+    : TIMING.maskTrailMs;
   // The output starts on the first frame after the mark, so none shows it (Decision 6).
   const startMs =
     measuredMs === undefined
@@ -182,7 +202,8 @@ export function planRender(
       ? fitInto(viewport, output)
       : fitWindow(viewport, output, frameConfig.marginRatio * output.height);
   const sourceScale = source.width / viewport.width;
-  const maxZoom =
+  // What a step's `zoom: true` resolves to; a number on the step overrides it.
+  const defaultZoom =
     options.zoom ??
     (sourceScale >= 2 ? DEFAULTS.zoom : DEFAULTS.zoomOnLowResSource);
 
@@ -211,24 +232,93 @@ export function planRender(
       endMs: toSource(event.endMs),
     }));
   const idle = idleStretches(source.freezes, active, thresholdMs, sourceEndMs);
-  const timeMap = buildTimeMap(idle, sourceEndMs, compressToMs, startMs);
+  // Page time: the map before cards. Overlays are planned in it, then moved
+  // past the cards, so no lead or trail is ever measured across a card.
+  const pageMap = buildTimeMap(idle, sourceEndMs, compressToMs, startMs);
   const out = (timelineMs: number): number =>
-    toOutputMs(timeMap, toSource(timelineMs));
+    toOutputMs(pageMap, toSource(timelineMs));
+  const pageEndMs = pageMap.at(-1)?.outputEndMs ?? 0;
+
+  const cards = placeCards({
+    ...(options.cards === undefined ? {} : { config: options.cards }),
+    events,
+    out,
+    pageEndMs,
+    scenarioName: result.scenarioName,
+    ...(options.scenario?.description === undefined
+      ? {}
+      : { description: options.scenario.description }),
+    failed: failure !== undefined,
+  });
+  const masks = maskSpans(events, out, viewport, pageEndMs, {
+    leadMs: maskLeadMs,
+    trailMs: maskTrailMs,
+    navigations: timeline.navigations ?? [],
+    transitions: options.transitions?.enabled === true,
+    sourceFrameMs: 1000 / source.fps,
+  });
+  const verticalConfig = VerticalConfigSchema.parse(options.vertical ?? {});
+  const { follow, ...overlays } = shiftOverlays(
+    {
+      cursor: cursorMoves(events, out),
+      clicks: clickRings(events, out),
+      camera: cameraKeyframes(events, out, viewport, defaultZoom),
+      follow: followKeys(
+        events,
+        out,
+        viewport,
+        verticalCropSize(viewport, VERTICAL).width,
+        verticalConfig,
+      ),
+      masks,
+      captions: captions(events, out, pageEndMs),
+      keys: keyBadges(events, out, pageEndMs, viewport),
+    },
+    cards,
+  );
+  const transitions: TransitionsSpec | undefined =
+    options.transitions?.enabled === true
+      ? {
+          durationMs: options.transitions.durationMs,
+          holds: shiftHolds(
+            planHolds({
+              navigations: timeline.navigations ?? [],
+              events,
+              out,
+              toSource,
+              sourceStartMs: pageMap[0]?.sourceStartMs ?? 0,
+              pageEndMs,
+              masks,
+              sourceFrameMs: 1000 / source.fps,
+              durationMs: options.transitions.durationMs,
+            }),
+            cards,
+          ),
+        }
+      : undefined;
+  const timeMap = insertCards(pageMap, cards);
   const videoEndMs = timeMap.at(-1)?.outputEndMs ?? 0;
 
+  // No outro on a failed run (Decision 4): the end card follows the page.
   const failureSpec =
     failure === undefined
       ? undefined
       : failureCard(failure, videoEndMs, TIMING.endCardMs);
+  const files = outputFiles(output, options);
+  const vertical: VerticalSpec | undefined = files.some(
+    (file) => file.format === 'mp4-vertical',
+  )
+    ? {
+        width: VERTICAL.width,
+        height: VERTICAL.height,
+        follow,
+        caption: verticalCaption(verticalConfig.captionBand),
+      }
+    : undefined;
 
   return {
     version: 1,
-    output: {
-      ...output,
-      codec: 'h264',
-      pixelFormat: 'yuv420p',
-      faststart: true,
-    },
+    output: { ...output, files },
     source: {
       file: timeline.videoFile,
       width: source.width,
@@ -246,17 +336,68 @@ export function planRender(
     maskTrailMs,
     durationMs: videoEndMs + (failureSpec?.endCard.durationMs ?? 0),
     timeMap,
-    cursor: cursorMoves(events, out),
-    clicks: clickRings(events, out),
-    camera: cameraKeyframes(events, out, viewport, maxZoom),
-    masks: maskSpans(events, out, viewport, videoEndMs, {
-      leadMs: maskLeadMs,
-      trailMs: maskTrailMs,
-    }),
-    captions: captions(events, out, videoEndMs),
-    keys: keyBadges(events, out, videoEndMs, viewport),
+    cards: cards.map(({ atMs: _, ...card }) => card),
+    cardBackground:
+      frame?.background ??
+      resolveBackground(options.background ?? { preset: 'ocean' }),
+    ...overlays,
+    ...(transitions === undefined ? {} : { transitions }),
     ...(failureSpec === undefined ? {} : { failure: failureSpec }),
+    ...(vertical === undefined ? {} : { vertical }),
   };
+}
+
+/** The vertical output's size and caption type (spec 176, Decisions 1 and 4). */
+export const VERTICAL = {
+  width: 1080,
+  height: 1920,
+  /** At 1080 wide; at least the 44 px Decision 4 asks for. */
+  captionFontPx: 48,
+  captionMaxLines: 3,
+} as const;
+
+/** The band over the bottom `band` of the vertical frame, the type scaled with its width. */
+function verticalCaption(band: number): VerticalSpec['caption'] {
+  const height = Math.round(VERTICAL.height * band);
+  return {
+    top: VERTICAL.height - height,
+    height,
+    fontPx: (VERTICAL.captionFontPx * VERTICAL.width) / 1080,
+    maxLines: VERTICAL.captionMaxLines,
+  };
+}
+
+/**
+ * The vertical crop's horizontal centre (spec 176, Decision 3): the page
+ * centre at the start, then the centre of each step's target, reached as the
+ * step starts — or as soon as the previous move ends — over `followMs`. A
+ * step without a target keeps it. A move under `deadZone` of the crop width,
+ * measured where the clamped crop would actually go, is skipped. The keys
+ * hold the target itself; the crop is clamped to the page when drawn, so a
+ * zoom on an edge target still centres it as far as the page allows.
+ */
+function followKeys(
+  events: readonly TimelineEvent[],
+  out: (timelineMs: number) => number,
+  viewport: { width: number; height: number },
+  cropWidth: number,
+  { followMs, deadZone }: { followMs: number; deadZone: number },
+): FollowKey[] {
+  const half = cropWidth / 2;
+  const onPage = (x: number): number =>
+    clamp(x, half, Math.max(half, viewport.width - half));
+  let x = viewport.width / 2;
+  const keys: FollowKey[] = [{ atMs: 0, x }];
+  for (const event of events) {
+    if (event.target === undefined) continue;
+    const to = centreOf(event.target.box).x;
+    if (Math.abs(onPage(to) - onPage(x)) < deadZone * cropWidth) continue;
+    const last = keys[keys.length - 1].atMs;
+    const startMs = Math.max(last, out(event.startMs) - followMs);
+    keys.push({ atMs: startMs, x }, { atMs: startMs + followMs, x: to });
+    x = to;
+  }
+  return keys;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -314,6 +455,59 @@ function failureCard(
       text: `${stage} failed${where}: ${failure.message}`,
     },
   };
+}
+
+/** VP9 at constant quality (spec 133): measured on the fixture demo, see #133. */
+const WEBM = { crf: 32, cpuUsed: 4 } as const;
+
+/** The GIF defaults of spec 133, Decision 3. */
+const GIF = { width: 800, fps: 12 } as const;
+
+/** One file per requested format, in the order given; MP4 alone by default. */
+function outputFiles(
+  output: { width: number; height: number; fps: number },
+  options: RenderPlanOptions,
+): OutputFile[] {
+  return (options.formats ?? ['mp4']).map((format) =>
+    outputFile(format, output, options),
+  );
+}
+
+function outputFile(
+  format: RenderFormat,
+  output: { width: number; height: number; fps: number },
+  options: RenderPlanOptions,
+): OutputFile {
+  switch (format) {
+    case 'mp4':
+      return {
+        format,
+        codec: 'h264',
+        pixelFormat: 'yuv420p',
+        faststart: true,
+      };
+    case 'mp4-vertical':
+      return {
+        format,
+        codec: 'h264',
+        pixelFormat: 'yuv420p',
+        faststart: true,
+      };
+    case 'webm':
+      return { format, codec: 'vp9', pixelFormat: 'yuv420p', ...WEBM };
+    case 'gif': {
+      const width = options.gif?.width ?? Math.min(GIF.width, output.width);
+      return {
+        format,
+        width,
+        height: Math.max(
+          2,
+          Math.round((width * output.height) / output.width / 2) * 2,
+        ),
+        fps: options.gif?.fps ?? Math.min(GIF.fps, output.fps),
+      };
+    }
+  }
 }
 
 function fitInto(
@@ -402,30 +596,40 @@ interface Shot {
 }
 
 /**
- * Zoom on the target of every `click`, `fill` and `select`: in over 500 ms
+ * Zoom on the target of every step that asks for it (ADR-0012): in over 500 ms
  * before the action, out over 400 ms after. A target near the previous one,
  * or one whose zoom-in would start before the previous zoom-out ends, keeps
- * the zoom and pans instead.
+ * the zoom and pans instead. A targeted step without zoom between them ends
+ * the zoom; a step without a target (a wait, a marker) leaves it to that rule.
  */
 function cameraKeyframes(
   events: readonly TimelineEvent[],
   out: (timelineMs: number) => number,
   viewport: { width: number; height: number },
-  maxZoom: number,
+  defaultZoom: number,
 ): CameraKeyframe[] {
-  const shots: Shot[] = events.flatMap((event) => {
-    if (!CAMERA.has(event.action) || event.target === undefined) return [];
+  // `null`: a targeted step that does not zoom.
+  const shots: (Shot | null)[] = events.flatMap((event) => {
+    if (event.target === undefined) return [];
+    const strength =
+      event.zoom === true
+        ? defaultZoom
+        : event.zoom === false
+          ? 1
+          : (event.zoom ?? 1);
     const { box } = event.target;
     const zoom = Math.max(
       1,
       Math.min(
-        maxZoom,
+        strength,
         (TIMING.targetFill * viewport.width) / Math.max(box.width, 1),
         (TIMING.targetFill * viewport.height) / Math.max(box.height, 1),
       ),
     );
+    if (zoom === 1) return [null];
+    // A click and a press zoom for the moment of the press.
     const action =
-      event.action === 'click'
+      event.action === 'click' || event.action === 'press'
         ? { startMs: out(pressMs(event)), endMs: out(pressMs(event)) }
         : { startMs: out(event.startMs), endMs: out(event.endMs) };
     return [{ ...action, centre: centreOf(box), zoom }];
@@ -436,17 +640,30 @@ function cameraKeyframes(
     const last = keys.at(-1);
     keys.push({ atMs: Math.max(atMs, last?.atMs ?? 0, 0), centre, zoom });
   };
+  // Out over 400 ms from the action's end, or from a late arrival: a zoom
+  // that eased in after its action still eases out instead of snapping.
   const zoomOut = (shot: Shot): void => {
     push(shot.endMs, shot.centre, shot.zoom);
-    push(shot.endMs + TIMING.zoomOutMs, shot.centre, 1);
+    const heldMs = keys.at(-1)?.atMs ?? shot.endMs;
+    push(heldMs + TIMING.zoomOutMs, shot.centre, 1);
   };
   let previous: Shot | undefined;
   for (const shot of shots) {
+    if (shot === null) {
+      if (previous !== undefined) zoomOut(previous);
+      previous = undefined;
+      continue;
+    }
     // The camera arrives as the action starts, or later when it has no room to
-    // ease: a shot in the first 500 ms, a pan right after the previous action.
+    // ease: a shot in the first 500 ms, a pan right after the previous action,
+    // a zoom-in that would start before the last zoom-out ends.
     let arriveMs = shot.startMs;
     if (previous === undefined) {
-      const fromMs = Math.max(0, shot.startMs - TIMING.zoomInMs);
+      const fromMs = Math.max(
+        0,
+        shot.startMs - TIMING.zoomInMs,
+        keys.at(-1)?.atMs ?? 0,
+      );
       push(fromMs, shot.centre, 1);
       arriveMs = Math.max(arriveMs, fromMs + TIMING.zoomInMs);
     } else if (
@@ -493,8 +710,12 @@ function distance(a: Point, b: Point): number {
  *
  * A timeline from before `maskVisibility` has no intervals, so the old rule
  * stays: the mask runs from the event's start until a `navigate` ends, a page
- * scroll takes the box fully out of the viewport, or the video ends. It cannot
- * tell which click navigated, so covering too long is safe, too short a leak.
+ * scroll takes the box fully out of the viewport, or the video ends.
+ *
+ * Either way, a document navigation (`timeline.navigations`, #114) then ends
+ * the span when the old document leaves the screen, never earlier (spec 146):
+ * see `documentEndMs`. An interval that overlaps a sibling (a navigation that
+ * left the field on screen, #18) keeps its span as measured.
  *
  * A masked event with no box (its field could not be measured, #42) masks the
  * whole viewport from its start to the end of the video.
@@ -504,8 +725,20 @@ function maskSpans(
   out: (timelineMs: number) => number,
   viewport: { width: number; height: number },
   videoEndMs: number,
-  { leadMs, trailMs }: { leadMs: number; trailMs: number },
+  {
+    leadMs,
+    trailMs,
+    ...leaving
+  }: {
+    leadMs: number;
+    trailMs: number;
+    navigations: readonly Navigation[];
+    transitions: boolean;
+    sourceFrameMs: number;
+  },
 ): MaskSpan[] {
+  const documentEnd = (fromMs: number, endMs: number): number =>
+    documentEndMs(fromMs, endMs, { ...leaving, out, trailMs, videoEndMs });
   const spans: MaskSpan[] = [];
   for (const [index, event] of events.entries()) {
     if (event.masked !== true) continue;
@@ -535,7 +768,14 @@ function maskSpans(
           };
           keys.push({ atMs: Math.min(out(later.endMs), endMs), box });
         }
-        spans.push({ startMs, endMs, keys });
+        // The keys stay as measured: a hold reads the box at its start from them.
+        spans.push({
+          startMs,
+          endMs: overlapsSibling(interval, event.maskVisibility)
+            ? endMs
+            : documentEnd(interval.startMs, endMs),
+          keys,
+        });
       }
       continue;
     }
@@ -568,9 +808,77 @@ function maskSpans(
         break;
       }
     }
-    spans.push({ startMs, endMs: Math.min(endMs, videoEndMs), keys });
+    spans.push({
+      startMs,
+      endMs: documentEnd(event.startMs, Math.min(endMs, videoEndMs)),
+      keys,
+    });
   }
   return spans;
+}
+
+/**
+ * When the document a mask's field was measured on leaves the screen (spec
+ * 146), given the span's start in timeline ms and its end in page ms. The
+ * first document navigation that starts after it governs, when the span is
+ * still up on the frame before it starts (the frame a hold shows):
+ *
+ * - transitions on, and `planHolds` holds the old page for it
+ *   (`showsHeldPage`): its start. The hold draws its own masks from there.
+ * - otherwise (transitions off, the first navigation, a load past the page's
+ *   end): its `endMs` plus the trail, since the old page stays on screen until
+ *   the new one loads. This may lengthen the span as well as shorten it.
+ * - a navigation still open at the end of the recording: the span as given.
+ *
+ * With no navigations (a timeline from before #114) the span is as given.
+ */
+function documentEndMs(
+  fromMs: number,
+  endMs: number,
+  {
+    navigations,
+    transitions,
+    sourceFrameMs,
+    out,
+    trailMs,
+    videoEndMs,
+  }: {
+    navigations: readonly Navigation[];
+    transitions: boolean;
+    sourceFrameMs: number;
+    out: (timelineMs: number) => number;
+    trailMs: number;
+    videoEndMs: number;
+  },
+): number {
+  // Strictly after: a load that starts with the field's measure brings that document in.
+  const index = navigations.findIndex(
+    (navigation) => navigation.startMs > fromMs,
+  );
+  const navigation = navigations[index];
+  if (navigation === undefined) return endMs;
+  const leavesMs = out(navigation.startMs);
+  // Gone before the navigation: the frame it starts on never showed it.
+  if (endMs <= leavesMs - sourceFrameMs) return endMs;
+  if (transitions && showsHeldPage(index, navigation, out, videoEndMs)) {
+    return Math.min(endMs, leavesMs);
+  }
+  if (navigation.endMs === undefined) return endMs;
+  return Math.min(out(navigation.endMs) + trailMs, videoEndMs);
+}
+
+/** Whether `interval` shares any time with another interval of the same field. */
+function overlapsSibling(
+  interval: MaskInterval,
+  intervals: readonly MaskInterval[],
+): boolean {
+  const end = interval.endMs ?? Infinity;
+  return intervals.some(
+    (other) =>
+      other !== interval &&
+      other.startMs < end &&
+      interval.startMs < (other.endMs ?? Infinity),
+  );
 }
 
 function wholeViewport(

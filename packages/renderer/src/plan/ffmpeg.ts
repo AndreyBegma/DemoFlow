@@ -3,24 +3,88 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { Interval, VideoProbe } from './types.ts';
 
-let resolved: string | undefined;
+/** The binary picked per set of required encoders. */
+const resolved = new Map<string, string>();
+
+/** `-encoders` listings per binary; `null` when it would not run. */
+const listings = new Map<string, string | null>();
+
+/** The encoder each output format needs (spec 133); a GIF's is built in. */
+export const ENCODERS = {
+  mp4: 'libx264',
+  webm: 'libvpx-vp9',
+  gif: 'gif',
+  'mp4-vertical': 'libx264',
+} as const;
 
 /**
  * The FFmpeg binary both renderers use (spec 4, Decisions): a system FFmpeg
  * on `PATH` wins, otherwise the pinned `ffmpeg-static` build. A system build
  * without libx264 (Fedora's `ffmpeg-free`) cannot write the H.264 output, so
- * it does not count.
+ * it does not count; nor does one without any other encoder in `encoders`
+ * (spec 133, Decision 8).
  */
-export function resolveFfmpeg(): string {
-  if (resolved !== undefined) return resolved;
-  const system = spawnSync('ffmpeg', ['-hide_banner', '-encoders'], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  if (system.status === 0 && /\slibx264\s/.test(system.stdout)) {
-    resolved = 'ffmpeg';
-    return resolved;
+export function resolveFfmpeg(
+  encoders: readonly string[] = [ENCODERS.mp4],
+): string {
+  const key = [...new Set([ENCODERS.mp4, ...encoders])].sort().join(' ');
+  let binary = resolved.get(key);
+  if (binary === undefined) {
+    binary = chooseFfmpeg(
+      listEncoders('ffmpeg'),
+      key.split(' '),
+      bundledFfmpeg,
+    );
+    resolved.set(key, binary);
   }
+  return binary;
+}
+
+/**
+ * Exported for tests: `ffmpeg` on `PATH` when its `-encoders` listing has
+ * every one of `required`, otherwise `bundled()`.
+ */
+export function chooseFfmpeg(
+  listing: string | null,
+  required: readonly string[],
+  bundled: () => string,
+): string {
+  if (listing !== null && required.every((name) => lists(listing, name))) {
+    return 'ffmpeg';
+  }
+  return bundled();
+}
+
+/** The encoders of `required` that `binary` does not have. */
+export function missingEncoders(
+  binary: string,
+  required: readonly string[],
+): string[] {
+  const listing = listEncoders(binary);
+  if (listing === null) return [...required];
+  return required.filter((name) => !lists(listing, name));
+}
+
+/** `ffmpeg -encoders`, once per binary; `null` when it does not run. */
+export function listEncoders(binary: string): string | null {
+  if (!listings.has(binary)) {
+    const run = spawnSync(binary, ['-hide_banner', '-encoders'], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    listings.set(binary, run.status === 0 ? run.stdout : null);
+  }
+  return listings.get(binary) ?? null;
+}
+
+/** A `-encoders` line is ` V....D <name> <description>`. */
+function lists(listing: string, encoder: string): boolean {
+  return listing
+    .split('\n')
+    .some((line) => line.trim().split(/\s+/)[1] === encoder);
+}
+
+function bundledFfmpeg(): string {
   // `ffmpeg-static` is CommonJS and exports the binary path, or null on an unsupported platform.
   const bundled = createRequire(import.meta.url)('ffmpeg-static') as
     | string
@@ -30,8 +94,7 @@ export function resolveFfmpeg(): string {
       'no FFmpeg: none on PATH, and ffmpeg-static has no binary (was its install script blocked?)',
     );
   }
-  resolved = bundled;
-  return resolved;
+  return bundled;
 }
 
 export interface FfmpegOutput {
@@ -145,7 +208,11 @@ export function parseProbe(
   const codec = /^(\w+)/.exec(details)?.[1] ?? 'unknown';
   const size = /, (\d{2,5})x(\d{2,5})/.exec(details);
   if (size === null) throw new Error(`no frame size in "${details}"`);
-  const rate = /([\d.]+) (?:fps|tbr)/.exec(details);
+  // A GIF keeps each delay in hundredths of a second, so its `fps` is read
+  // off one of them (12 fps → 8 cs → "12.50 fps"); its `tbr` is the rate.
+  const rate =
+    (codec === 'gif' ? /([\d.]+) tbr/.exec(details) : null) ??
+    /([\d.]+) (?:fps|tbr)/.exec(details);
   if (rate === null) throw new Error(`no frame rate in "${details}"`);
   const fps = Number(rate[1]);
   // `vp9 (Profile 0), yuv420p(tv, progressive), …`: the format follows the codec's notes.

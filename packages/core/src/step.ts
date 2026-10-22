@@ -34,6 +34,28 @@ const common = {
   timeoutMs: z.number().int().min(100).max(60_000).default(10_000),
 };
 
+/**
+ * Camera zoom on the step's target (ADR-0012): `true` for the renderer's
+ * default strength, a number for that strength (`1` is no zoom). Only on steps
+ * whose timeline event carries the target's box.
+ */
+export const ZoomSchema = z.union([z.boolean(), z.number().min(1).max(3)]);
+export type Zoom = z.infer<typeof ZoomSchema>;
+
+const zoom = { zoom: ZoomSchema.optional() };
+
+/** Reports a `zoom` the step has no target box for. */
+function zoomNeedsTarget(reason: string) {
+  return (value: object, ctx: z.RefinementCtx): void => {
+    const targeted =
+      Reflect.get(value, 'target') !== undefined &&
+      Reflect.get(value, 'state') !== 'hidden';
+    if (Reflect.get(value, 'zoom') !== undefined && !targeted) {
+      ctx.addIssue({ code: 'custom', message: reason, path: ['zoom'] });
+    }
+  };
+}
+
 function step<A extends StepAction, S extends z.ZodRawShape>(
   action: A,
   shape: S,
@@ -88,75 +110,210 @@ const PressKeySchema = z.string().superRefine((key, ctx) => {
   if (problem !== undefined) ctx.addIssue({ code: 'custom', message: problem });
 });
 
+const ENV_NAME = /^[A-Z_][A-Z0-9_]*$/;
+
+// Secrets never appear in a scenario (ADR-0003 §5), so they never come from data either.
+const EnvNameSchema = z
+  .string()
+  .superRefine((name, ctx) => {
+    if (name.includes('{{')) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'expected no {{…}} in valueFrom: secrets come from the environment, never from data',
+      });
+    } else if (!ENV_NAME.test(name)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'expected an environment variable name (A-Z, 0-9, _)',
+      });
+    }
+  })
+  .meta({ pattern: ENV_NAME.source });
+
+/**
+ * A string that still holds a `{{…}}` placeholder: a field of a step inside a
+ * `repeat` before substitution. Its format is checked once substituted.
+ */
+export const TemplateStringSchema = z
+  .string()
+  .regex(/\{\{/, 'expected a {{…}} placeholder');
+
+interface PlainSteps {
+  template: false;
+}
+interface TemplateSteps {
+  template: true;
+}
+/** A field with a format; inside a `repeat` it may also be a template. */
+type Formatted<M, S extends z.ZodType> = M extends TemplateSteps
+  ? z.ZodUnion<[S, typeof TemplateStringSchema]>
+  : S;
+
 const navigateKeys = ['path', 'url'] as const;
 const fillKeys = ['value', 'valueFrom'] as const;
 const scrollKeys = ['to', 'target'] as const;
 
-export const StepSchema = z.discriminatedUnion(
-  'action',
-  [
-    step('navigate', {
-      // `//host` and `/\host` are protocol-relative: they leave the origin.
-      path: z
-        .string()
-        .regex(/^\/(?![/\\])/, 'expected a path starting with a single /')
-        .optional(),
-      url: HttpUrlSchema.optional(),
-    })
-      .superRefine(exactlyOne(navigateKeys))
-      .meta(exactlyOneJsonSchema(navigateKeys)),
-    step('waitFor', {
-      target: LocatorSchema,
-      state: z.enum(['visible', 'hidden']).default('visible'),
-    }),
-    step('click', { target: LocatorSchema }),
-    step('fill', {
-      target: LocatorSchema,
-      value: z.string().optional(),
-      // Secrets never appear in a scenario (ADR-0003 §5).
-      valueFrom: z
-        .strictObject({
-          env: z
-            .string()
-            .regex(
-              /^[A-Z_][A-Z0-9_]*$/,
-              'expected an environment variable name (A-Z, 0-9, _)',
-            ),
+/**
+ * The step union. The template variant is what a `repeat` holds: every field
+ * with a format (a URL, a path, a key, a name, an enum) also takes a string
+ * with a `{{…}}` placeholder; the expanded step is checked against the plain one.
+ */
+function stepSchema<M extends PlainSteps | TemplateSteps>(mode: M) {
+  const format = <S extends z.ZodType>(schema: S): Formatted<M, S> =>
+    (mode.template
+      ? z.union([schema, TemplateStringSchema], {
+          // Neither: the format's own message says what was expected.
+          error: (issue) =>
+            issue.code === 'invalid_union'
+              ? issue.errors[0]?.[0]?.message
+              : undefined,
         })
-        .optional(),
-    })
-      .superRefine(exactlyOne(fillKeys))
-      .meta(exactlyOneJsonSchema(fillKeys)),
-    step('select', { target: LocatorSchema, option: z.string() }),
-    step('hover', { target: LocatorSchema }),
-    // No target: the key goes to the focused element.
-    step('press', { key: PressKeySchema, target: LocatorSchema.optional() }),
-    step('scroll', {
-      to: z.enum(['top', 'bottom']).optional(),
-      target: LocatorSchema.optional(),
-      // Scroll inside this container instead of the page.
-      within: LocatorSchema.optional(),
-    })
-      .superRefine(exactlyOne(scrollKeys))
-      .meta(exactlyOneJsonSchema(scrollKeys)),
-    step('assertVisible', { target: LocatorSchema }),
-    step('assertText', {
-      target: LocatorSchema,
-      text: NonEmptyStringSchema,
-      match: z.enum(['exact', 'contains']).default('contains'),
-    }),
-    step('screenshot', {
-      name: z
-        .string()
-        .regex(/^[a-z0-9-]+$/, 'expected lowercase letters, digits and -'),
-    }),
-    step('marker', {
-      title: NonEmptyStringSchema,
-      kind: MarkerKindSchema.default('scene'),
-    }),
-    step('wait', { ms: z.number().int().min(1).max(5_000) }),
-  ],
-  { error: `expected action to be one of ${STEP_ACTIONS.join('|')}` },
-);
+      : schema) as Formatted<M, S>;
+  return z.discriminatedUnion(
+    'action',
+    [
+      step('navigate', {
+        // `//host` and `/\host` are protocol-relative: they leave the origin.
+        path: format(
+          z
+            .string()
+            .regex(/^\/(?![/\\])/, 'expected a path starting with a single /')
+            .optional(),
+        ),
+        url: format(HttpUrlSchema.optional()),
+      })
+        .superRefine(exactlyOne(navigateKeys))
+        .meta(exactlyOneJsonSchema(navigateKeys)),
+      step('waitFor', {
+        target: LocatorSchema,
+        state: format(z.enum(['visible', 'hidden']).default('visible')),
+        ...zoom,
+      })
+        .superRefine(
+          zoomNeedsTarget('expected no zoom on a waitFor for a hidden target'),
+        )
+        // Not both `state: hidden` and `zoom`.
+        .meta({
+          not: {
+            required: ['state', 'zoom'],
+            properties: { state: { const: 'hidden' } },
+          },
+        }),
+      step('click', { target: LocatorSchema, ...zoom }),
+      step('fill', {
+        target: LocatorSchema,
+        ...zoom,
+        value: z.string().optional(),
+        valueFrom: z.strictObject({ env: EnvNameSchema }).optional(),
+      })
+        .superRefine(exactlyOne(fillKeys))
+        .meta(exactlyOneJsonSchema(fillKeys)),
+      step('select', { target: LocatorSchema, option: z.string(), ...zoom }),
+      step('hover', { target: LocatorSchema, ...zoom }),
+      // No target: the key goes to the focused element.
+      step('press', {
+        key: format(PressKeySchema),
+        target: LocatorSchema.optional(),
+        ...zoom,
+      })
+        .superRefine(
+          zoomNeedsTarget('expected zoom only on a press with a target'),
+        )
+        .meta({ dependentRequired: { zoom: ['target'] } }),
+      step('scroll', {
+        to: format(z.enum(['top', 'bottom']).optional()),
+        target: LocatorSchema.optional(),
+        // Scroll inside this container instead of the page.
+        within: LocatorSchema.optional(),
+      })
+        .superRefine(exactlyOne(scrollKeys))
+        .meta(exactlyOneJsonSchema(scrollKeys)),
+      step('assertVisible', { target: LocatorSchema, ...zoom }),
+      step('assertText', {
+        target: LocatorSchema,
+        ...zoom,
+        text: NonEmptyStringSchema,
+        match: format(z.enum(['exact', 'contains']).default('contains')),
+      }),
+      step('screenshot', {
+        name: format(
+          z
+            .string()
+            .regex(/^[a-z0-9-]+$/, 'expected lowercase letters, digits and -'),
+        ),
+      }),
+      step('marker', {
+        title: NonEmptyStringSchema,
+        kind: format(MarkerKindSchema.default('scene')),
+      }),
+      step('wait', { ms: z.number().int().min(1).max(5_000) }),
+    ],
+    {
+      error: (issue) =>
+        mode.template && actionOf(issue.input) === 'repeat'
+          ? 'expected no repeat inside a repeat: loops are one level deep'
+          : `expected action to be one of ${STEP_ACTIONS.join('|')}`,
+    },
+  );
+}
+
+function actionOf(input: unknown): unknown {
+  return typeof input === 'object' && input !== null && 'action' in input
+    ? input.action
+    : undefined;
+}
+
+/** A plain step: what the engine runs, and what a `repeat` expands to. */
+export const StepSchema = stepSchema<PlainSteps>({ template: false });
 export type Step = z.infer<typeof StepSchema>;
 export type StepInput = z.input<typeof StepSchema>;
+
+/** A step inside a `repeat`, before its `{{…}}` placeholders are substituted. */
+export const TemplateStepSchema = stepSchema<TemplateSteps>({
+  template: true,
+});
+export type TemplateStep = z.infer<typeof TemplateStepSchema>;
+export type TemplateStepInput = z.input<typeof TemplateStepSchema>;
+
+/** A data list name, a field of its items, or the name a `repeat` gives an item. */
+export const DATA_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const dataKeyMessage =
+  'expected letters, digits and _, not starting with a digit';
+export const DataKeySchema = z.string().regex(DATA_KEY, dataKeyMessage);
+
+/**
+ * Runs its steps once per item of a data list, substituting `{{<as>.<field>}}`
+ * and `{{index}}` (1-based) into them. One level: no `repeat` inside.
+ */
+export const RepeatStepSchema = z.strictObject({
+  action: z.literal('repeat'),
+  each: DataKeySchema,
+  // `index` is taken by `{{index}}`.
+  as: z
+    .string()
+    .regex(
+      /^(?!index$)[A-Za-z_][A-Za-z0-9_]*$/,
+      `${dataKeyMessage}, other than index`,
+    )
+    .default('item'),
+  steps: z
+    .array(TemplateStepSchema)
+    .min(1, 'expected at least one step')
+    .max(50, 'expected at most 50 steps'),
+  // Shown once, before the first iteration.
+  caption: z.string().max(120).optional(),
+});
+export type RepeatStep = z.infer<typeof RepeatStepSchema>;
+export type RepeatStepInput = z.input<typeof RepeatStepSchema>;
+
+/** A step as a scenario holds it: a plain step or a `repeat`. */
+export const ScenarioStepSchema = z.discriminatedUnion(
+  'action',
+  [...StepSchema.options, RepeatStepSchema],
+  {
+    error: `expected action to be one of ${STEP_ACTIONS.join('|')}|repeat`,
+  },
+);
+export type ScenarioStep = z.infer<typeof ScenarioStepSchema>;
+export type ScenarioStepInput = z.input<typeof ScenarioStepSchema>;

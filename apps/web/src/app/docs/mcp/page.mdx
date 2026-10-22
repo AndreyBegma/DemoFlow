@@ -1,0 +1,78 @@
+export const metadata = { title: 'MCP tools' };
+
+# MCP tools
+
+`demoflow mcp` serves demo generation to MCP clients over stdio, so an AI agent
+such as Claude Code can write a scenario, run it, and hand you the video.
+Everything still runs on your machine.
+
+Register it with Claude Code:
+
+```sh
+claude mcp add demoflow -- npx demoflow mcp
+```
+
+The server's working directory is the default project. Every tool that takes a
+`project` expects the absolute path of the directory with
+`demoflow.config.json`.
+
+## Tools
+
+| Tool | What it does |
+|---|---|
+| `generate_demo` | Queue a demo run of a scenario. Returns a task ID at once. |
+| `get_task` | A task's status, stage results and artifact paths. |
+| `cancel_task` | Cancel a task. |
+| `validate_scenario` | Check a scenario without running it. |
+| `list_demos` | Recent runs of the project, newest first. |
+| `check_project` | Whether the project is ready to run demos. |
+
+### generate_demo
+
+Queues a run and returns a task ID. Runs execute one at a time. The first run
+on a machine may download the browser (about 250 MB) and take longer.
+
+| Input | Meaning |
+|---|---|
+| `project` | The project directory. |
+| `scenario` or `file` | Exactly one: an inline scenario object, or a `*.demo.json` in the project, relative to its root or absolute. |
+| `formats` | The files to render, in order: `mp4`, `gif`, `webm`. Replaces `render.formats`. |
+| `timeoutMinutes` | 1 to 60. The task is killed and marked `timed_out` after this long. |
+
+### get_task
+
+Takes the `taskId` from `generate_demo`. `waitSeconds` holds the reply until
+the task finishes or that many seconds pass, so one call can replace a polling
+loop; poll again to wait longer. The answer has the status, the result of each
+stage, and the paths of the video, the timeline, the source recording and the
+run directory.
+
+### cancel_task
+
+A queued task never starts and a running one is killed. A finished one is
+unchanged.
+
+### validate_scenario
+
+Takes an inline `scenario` or a `file`, exactly one. Returns `{ "valid": true }`,
+or an `invalid-scenario` error with issue paths. Nothing is run or written, so
+an agent can fix a scenario before spending a run on it.
+
+### list_demos
+
+Recent runs of the project's artifacts home: task ID, scenario name, status,
+start time, duration and video path. `limit` is 1 to 100, default 20.
+
+### check_project
+
+Reports whether the project is ready: its scenario files, a valid config, and
+whether FFmpeg and the browser are available.
+
+## A typical session
+
+1. The agent calls `check_project`.
+2. It writes a scenario and calls `validate_scenario` until it is valid.
+3. It calls `generate_demo`, then `get_task` with `waitSeconds` until the task finishes.
+4. It tells you where the video is.
+
+The [scenario format](/docs/scenarios) is the same one `demoflow run` reads.

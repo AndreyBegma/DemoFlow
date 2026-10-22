@@ -76,7 +76,7 @@ steps:
     image: *node_image
     commands:
       - *setup
-      - bun run build --filter=demoflow
+      - bun run build --filter=@demoflow/cli
 
   - name: smoke
     image: *node_image

@@ -10,9 +10,17 @@ import { drawPlan } from './pipeline.ts';
  */
 export const ffmpegRenderer: Renderer = {
   name: 'ffmpeg',
-  render(runDir, plan, out = renderPath(runDir, 'ffmpeg')) {
-    return recordRender(runDir, 'ffmpeg', out, () =>
-      drawPlan(path.resolve(runDir, plan.source.file), plan, out),
+  render(runDir, plan) {
+    const files = plan.output.files.map(({ format }) => ({
+      format,
+      file: renderPath(runDir, 'ffmpeg', format),
+    }));
+    return recordRender(runDir, 'ffmpeg', files, () =>
+      drawPlan(
+        path.resolve(runDir, plan.source.file),
+        plan,
+        files.map(({ file }) => file),
+      ),
     );
   },
 };

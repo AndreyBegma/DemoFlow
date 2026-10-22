@@ -4,6 +4,7 @@ import {
   JsonSchemaRefSchema,
   NonEmptyStringSchema,
 } from './common.ts';
+import { RENDER_FORMATS } from './run-result.ts';
 
 const OriginSchema = HttpUrlSchema.refine(
   (value) => new URL(value).origin === value,
@@ -58,6 +59,129 @@ export const FrameConfigSchema = z
   .prefault({});
 export type FrameConfig = z.infer<typeof FrameConfigSchema>;
 
+const CardDurationSchema = z.number().int().min(500).max(10_000);
+
+const CardTextSchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(/\S/, 'expected some text, not only spaces');
+
+/**
+ * Cards inserted between page frames (spec 108): an intro from the scenario's
+ * name and description, one per `scene` marker, and an outro. The outro is off
+ * unless it has a `title` — the config has no project name to fall back on.
+ */
+export const CardsConfigSchema = z
+  .strictObject({
+    intro: z
+      .strictObject({
+        enabled: z.boolean().default(true),
+        durationMs: CardDurationSchema.default(2000),
+      })
+      .prefault({}),
+    scenes: z
+      .strictObject({
+        enabled: z.boolean().default(true),
+        durationMs: CardDurationSchema.default(1500),
+      })
+      .prefault({}),
+    outro: z
+      .strictObject({
+        title: CardTextSchema.optional(),
+        /** A second line under the title, e.g. a URL. */
+        cta: CardTextSchema.optional(),
+        durationMs: CardDurationSchema.default(2500),
+      })
+      .prefault({}),
+  })
+  .prefault({});
+export type CardsConfig = z.infer<typeof CardsConfigSchema>;
+
+/**
+ * Dissolves between a card and the page, and from the held frame of a page
+ * load into the loaded page (spec 114). Dissolve only, no other styles.
+ */
+export const TransitionsConfigSchema = z
+  .strictObject({
+    enabled: z.boolean().default(true),
+    /**
+     * At most half the shortest card that is on: a card fades in and out
+     * within its own time. Default 300, or half the shortest card when that
+     * is less, so a 500 ms card valid before #114 stays valid.
+     */
+    durationMs: z.number().int().min(100).max(1000).optional().meta({
+      description:
+        'Milliseconds; at most half the shortest card that is on. Default 300, or half the shortest card when that is less.',
+    }),
+  })
+  .prefault({});
+
+/** The transitions of a parsed config: the duration is always resolved. */
+export interface TransitionsConfig {
+  enabled: boolean;
+  durationMs: number;
+}
+
+const DEFAULT_TRANSITION_MS = 300;
+
+/**
+ * The GIF's own size and rate (spec 133); its height follows the render's
+ * aspect ratio. Used only when `formats` has `gif`.
+ */
+export const GifConfigSchema = z
+  .strictObject({
+    width: z.number().int().min(160).optional().meta({
+      description:
+        'Pixels, at most render.width. Default 800, or render.width when that is less.',
+    }),
+    fps: z.number().int().positive().optional().meta({
+      description:
+        'At most render.fps. Default 12, or render.fps when that is less.',
+    }),
+  })
+  .prefault({});
+
+/** The GIF of a parsed config: both values are always resolved. */
+export interface GifConfig {
+  width: number;
+  fps: number;
+}
+
+const DEFAULT_GIF = { width: 800, fps: 12 } as const;
+
+/**
+ * The 9:16 output (spec 176): a crop of the page that follows each step's
+ * target, with captions in a band at the bottom. Used only when `formats`
+ * has `mp4-vertical`.
+ */
+export const VerticalConfigSchema = z
+  .strictObject({
+    followMs: z.number().int().min(0).max(2000).default(400).meta({
+      description:
+        'Milliseconds the crop takes to move to the next target, eased in and out.',
+    }),
+    deadZone: z.number().min(0).lt(0.5).default(0.1).meta({
+      description:
+        'A move shorter than this share of the crop width is skipped, so the camera does not jitter.',
+    }),
+    captionBand: z.number().gt(0).max(0.5).default(0.22).meta({
+      description:
+        'The share of the frame height, at the bottom, that captions sit in.',
+    }),
+  })
+  .prefault({});
+export type VerticalConfig = z.infer<typeof VerticalConfigSchema>;
+
+/** The durations of the cards that are on (spec 108): an outro only with a title. */
+function cardsOn(cards: CardsConfig): number[] {
+  return [
+    cards.intro.enabled ? cards.intro.durationMs : undefined,
+    cards.scenes.enabled ? cards.scenes.durationMs : undefined,
+    cards.outro.title === undefined ? undefined : cards.outro.durationMs,
+  ].filter((ms) => ms !== undefined);
+}
+
 /** Render defaults per ADR-0004 §5–6: 1920×1080, 30 fps, idle 1 s → 400 ms. */
 export const RenderConfigSchema = z
   .strictObject({
@@ -72,6 +196,61 @@ export const RenderConfigSchema = z
       .prefault({}),
     frame: FrameConfigSchema,
     background: BackgroundConfigSchema.default({ preset: 'ocean' }),
+    cards: CardsConfigSchema,
+    transitions: TransitionsConfigSchema,
+    /** Every file a run writes, in this order (spec 133). */
+    formats: z
+      .array(z.enum(RENDER_FORMATS))
+      .min(1)
+      .refine(
+        (formats) => new Set(formats).size === formats.length,
+        'expected each format once',
+      )
+      .default(() => ['mp4' as const]),
+    gif: GifConfigSchema,
+    vertical: VerticalConfigSchema,
+  })
+  .superRefine(({ width, fps, cards, transitions, gif }, ctx) => {
+    if (gif.width !== undefined && gif.width > width) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `expected at most render.width (${width})`,
+        path: ['gif', 'width'],
+      });
+    }
+    if (gif.fps !== undefined && gif.fps > fps) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `expected at most render.fps (${fps})`,
+        path: ['gif', 'fps'],
+      });
+    }
+    const { enabled, durationMs } = transitions;
+    if (!enabled || durationMs === undefined) return;
+    const shortest = Math.min(...cardsOn(cards));
+    if (durationMs > shortest / 2) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `expected at most half the shortest card (${shortest} ms)`,
+        path: ['transitions', 'durationMs'],
+      });
+    }
+  })
+  .transform(({ transitions, gif, ...render }) => {
+    const resolvedGif: GifConfig = {
+      width: gif.width ?? Math.min(DEFAULT_GIF.width, render.width),
+      fps: gif.fps ?? Math.min(DEFAULT_GIF.fps, render.fps),
+    };
+    const resolved: TransitionsConfig = {
+      enabled: transitions.enabled,
+      durationMs:
+        transitions.durationMs ??
+        Math.min(
+          DEFAULT_TRANSITION_MS,
+          Math.floor(Math.min(...cardsOn(render.cards)) / 2),
+        ),
+    };
+    return { ...render, transitions: resolved, gif: resolvedGif };
   })
   .prefault({});
 export type RenderConfig = z.infer<typeof RenderConfigSchema>;

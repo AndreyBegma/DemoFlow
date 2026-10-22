@@ -1,18 +1,28 @@
 import { spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { cp, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runFfmpegRaw } from '@demoflow/renderer';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 // Read-only helper of the engine's tests: serves the built fixture on an ephemeral port.
 import {
   type FixtureServer,
   startFixtureServer,
 } from '../../../../packages/engine/test/execute/fixture-server.ts';
+import { writeCredentials } from '../../src/auth/credentials.ts';
 
 const CLI_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -39,7 +49,14 @@ function demoflow(
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [MAIN, ...args], {
       cwd,
-      env: { ...process.env, FIXTURE_PASSWORD: '', DEMOFLOW_HOME: '', ...env },
+      env: {
+        ...process.env,
+        FIXTURE_PASSWORD: '',
+        DEMOFLOW_HOME: '',
+        // A paired developer machine must not report from the test suite.
+        DEMOFLOW_NO_REPORT: '1',
+        ...env,
+      },
     });
     let stdout = '';
     let stderr = '';
@@ -141,6 +158,133 @@ describe('demoflow validate', () => {
     expect(result.code).toBe(2);
     expect(result.stderr).toContain(`steps[${index}].target`);
   });
+
+  it('exits 2 with the step path for a field missing in an item, before any run', async () => {
+    const bad = JSON.parse(
+      await readFile(scenario('customers-repeat'), 'utf8'),
+    );
+    bad.data.customers[3] = { name: 'Barbara Liskov' };
+    const file = path.join(project, 'demoflow', 'bad-repeat.demo.json');
+    await writeFile(file, JSON.stringify(bad));
+
+    for (const args of [
+      ['validate', file],
+      ['run', file, '--out', out],
+    ]) {
+      const result = await demoflow(args, project);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain(
+        'steps[1].steps[2].value: unknown field customer.email: missing in data.customers[3]',
+      );
+    }
+  });
+});
+
+describe('demoflow run on a paired machine', () => {
+  let home: string;
+  let api: Server;
+  let received: { auth: string | undefined; body: Record<string, unknown> }[];
+  let status: number;
+
+  const pairedEnv = (server: string) => {
+    const env = {
+      HOME: home,
+      USERPROFILE: home,
+      XDG_CONFIG_HOME: path.join(home, 'xdg'),
+      APPDATA: path.join(home, 'appdata'),
+      DEMOFLOW_NO_REPORT: '',
+      CI: '',
+    };
+    writeCredentials(
+      { platform: process.platform, env, homedir: home },
+      { server, token: 'dfr_test', runnerId: 'r1' },
+    );
+    return env;
+  };
+  const apiUrl = () =>
+    `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
+
+  beforeEach(async () => {
+    home = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-home-'));
+    received = [];
+    status = 201;
+    api = createServer((request, response) => {
+      let text = '';
+      request.on('data', (chunk) => {
+        text += chunk;
+      });
+      request.on('end', () => {
+        if (request.url === '/api/runner/runs') {
+          received.push({
+            auth: request.headers.authorization,
+            body: JSON.parse(text) as Record<string, unknown>,
+          });
+        }
+        response.statusCode = status;
+        response.end('{}');
+      });
+    });
+    await new Promise<void>((resolve) => api.listen(0, '127.0.0.1', resolve));
+  });
+
+  afterEach(async () => {
+    await new Promise((resolve) => api.close(resolve));
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it('reports the run once, with the project root and the run fields', async () => {
+    const env = pairedEnv(apiUrl());
+    const result = await demoflow(
+      ['run', scenario('customers'), '--json', '--out', out],
+      project,
+      env,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(received).toHaveLength(1);
+    const [report] = received;
+    expect(report?.auth).toBe('Bearer dfr_test');
+    expect(report?.body).toMatchObject({
+      rootPath: realpathSync.native(project),
+      projectName: path.basename(project),
+      scenarioName: JSON.parse(result.stdout).scenarioName,
+      scenarioPath: 'demoflow/customers.demo.json',
+      status: 'passed',
+      formats: ['mp4'],
+    });
+  });
+
+  it('sends no report with DEMOFLOW_NO_REPORT=1', async () => {
+    const env = { ...pairedEnv(apiUrl()), DEMOFLOW_NO_REPORT: '1' };
+    const result = await demoflow(
+      ['run', scenario('customers'), '--json', '--out', out],
+      project,
+      env,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(received).toHaveLength(0);
+  });
+
+  it('keeps the output and the exit code when the API answers 500', async () => {
+    status = 500;
+    const result = await demoflow(
+      ['run', scenario('customers'), '--json', '--out', out],
+      project,
+      pairedEnv(apiUrl()),
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).status).toBe('completed');
+    expect(result.stderr).not.toMatch(/report|500|runner\/runs/i);
+  });
+
+  it('keeps the output and the exit code when the API is unreachable', async () => {
+    const result = await demoflow(
+      ['run', scenario('customers'), '--json', '--out', out],
+      project,
+      pairedEnv('http://127.0.0.1:1'),
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).status).toBe('completed');
+  });
 });
 
 describe('demoflow run', () => {
@@ -185,6 +329,10 @@ describe('demoflow run', () => {
           render: {
             frame: { marginRatio: 0.2 },
             background: { color: '#c03020' },
+            // Frame 0 is the page, not the intro card nor the first load's
+            // background (spec 114).
+            cards: { intro: { enabled: false } },
+            transitions: { enabled: false },
           },
         }),
       );
@@ -236,6 +384,156 @@ describe('demoflow run', () => {
     }
   });
 
+  it('renders the cards from render.cards: the intro card opens the video', async () => {
+    const carded = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-cards-'));
+    try {
+      const render = async (cards: object): Promise<string> => {
+        await writeFile(
+          path.join(carded, 'demoflow.config.json'),
+          JSON.stringify({
+            baseUrl: fixture.origin,
+            render: { background: { color: '#c03020' }, cards },
+          }),
+        );
+        const result = await demoflow(
+          [
+            'run',
+            path.join(carded, 'demoflow', 'customers.demo.json'),
+            '--json',
+            '--out',
+            out,
+          ],
+          carded,
+        );
+        expect(result.code, result.stderr).toBe(0);
+        const json = JSON.parse(result.stdout);
+        return path.join(json.runDir, json.renders[0].file);
+      };
+      await cp(FIXTURE_SCENARIOS, path.join(carded, 'demoflow'), {
+        recursive: true,
+      });
+      const file = await render({ outro: { title: 'Acme' } });
+      const { stdout: frame } = await runFfmpegRaw([
+        '-i',
+        file,
+        '-frames:v',
+        '1',
+        '-f',
+        'rawvideo',
+        '-pix_fmt',
+        'rgb24',
+        'pipe:1',
+      ]);
+      expect(frame.length).toBe(1920 * 1080 * 3);
+      const pixel = (x: number, y: number): number[] => {
+        const at = (y * 1920 + x) * 3;
+        return [frame[at], frame[at + 1], frame[at + 2]];
+      };
+      // The intro card: background where the window would be at 6 % margin…
+      const colour = [0xc0, 0x30, 0x20];
+      pixel(960, 150).forEach((value, c) => {
+        expect(Math.abs(value - colour[c])).toBeLessThanOrEqual(8);
+      });
+      // …and the scenario name in white across the middle.
+      let white = 0;
+      for (let y = 480; y < 560; y++) {
+        for (let x = 0; x < 1920; x++) {
+          if (pixel(x, y).every((value) => value > 220)) white++;
+        }
+      }
+      expect(white).toBeGreaterThan(200);
+    } finally {
+      await rm(carded, { recursive: true, force: true });
+    }
+  });
+
+  it('renders with render.transitions on by default: the first load opens on the background', async () => {
+    const faded = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-fades-'));
+    try {
+      await writeFile(
+        path.join(faded, 'demoflow.config.json'),
+        JSON.stringify({
+          baseUrl: fixture.origin,
+          render: {
+            background: { color: '#c03020' },
+            cards: { intro: { enabled: false } },
+          },
+        }),
+      );
+      await cp(FIXTURE_SCENARIOS, path.join(faded, 'demoflow'), {
+        recursive: true,
+      });
+      const result = await demoflow(
+        [
+          'run',
+          path.join(faded, 'demoflow', 'customers.demo.json'),
+          '--json',
+          '--out',
+          out,
+        ],
+        faded,
+      );
+      expect(result.code, result.stderr).toBe(0);
+      const json = JSON.parse(result.stdout);
+      const { stdout: frame } = await runFfmpegRaw([
+        '-i',
+        path.join(json.runDir, json.renders[0].file),
+        '-frames:v',
+        '1',
+        '-f',
+        'rawvideo',
+        '-pix_fmt',
+        'rgb24',
+        'pipe:1',
+      ]);
+      expect(frame.length).toBe(1920 * 1080 * 3);
+      // The middle of the window: the background, not about:blank's white
+      // nor the page — the page dissolves in once it has loaded (spec 114).
+      const colour = [0xc0, 0x30, 0x20];
+      const at = (540 * 1920 + 960) * 3;
+      const pixel = [frame[at], frame[at + 1], frame[at + 2]];
+      pixel.forEach((value, c) => {
+        expect(Math.abs(value - colour[c]), `${pixel}`).toBeLessThanOrEqual(8);
+      });
+    } finally {
+      await rm(faded, { recursive: true, force: true });
+    }
+  });
+
+  it('runs a repeat once per item: five customers typed, each event tagged', async () => {
+    const result = await demoflow(
+      ['run', scenario('customers-repeat'), '--json', '--out', out],
+      project,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.status).toBe('completed');
+    const timeline = JSON.parse(
+      await readFile(path.join(json.runDir, 'timeline.json'), 'utf8'),
+    );
+    // navigate, the repeat's caption, then 5 steps × 5 customers.
+    expect(timeline.events).toHaveLength(27);
+    expect(timeline.events[1]).toMatchObject({
+      action: 'marker',
+      origin: { repeatIndex: 1, iteration: 0 },
+    });
+    const names = timeline.events.filter(
+      (event: { action: string; value?: string }) =>
+        event.action === 'fill' && !event.value?.includes('@'),
+    );
+    expect(names.map((event: { value: string }) => event.value)).toEqual([
+      'Grace Hopper',
+      'Alan Turing',
+      'Edsger Dijkstra',
+      'Barbara Liskov',
+      'Ken Thompson',
+    ]);
+    expect(timeline.events.at(-1).origin).toEqual({
+      repeatIndex: 1,
+      iteration: 4,
+    });
+  });
+
   it('a failing scenario exits 1 with status failed', async () => {
     const result = await demoflow(
       ['run', scenario('failing'), '--json', '--out', out],
@@ -243,6 +541,53 @@ describe('demoflow run', () => {
     );
     expect(result.code, result.stderr).toBe(1);
     expect(JSON.parse(result.stdout).status).toBe('failed');
+  });
+
+  it('--format gif renders only the GIF, whatever render.formats says', async () => {
+    const result = await demoflow(
+      ['run', scenario('customers'), '--json', '--out', out, '--format', 'gif'],
+      project,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    const json = JSON.parse(result.stdout);
+    expect(json.renders).toHaveLength(1);
+    expect(json.renders[0]).toMatchObject({
+      format: 'gif',
+      file: 'render/ffmpeg.gif',
+      width: 800,
+      height: 450,
+      fps: 12,
+    });
+    expect(await exists(path.join(json.runDir, 'render/ffmpeg.gif'))).toBe(
+      true,
+    );
+    expect(await exists(path.join(json.runDir, 'render/ffmpeg.mp4'))).toBe(
+      false,
+    );
+  });
+
+  it('--format with an unknown or repeated format is a usage error before any run', async () => {
+    for (const formats of [['avi'], ['gif', 'gif']]) {
+      const isolated = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-fmt-'));
+      try {
+        const result = await demoflow(
+          [
+            'run',
+            scenario('customers'),
+            '--out',
+            isolated,
+            ...formats.flatMap((format) => ['--format', format]),
+          ],
+          project,
+        );
+        expect(result.code).toBe(2);
+        expect(result.stderr).toContain('--format');
+        // Nothing ran: no run directory, so no browser and no app.
+        expect(await exists(path.join(isolated, 'runs'))).toBe(false);
+      } finally {
+        await rm(isolated, { recursive: true, force: true });
+      }
+    }
   });
 
   it('exits 2 before a browser starts when valueFrom.env is missing', async () => {

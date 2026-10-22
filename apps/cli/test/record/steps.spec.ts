@@ -33,6 +33,40 @@ describe('appendStep', () => {
     ]);
   });
 
+  it('folds typing into one field into one fill when a later event resolves another locator', () => {
+    // Issue #103: under load one keystroke's accessible-name read timed out and
+    // the same field came back as its label.
+    const role = { role: 'searchbox', name: 'Search customers' };
+    let steps: RecordedStep[] = [];
+    steps = appendStep(steps, {
+      step: { action: 'fill', target: role, value: 'Ad' },
+      field: 'doc:1',
+    });
+    steps = appendStep(steps, {
+      step: { action: 'fill', target: search, value: 'Ada' },
+      field: 'doc:1',
+    });
+    expect(steps).toEqual([
+      {
+        step: { action: 'fill', target: role, value: 'Ada' },
+        field: 'doc:1',
+      },
+    ]);
+  });
+
+  it('keeps fills of two fields apart even when their locators match', () => {
+    let steps: RecordedStep[] = [];
+    steps = appendStep(steps, {
+      step: { action: 'fill', target: search, value: 'Ada' },
+      field: 'doc:1',
+    });
+    steps = appendStep(steps, {
+      step: { action: 'fill', target: search, value: 'Bob' },
+      field: 'doc:2',
+    });
+    expect(steps).toHaveLength(2);
+  });
+
   it('keeps fills of different fields apart', () => {
     let steps: RecordedStep[] = [];
     steps = appendStep(steps, {

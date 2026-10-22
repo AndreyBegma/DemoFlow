@@ -1,13 +1,17 @@
 import {
   BACKGROUND_PRESETS,
   type BackgroundConfig,
+  CardsConfigSchema,
+  type Navigation,
   type RunResult,
   type Stages,
   type TimelineEvent,
 } from '@demoflow/core';
 import { createCompositor, renderStage } from '../../src/ffmpeg/compose.ts';
+import { drawLayers } from '../../src/ffmpeg/layers.ts';
 import { createPicture, type Picture } from '../../src/ffmpeg/raster.ts';
 import {
+  BACKGROUND_PRESET_COLOURS,
   type FrameState,
   frameAt,
   type OutputSpec,
@@ -21,9 +25,9 @@ export const OUTPUT: OutputSpec = {
   width: 1920,
   height: 1080,
   fps: 30,
-  codec: 'h264',
-  pixelFormat: 'yuv420p',
-  faststart: true,
+  files: [
+    { format: 'mp4', codec: 'h264', pixelFormat: 'yuv420p', faststart: true },
+  ],
 };
 
 /**
@@ -54,6 +58,26 @@ export function syntheticSource(): Picture {
   return picture;
 }
 
+/**
+ * The page before a navigation, at the synthetic source's size (spec 114):
+ * warm horizontal bands and a dark panel where the source has its white bar,
+ * so a held frame and a dissolve read apart from the live page.
+ */
+export function previousPageSource(): Picture {
+  const picture = createPicture(1280, 720);
+  for (let y = 0; y < 720; y++) {
+    for (let x = 0; x < 1280; x++) {
+      let [r, g, b] = (y >> 5) % 2 === 0 ? [235, 200, 150] : [210, 160, 110];
+      if (x >= 160 && x < 640 && y >= 80 && y < 240) [r, g, b] = [30, 40, 60];
+      const at = (y * 1280 + x) * 3;
+      picture.data[at] = r;
+      picture.data[at + 1] = g;
+      picture.data[at + 2] = b;
+    }
+  }
+  return picture;
+}
+
 function state(overrides: Partial<FrameState> = {}): FrameState {
   return {
     sourceMs: 0,
@@ -74,6 +98,10 @@ export interface Scene {
   region: { x: number; y: number; width: number; height: number };
   /** The framed plan `frame` comes from: the compositor draws its stage. */
   plan?: RenderPlan;
+  /** A held source time (spec 114): drawn from `previousPageSource()`. */
+  heldSourceMs?: number;
+  /** Drawn as the vertical output of `plan` (spec 176), at its size. */
+  vertical?: true;
 }
 
 const PASSED_STAGES: Stages = {
@@ -102,7 +130,10 @@ const RESULT: RunResult = {
  * A run over the synthetic source, planned with the frame on: the white bar
  * is a masked field, then the red block is clicked — the camera zooms on it.
  */
-export function framedPlan(options: RenderPlanOptions = {}): RenderPlan {
+export function framedPlan(
+  options: RenderPlanOptions = {},
+  extra: { navigations?: Navigation[]; sceneAtMs?: number } = {},
+): RenderPlan {
   const events: TimelineEvent[] = [
     {
       stepIndex: 0,
@@ -120,9 +151,19 @@ export function framedPlan(options: RenderPlanOptions = {}): RenderPlan {
       endMs: 1600,
       target: { box: { x: 700, y: 300, width: 200, height: 120 } },
       pointer: { from: { x: 640, y: 560 }, to: { x: 800, y: 360 } },
+      zoom: true,
     },
     { stepIndex: 2, action: 'wait', startMs: 1600, endMs: 3000 },
   ];
+  if (extra.sceneAtMs !== undefined) {
+    events.push({
+      stepIndex: 3,
+      action: 'marker',
+      startMs: extra.sceneAtMs,
+      endMs: extra.sceneAtMs,
+      marker: { title: 'Invoices', kind: 'scene' },
+    });
+  }
   return planRender(
     {
       timeline: {
@@ -131,6 +172,9 @@ export function framedPlan(options: RenderPlanOptions = {}): RenderPlan {
         deviceScaleFactor: 1,
         videoFile: 'source.webm',
         events,
+        ...(extra.navigations === undefined
+          ? {}
+          : { navigations: extra.navigations }),
       },
       result: RESULT,
       source: {
@@ -149,6 +193,30 @@ export function framedPlan(options: RenderPlanOptions = {}): RenderPlan {
 const FRAMED = framedPlan();
 /** The press of the click: the camera is at its 1.25× zoom on the red block. */
 const PRESS_FRAME = Math.round((FRAMED.clicks[0].atMs * 30) / 1000);
+
+/**
+ * Spec 114: the click loads a new page 1 700–2 300 ms, a scene card at
+ * 2 700. The masked field's mask is up when the navigation starts, so the
+ * held frame carries it.
+ */
+const TRANSITIONED = framedPlan(
+  {
+    transitions: { enabled: true, durationMs: 300 },
+    cards: CardsConfigSchema.parse({ intro: { enabled: false } }),
+  },
+  {
+    navigations: [
+      { startMs: 0, endMs: 50 },
+      { startMs: 1700, endMs: 2300 },
+    ],
+    sceneAtMs: 2700,
+  },
+);
+const HELD_SOURCE_MS = TRANSITIONED.transitions?.holds[1]?.sourceMs;
+
+/** Spec 176: the framed run with the vertical output; the frame is not used there. */
+const VERTICAL = framedPlan({ formats: ['mp4', 'mp4-vertical'] });
+const VERTICAL_SIZE = { width: 1080, height: 1920 } as const;
 
 export const SCENES: readonly Scene[] = [
   {
@@ -217,7 +285,100 @@ export const SCENES: readonly Scene[] = [
     region: { x: 0, y: 0, width: 1920, height: 1080 },
     plan: FRAMED,
   },
+  // Spec 108: cards on the background, in the caption's typeface.
+  card(
+    'card-intro',
+    'Create a customer',
+    'From the dashboard to a saved record',
+  ),
+  card('card-intro-no-description', 'Create a customer'),
+  card('card-scene', 'Invoices'),
+  card('card-outro', 'Acme', 'acme.dev/try'),
+  card('card-outro-no-cta', 'Acme'),
+  card(
+    'card-long-title',
+    // The title runs past two lines and ends in an ellipsis; the subtitle just fills two.
+    'A scenario name long enough to need a second line, and then so many more words that even two lines of it cannot hold them all',
+    'And a description that is long enough to wrap onto a second line of its own, and still goes on and on past that second line too',
+  ),
+  card('card-light-background', 'Acme', 'acme.dev/try', 'paper'),
+  // Spec 114: the page before the load, held at 2 000 ms with its mask.
+  transitioned('held-frame-mask', 2000),
+  // Mid-dissolve, 2 466 ms: the held page into the loaded one.
+  transitioned('fade-navigation', 2466.67),
+  // A scene card 166 ms into its dissolve from the page.
+  transitioned('fade-card', 2866.67),
+  // Spec 146: the first frame of the loaded page alone, 2 600 ms. The masked
+  // field's box is gone with the page it was on.
+  transitioned('live-after-navigation', 2600),
+  {
+    // Spec 176: the crop on the red block at the press, zoomed, with the
+    // cursor, the ring and a caption long enough to need a third line.
+    name: 'vertical-zoomed',
+    frame: {
+      ...frameAt(VERTICAL, PRESS_FRAME, 'vertical'),
+      caption:
+        'Open the invoice, check the total and the due date, then send it to the customer — Создать клиента',
+    },
+    region: { x: 0, y: 0, ...VERTICAL_SIZE },
+    plan: VERTICAL,
+    vertical: true,
+  },
+  {
+    // At the start: the crop on the page centre, the field's mask in it.
+    name: 'vertical-follow',
+    frame: frameAt(VERTICAL, 0, 'vertical'),
+    region: { x: 0, y: 0, ...VERTICAL_SIZE },
+    plan: VERTICAL,
+    vertical: true,
+  },
+  {
+    // A card centred in the vertical frame, wrapped to its width.
+    name: 'vertical-card',
+    frame: state({
+      sourceMs: null,
+      content: { x: 0, y: 0, ...VERTICAL_SIZE },
+      card: {
+        title: 'Create a customer',
+        subtitle: 'From the dashboard to a saved record',
+        background: BACKGROUND_PRESET_COLOURS.ocean,
+      },
+    }),
+    region: { x: 0, y: 0, ...VERTICAL_SIZE },
+    plan: VERTICAL,
+    vertical: true,
+  },
 ];
+
+function transitioned(name: string, atMs: number): Scene {
+  return {
+    name,
+    frame: frameAt(TRANSITIONED, Math.round((atMs * 30) / 1000)),
+    region: { x: 0, y: 0, width: 1920, height: 1080 },
+    plan: TRANSITIONED,
+    ...(HELD_SOURCE_MS === undefined ? {} : { heldSourceMs: HELD_SOURCE_MS }),
+  };
+}
+
+function card(
+  name: string,
+  title: string,
+  subtitle?: string,
+  preset: keyof typeof BACKGROUND_PRESET_COLOURS = 'ocean',
+): Scene {
+  return {
+    name,
+    frame: state({
+      sourceMs: null,
+      card: {
+        title,
+        ...(subtitle === undefined ? {} : { subtitle }),
+        background: BACKGROUND_PRESET_COLOURS[preset],
+      },
+    }),
+    region: { x: 0, y: 0, width: 1920, height: 1080 },
+  };
+}
 
 /** Every background a config can name: the six presets, a colour and a custom gradient. */
 export const SWATCH_BACKGROUNDS: readonly BackgroundConfig[] = [
@@ -259,14 +420,25 @@ export function renderSwatches(source: Picture): Picture {
   return strip;
 }
 
+const PREVIOUS_PAGE = previousPageSource();
+
 /** Draws `scene` and returns the region it keeps. */
 export function renderScene(scene: Scene, source: Picture): Picture {
-  const target = createPicture(OUTPUT.width, OUTPUT.height);
-  const stage = scene.plan === undefined ? undefined : renderStage(scene.plan);
-  createCompositor(OUTPUT, stage).compose(
-    target,
-    scene.frame,
-    scene.frame.endCard === undefined ? source : undefined,
+  const vertical = scene.vertical === true ? scene.plan?.vertical : undefined;
+  const output =
+    vertical === undefined
+      ? OUTPUT
+      : { ...OUTPUT, width: vertical.width, height: vertical.height };
+  const target = createPicture(output.width, output.height);
+  const compositor =
+    vertical === undefined
+      ? createCompositor(
+          output,
+          scene.plan === undefined ? undefined : renderStage(scene.plan),
+        )
+      : createCompositor(output, undefined, vertical.caption);
+  drawLayers(compositor, target, scene.frame, (ms) =>
+    ms === scene.heldSourceMs ? PREVIOUS_PAGE : source,
   );
   const { x, y, width, height } = scene.region;
   return cropPicture(target, x, y, width, height);

@@ -93,7 +93,7 @@ async function accessibleName(
       element,
     );
     if (index < 0) return null;
-    const snapshot = await all.nth(index).ariaSnapshot({ timeout: 1_000 });
+    const snapshot = await all.nth(index).ariaSnapshot({ timeout: 5_000 });
     return parseSnapshotName(snapshot, role);
   } catch {
     return null;

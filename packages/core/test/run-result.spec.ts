@@ -133,4 +133,31 @@ describe('RunResultSchema', () => {
       RunResultSchema.safeParse({ ...result, startedAt: '17/10/2026' }).success,
     ).toBe(false);
   });
+
+  it('reads a render written before spec 133, without a format, as MP4', () => {
+    const parsed = RunResultSchema.parse(result);
+    expect(parsed.renders[0]?.format).toBe('mp4');
+  });
+
+  it('keeps each render format, in order, and rejects an unknown one', () => {
+    const [render] = result.renders;
+    const renders = (['gif', 'webm', 'mp4', 'mp4-vertical'] as const).map(
+      (format) => ({
+        ...render,
+        format,
+        file: `render/ffmpeg.${format}`,
+      }),
+    );
+    expect(
+      RunResultSchema.parse({ ...result, renders }).renders.map(
+        (entry) => entry.format,
+      ),
+    ).toEqual(['gif', 'webm', 'mp4', 'mp4-vertical']);
+    expect(
+      RunResultSchema.safeParse({
+        ...result,
+        renders: [{ ...render, format: 'avi' }],
+      }).success,
+    ).toBe(false);
+  });
 });

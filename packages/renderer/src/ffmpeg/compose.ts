@@ -1,7 +1,13 @@
 import type { Box } from '@demoflow/core';
-import type { FrameState, OutputSpec, RenderPlan } from '../plan/types.ts';
+import type {
+  FrameState,
+  OutputSpec,
+  RenderPlan,
+  VerticalSpec,
+} from '../plan/types.ts';
 import {
   capHeight,
+  clampLines,
   descent,
   lineHeight,
   measureText,
@@ -71,8 +77,22 @@ export const LOOK = {
     maxWidth: 1600,
     text: { fontPx: 48, weight: 'regular' },
   },
+  /** Intro, scene and outro cards (spec 108), centred on the background. */
+  card: {
+    maxWidth: 1600,
+    maxLines: 2,
+    title: { fontPx: 64, weight: 'semibold' },
+    subtitle: { fontPx: 40, weight: 'regular' },
+    /** From the title's last baseline to the subtitle's first cap top. */
+    gap: 44,
+    text: WHITE,
+    /** On a light background, such as `paper`. */
+    textOnLight: hex('#111111'),
+  },
   /** Under the window (spec 100), in output pixels at 1080p, scaled with the output height. */
   shadow: { colour: BLACK, alpha: 0.4, offsetY: 14, sigma: 28 },
+  /** The 9:16 output (spec 176): text keeps this far from the frame's sides. */
+  vertical: { marginX: 72 },
 } as const;
 
 /**
@@ -155,15 +175,27 @@ export function renderStage(plan: RenderPlan): Picture | undefined {
 /**
  * `stage` is the plan's `renderStage`: frames whose state carries `frame`
  * draw the page in the window on it; without it the page fills the frame on
- * black, as before spec 100.
+ * black, as before spec 100. `band` makes it the vertical output's (spec
+ * 176): captions sit in that band, and cards and the end card wrap to the
+ * frame's narrower width.
  */
 export function createCompositor(
   output: OutputSpec,
   stage?: Picture,
+  band?: VerticalSpec['caption'],
 ): Compositor {
   const captions = new Map<string, Laid>();
   const cards = new Map<string, Laid>();
+  const titleCards = new Map<string, Laid>();
+  const backdrops = new Map<string, Picture>();
   const badge = layBadge(output);
+  // The landscape keeps its fixed text widths; the vertical frame is narrower.
+  const narrow =
+    band === undefined ? undefined : output.width - 2 * LOOK.vertical.marginX;
+  const layCaptionHere =
+    band === undefined
+      ? (text: string) => layCaption(text, output)
+      : (text: string) => layBandCaption(text, output, band);
   const screen: Box = {
     x: 0,
     y: 0,
@@ -173,10 +205,37 @@ export function createCompositor(
 
   return {
     compose(target, state, source) {
-      if (state.endCard !== undefined) {
+      const background = state.card?.background ?? state.backdrop;
+      if (background !== undefined) {
+        const key = `${background.from}${background.to}${background.angle}`;
+        let backdrop = backdrops.get(key);
+        if (backdrop === undefined) {
+          backdrop = createPicture(output.width, output.height);
+          fillGradient(
+            backdrop,
+            hex(background.from),
+            hex(background.to),
+            background.angle,
+          );
+          backdrops.set(key, backdrop);
+        }
+        target.data.set(backdrop.data);
+        if (state.card !== undefined) {
+          const { title, subtitle } = state.card;
+          const laid = cached(titleCards, `${title}\n\n${subtitle ?? ''}`, () =>
+            layCard(title, subtitle, output, narrow ?? LOOK.card.maxWidth),
+          );
+          const { text, textOnLight } = LOOK.card;
+          paintMask(
+            target,
+            laid.mask,
+            isLight(background) ? textOnLight : text,
+          );
+        }
+      } else if (state.endCard !== undefined) {
         fill(target, LOOK.endCard.background);
         const card = cached(cards, state.endCard, (text) =>
-          layEndCard(text, output),
+          layEndCard(text, output, narrow ?? LOOK.endCard.maxWidth),
         );
         paintMask(target, card.mask, WHITE);
       } else {
@@ -218,9 +277,7 @@ export function createCompositor(
           drawCursor(target, state.cursor, state.scale);
         }
         if (state.caption !== undefined) {
-          const caption = cached(captions, state.caption, (text) =>
-            layCaption(text, output),
-          );
+          const caption = cached(captions, state.caption, layCaptionHere);
           const { panel } = LOOK.caption;
           drawPanel(target, caption.panel, panel, LOOK.caption.panelAlpha);
           paintMask(target, caption.mask, WHITE);
@@ -390,6 +447,47 @@ function layCaption(text: string, output: OutputSpec): Laid {
   };
 }
 
+/**
+ * A vertical caption (spec 176, Decision 4): in the caption's panel, its type
+ * at the band's size, wrapped to the frame less its margins and cut to the
+ * band's lines, centred in the band.
+ */
+function layBandCaption(
+  text: string,
+  output: OutputSpec,
+  band: VerticalSpec['caption'],
+): Laid {
+  const { padding } = LOOK.caption;
+  const style: TextStyle = {
+    ...LOOK.caption.text,
+    fontPx: band.fontPx,
+  };
+  const lines = clampLines(
+    text,
+    style,
+    output.width - 2 * LOOK.vertical.marginX - 2 * padding,
+    band.maxLines,
+  );
+  const width =
+    Math.max(...lines.map((line) => measureText(line, style))) + 2 * padding;
+  const height = blockHeight(lines, style) + 2 * padding;
+  const panel: Box = {
+    x: (output.width - width) / 2,
+    y: Math.round(band.top + (band.height - height) / 2),
+    width,
+    height,
+  };
+  return {
+    panel,
+    mask: textMask(
+      lines,
+      style,
+      output.width / 2,
+      panel.y + padding + capHeight(style),
+    ),
+  };
+}
+
 /** The key badge, centred under `anchor` and kept inside `content`. */
 function layKey(
   text: string,
@@ -439,8 +537,56 @@ function layBadge(output: OutputSpec): Laid {
   };
 }
 
-function layEndCard(text: string, output: OutputSpec): Laid {
-  const { maxWidth, text: style } = LOOK.endCard;
+/** The title and subtitle, each at most two lines, centred as one block. */
+function layCard(
+  title: string,
+  subtitle: string | undefined,
+  output: OutputSpec,
+  maxWidth: number,
+): Laid {
+  const { maxLines, gap, title: big, subtitle: small } = LOOK.card;
+  const titleLines = clampLines(title, big, maxWidth, maxLines);
+  const subtitleLines =
+    subtitle === undefined
+      ? []
+      : clampLines(subtitle, small, maxWidth, maxLines);
+  const titleHeight =
+    (titleLines.length - 1) * lineHeight(big) + capHeight(big);
+  const subtitleHeight =
+    subtitleLines.length === 0
+      ? 0
+      : gap + (subtitleLines.length - 1) * lineHeight(small) + capHeight(small);
+  const top = Math.round((output.height - titleHeight - subtitleHeight) / 2);
+  const panel: Box = { x: 0, y: 0, width: output.width, height: output.height };
+  const centreX = output.width / 2;
+  const titleMask = textMask(titleLines, big, centreX, top + capHeight(big));
+  if (subtitleLines.length === 0) return { panel, mask: titleMask };
+  const subtitleMask = textMask(
+    subtitleLines,
+    small,
+    centreX,
+    top + titleHeight + gap + capHeight(small),
+  );
+  return {
+    panel,
+    mask: mergeMasks([
+      { mask: titleMask, x: 0, y: 0 },
+      { mask: subtitleMask, x: 0, y: 0 },
+    ]),
+  };
+}
+
+/** Whether dark text reads better than white on `background`: its mean luminance is high. */
+function isLight(background: { from: string; to: string }): boolean {
+  const luminance = (value: string): number => {
+    const { r, g, b } = hex(value);
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  };
+  return (luminance(background.from) + luminance(background.to)) / 2 > 0.6;
+}
+
+function layEndCard(text: string, output: OutputSpec, maxWidth: number): Laid {
+  const { text: style } = LOOK.endCard;
   const lines = wrapText(text, style, maxWidth);
   const height = (lines.length - 1) * lineHeight(style) + capHeight(style);
   const top = (output.height - height) / 2;

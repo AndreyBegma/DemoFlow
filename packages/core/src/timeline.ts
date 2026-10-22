@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { NonEmptyStringSchema, ViewportSchema } from './common.ts';
-import { MarkerKindSchema, StepActionSchema } from './step.ts';
+import { MarkerKindSchema, StepActionSchema, ZoomSchema } from './step.ts';
 
 /** The value a masked `fill` writes to the timeline instead of the secret. */
 export const MASKED_VALUE = '***';
@@ -16,6 +16,16 @@ const BoxSchema = z.strictObject({
 export type Box = z.infer<typeof BoxSchema>;
 
 const msSchema = z.number().nonnegative();
+
+/**
+ * Where an expanded step came from (spec 165): the `repeat` at
+ * `steps[repeatIndex]` of the scenario, in its 0-based `iteration`.
+ */
+export const StepOriginSchema = z.strictObject({
+  repeatIndex: z.number().int().nonnegative(),
+  iteration: z.number().int().nonnegative(),
+});
+export type StepOrigin = z.infer<typeof StepOriginSchema>;
 
 /** A stretch of time a masked field was on the page, and where it was then. */
 const MaskIntervalSchema = z
@@ -60,12 +70,53 @@ const MaskVisibilitySchema = z
   });
 
 /**
+ * A main-frame document navigation: from its request to the page's `load`
+ * (#114). Absent `endMs`: still loading when the recording ended.
+ */
+const NavigationSchema = z
+  .strictObject({
+    startMs: msSchema,
+    endMs: msSchema.optional(),
+  })
+  .refine((navigation) => (navigation.endMs ?? Infinity) > navigation.startMs, {
+    message: 'expected endMs to be after startMs',
+    path: ['endMs'],
+  });
+export type Navigation = z.infer<typeof NavigationSchema>;
+
+/** Ordered and non-overlapping; only the last may be open. */
+const NavigationsSchema = z
+  .array(NavigationSchema)
+  .superRefine((navigations, ctx) => {
+    for (const [index, navigation] of navigations.entries()) {
+      const previous = navigations[index - 1];
+      if (previous === undefined) continue;
+      if (previous.endMs === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'expected only the last navigation to be open',
+          path: [index - 1, 'endMs'],
+        });
+      } else if (navigation.startMs < previous.endMs) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'expected navigations ordered and not overlapping',
+          path: [index, 'startMs'],
+        });
+      }
+    }
+  });
+
+/**
  * One executed step. Times are milliseconds from the video's first frame;
  * boxes and points are CSS pixels of the viewport (ADR-0004 §1).
  */
 export const TimelineEventSchema = z
   .strictObject({
+    // Counts expanded steps: a `repeat` adds one per step per iteration.
     stepIndex: z.number().int().nonnegative(),
+    // Only on a step that came from a `repeat`.
+    origin: StepOriginSchema.optional(),
     action: StepActionSchema,
     startMs: msSchema,
     endMs: msSchema,
@@ -94,6 +145,8 @@ export const TimelineEventSchema = z
       .strictObject({ title: NonEmptyStringSchema, kind: MarkerKindSchema })
       .optional(),
     caption: z.string().optional(),
+    // The step's `zoom`, verbatim: the renderer resolves `true` (ADR-0012).
+    zoom: ZoomSchema.optional(),
     error: z.strictObject({ message: z.string() }).optional(),
     // Only on a masked `fill`: when its field was on the page (ADR-0004; #18).
     maskVisibility: MaskVisibilitySchema.optional(),
@@ -146,6 +199,8 @@ export const TimelineSchema = z
         path: ['offMs'],
       })
       .optional(),
+    // Document navigations only: a same-document route change has no blank page (#114).
+    navigations: NavigationsSchema.optional(),
   })
   .refine(
     (timeline) => {

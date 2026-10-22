@@ -25,9 +25,9 @@ const OUTPUT: OutputSpec = {
   width: 1920,
   height: 1080,
   fps: 30,
-  codec: 'h264',
-  pixelFormat: 'yuv420p',
-  faststart: true,
+  files: [
+    { format: 'mp4', codec: 'h264', pixelFormat: 'yuv420p', faststart: true },
+  ],
 };
 
 /** A 1280×720 source of 4 px black and white squares: blur greys it. */

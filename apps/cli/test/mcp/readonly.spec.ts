@@ -245,9 +245,44 @@ describe('list_demos', () => {
       startedAt: '2026-01-03T10:00:00.000Z',
       durationMs: 1234,
       video: path.join(home, 'runs', 'new', 'demo.mp4'),
+      // Written before spec 133, without a format: an MP4.
+      videos: [
+        { format: 'mp4', path: path.join(home, 'runs', 'new', 'demo.mp4') },
+      ],
     });
     expect(demos[1]).not.toHaveProperty('video');
     expect(demos[1]).not.toHaveProperty('durationMs');
+  });
+
+  it('lists every rendered file in order, the first as the video', async () => {
+    const run = JSON.parse(result('multi', '2026-01-04T10:00:00.000Z')) as {
+      renders: unknown[];
+    };
+    run.renders = (['gif', 'webm'] as const).map((format) => ({
+      renderer: 'ffmpeg',
+      format,
+      file: `render/ffmpeg.${format}`,
+      durationMs: 1234,
+      sizeBytes: 10,
+      width: 640,
+      height: 360,
+      fps: 30,
+    }));
+    write('home/runs/multi/result.json', JSON.stringify(run));
+    write('home/runs/multi/render/ffmpeg.gif', 'x');
+    write('home/runs/multi/render/ffmpeg.webm', 'x');
+
+    const { demos } = await listDemos({ project }, dir, host);
+    const gif = path.join(home, 'runs', 'multi', 'render', 'ffmpeg.gif');
+    const webm = path.join(home, 'runs', 'multi', 'render', 'ffmpeg.webm');
+    expect(demos[0]).toMatchObject({
+      taskId: 'multi',
+      video: gif,
+      videos: [
+        { format: 'gif', path: gif },
+        { format: 'webm', path: webm },
+      ],
+    });
   });
 
   it('honours limit', async () => {

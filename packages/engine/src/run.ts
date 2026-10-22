@@ -1,9 +1,13 @@
 import { mkdir } from 'node:fs/promises';
 import {
   deriveRunStatus,
+  type ExpandedStep,
+  expandScenario,
+  type Navigation,
   type Scenario,
   type Stage,
   type Stages,
+  type StepOrigin,
   type TimelineEvent,
 } from '@demoflow/core';
 import { type BrowserContext, chromium, type Page } from 'playwright';
@@ -15,7 +19,9 @@ import {
 } from './execute/actions.ts';
 import { type Clock, startClock } from './execute/clock.ts';
 import { MaskTracker } from './execute/mask.ts';
+import { NavigationRecorder } from './execute/navigations.ts';
 import type { EngineObserver, RunOutcome } from './execute/observer.ts';
+import { installNavigationProbe } from './execute/pending-navigation.ts';
 import { type Point, viewportCentre } from './execute/pointer.ts';
 import {
   checkReadiness,
@@ -102,26 +108,28 @@ export async function runScenario(
   try {
     await emit('onBrowserLaunched', { browser });
     const context = await browser.newContext(toContextOptions(recording));
+    await installNavigationProbe(context);
     const guard = new OriginGuard(options.allowedOrigins);
     const navigation = watchNavigation(context, guard);
 
     stages.recording = { status: 'running', startedAt: timestamp() };
     const page = await context.newPage();
     const clock = startClock();
+    const navigations = new NavigationRecorder(page, clock);
     await emit('onPageCreated', { page, recording });
     const syncMark = await recordSyncMark(page, clock);
 
     const events: TimelineEvent[] = [];
-    const hasAssertions = scenario.steps.some((step) =>
-      ASSERTIONS.has(step.action),
-    );
+    // A `repeat` runs as its expanded steps (spec 165); `stepIndex` counts them.
+    const { steps } = expandScenario(scenario);
+    const hasAssertions = steps.some((step) => ASSERTIONS.has(step.action));
     stages.execution = { status: 'running', startedAt: timestamp() };
     if (hasAssertions) {
       stages.verification = { status: 'running', startedAt: timestamp() };
     }
 
     const failure = await executeSteps({
-      scenario,
+      steps,
       page,
       clock,
       baseUrl,
@@ -131,7 +139,7 @@ export async function runScenario(
       observers,
       events,
       navigation,
-      masks: new MaskTracker(page),
+      masks: new MaskTracker(page, clock),
       scrub,
       emit,
     });
@@ -147,6 +155,7 @@ export async function runScenario(
       stages[failure.stage] = finish(stages[failure.stage], 'failed', {
         message: failure.message,
         stepIndex: failure.stepIndex,
+        ...(failure.origin === undefined ? {} : { origin: failure.origin }),
       });
       stages[other] = { ...stages[other], status: 'skipped' };
     }
@@ -168,7 +177,11 @@ export async function runScenario(
       });
     }
 
-    const outcome = conclude(startedAt, stages, events, videoPath, syncMark);
+    const outcome = conclude(startedAt, stages, events, {
+      videoPath,
+      syncMark,
+      navigations: navigations.list(),
+    });
     await emit('onRunFinished', { outcome, video });
     return outcome;
   } finally {
@@ -177,7 +190,7 @@ export async function runScenario(
 }
 
 interface ExecuteInput {
-  scenario: Scenario;
+  steps: readonly ExpandedStep[];
   page: Page;
   clock: Clock;
   baseUrl: string | undefined;
@@ -199,13 +212,14 @@ interface Failure {
   stage: FailedStage;
   message: string;
   stepIndex: number;
+  origin: StepOrigin | undefined;
 }
 
 /** Runs the steps in order and returns the first failure, if any. */
 async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
   const { clock, emit, scrub } = input;
   let pointer = input.pointer;
-  for (const [stepIndex, step] of input.scenario.steps.entries()) {
+  for (const [stepIndex, step] of input.steps.entries()) {
     const startMs = clock.now();
     await emit('onStepStarted', { stepIndex, step, startMs });
 
@@ -247,12 +261,14 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
 
     const event: TimelineEvent = {
       stepIndex,
+      ...(step.origin === undefined ? {} : { origin: step.origin }),
       action: step.action,
       startMs,
       endMs,
       ...result,
       ...(failure === undefined ? {} : failure.detail),
       ...(step.caption === undefined ? {} : { caption: step.caption }),
+      ...('zoom' in step && step.zoom !== undefined ? { zoom: step.zoom } : {}),
     };
     if (failure !== undefined && failure.stage === 'execution') {
       event.error = { message: scrub(failure.message) };
@@ -265,7 +281,7 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
     }
     // A failed masked fill is tracked too (#42): its interval stays open to the end.
     if (step.action === 'fill') {
-      input.masks.track(event, step.target);
+      await input.masks.track(event, step.target);
     }
     input.events.push(event);
     await emit('onStepFinished', { stepIndex, step, event });
@@ -275,6 +291,7 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
         stage: failure.stage,
         message: scrub(failure.message),
         stepIndex,
+        origin: step.origin,
       };
     }
   }
@@ -349,9 +366,13 @@ function conclude(
   startedAt: string,
   stages: Stages,
   events: TimelineEvent[],
-  videoPath?: string,
-  syncMark?: SyncMark,
+  recorded: {
+    videoPath?: string | undefined;
+    syncMark?: SyncMark | undefined;
+    navigations?: Navigation[];
+  } = {},
 ): RunOutcome {
+  const { videoPath, syncMark, navigations } = recorded;
   const warnings: string[] = [];
   return {
     startedAt,
@@ -361,6 +382,7 @@ function conclude(
     events,
     warnings,
     ...(syncMark === undefined ? {} : { syncMark }),
+    ...(navigations === undefined ? {} : { navigations }),
     ...(videoPath === undefined ? {} : { videoPath }),
   };
 }

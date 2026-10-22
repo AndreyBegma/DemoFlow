@@ -1,0 +1,84 @@
+export const metadata = { title: 'CLI' };
+
+# CLI
+
+Run `demoflow` through `npx demoflow`, or install it globally. `demoflow
+--help` lists the commands and `demoflow <command> --help` their flags.
+
+| Command | What it does |
+|---|---|
+| `demoflow record [name]` | Record a scenario by using the app. |
+| `demoflow validate <scenario>` | Check a scenario against the schema. |
+| `demoflow run <scenario>` | Run it in a browser and render the video. |
+| `demoflow setup` | Install Chromium now instead of on the first run. |
+| `demoflow mcp` | Serve demo generation to MCP clients over stdio. |
+| `demoflow login` | Pair this machine with your DemoFlow account. |
+| `demoflow logout` | Revoke this machine and delete its credentials. |
+| `demoflow runner …` | Keep this machine connected in the background. |
+
+## run
+
+```sh
+npx demoflow run demoflow/first.demo.json
+```
+
+| Flag | Meaning |
+|---|---|
+| `--base-url <url>` | Override `baseUrl` from `demoflow.config.json`. |
+| `--out <dir>` | The artifacts home, which holds `runs/`. |
+| `--headed` | Show the browser window. |
+| `--json` | Print the result as one JSON object on stdout. |
+| `--format <format>` | A file to render: `mp4`, `gif` or `webm`. Repeat it for several. Replaces `render.formats`. |
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | The run completed, with or without warnings. |
+| `1` | A step failed or an assertion did not hold. |
+| `2` | The input was invalid: the scenario, the config, or a missing secret. |
+| `3` | Recording, rendering or storage failed. |
+
+## validate
+
+`demoflow validate <scenario>` checks a file without running it. Nothing is
+started or written. It exits `0` when the file is valid and `2` when it is not,
+and reports each problem by its path.
+
+## record
+
+`demoflow record [name]` writes `demoflow/<name>.demo.json`. See
+[Recording](/docs/record) for the flags and the panel.
+
+## setup
+
+`demoflow setup` downloads Chromium ahead of time. Otherwise the first `run`
+does it.
+
+## login and logout
+
+`demoflow login` prints a code and opens the website, where you approve it. It
+stores a revocable device token. `--server <url>` (or `DEMOFLOW_SERVER`) picks
+the server, `--force` pairs again, and `--start` or `--no-start` answer in
+advance whether to start the runner. `demoflow logout` revokes the token and
+deletes the file. Every other command works without an account. See
+[Runner](/docs/runner).
+
+## Updates
+
+A globally installed `demoflow` asks npm for the latest version while a command
+runs, and after the command finishes asks on stderr:
+
+```
+demoflow 0.3.0 is available (you have 0.2.0). Update now? [Y/n/never]
+```
+
+- **Yes** installs it with the package manager that installed it: `npm install -g`, `bun add -g`, `pnpm add -g` or `yarn global add`.
+- **never** skips that version until a newer one appears.
+- A project install, or one whose manager it cannot tell, prints the command instead.
+
+The check gives up after 1.5 seconds and never changes a command's output or
+exit code. It stays silent without a terminal, under `CI`, for `mcp` and the
+runner's long-lived modes, and under `npx`, `bunx` and `pnpm dlx`.
+
+To turn it off, set the environment variable `DEMOFLOW_NO_UPDATE_CHECK=1`.

@@ -21,6 +21,7 @@ import {
   type FixtureServer,
   startFixtureServer,
 } from '../execute/fixture-server.ts';
+import { expectPreciseEnd, pageFrames } from '../execute/page-frames.ts';
 import { webmFrameSize } from './webm.ts';
 
 const SCENARIO_DIR = path.join(FIXTURE_DIST, '..', 'demoflow');
@@ -209,10 +210,11 @@ describe('customers.demo.json', () => {
 
 describe('login.demo.json', () => {
   it('masks the password in the timeline and leaves it in no file', async () => {
+    const frames = pageFrames('login-password');
     const { runDir } = await record(
       await loadScenario('login.demo.json'),
       'demoflow/login.demo.json',
-      { env: { FIXTURE_PASSWORD: PASSWORD } },
+      { env: { FIXTURE_PASSWORD: PASSWORD }, observers: [frames.observer] },
     );
 
     const timeline = TimelineSchema.parse(
@@ -225,15 +227,20 @@ describe('login.demo.json', () => {
     expect(fills[0].masked).toBeUndefined();
     expect(fills[0].maskVisibility).toBeUndefined();
 
-    // Signing in re-renders the page without the form: the mask ends with the click.
+    // Signing in re-renders the page without the form, on the same URL: the
+    // mask ends where the form left the screen, not where the click step
+    // ends after its navigation wait (#155). Pinned to the frame the page
+    // drew without it (#173), not to a wall-clock margin after the mouse up:
+    // React's re-render took 60.6 ms on a macOS runner (#185).
     const signIn = timeline.events.find((event) => event.action === 'click');
-    expect(password.maskVisibility).toEqual([
-      {
-        startMs: password.startMs,
-        endMs: signIn?.endMs,
-        box: password.target?.box,
-      },
-    ]);
+    if (signIn === undefined) throw new Error('login has no click');
+    expect(password.maskVisibility).toHaveLength(1);
+    const [interval] = password.maskVisibility ?? [];
+    expect(interval).toMatchObject({
+      startMs: password.startMs,
+      box: password.target?.box,
+    });
+    expectPreciseEnd(interval?.endMs, signIn, frames);
 
     const needle = Buffer.from(PASSWORD);
     const files = await filesIn(runDir);

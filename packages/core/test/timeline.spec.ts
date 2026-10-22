@@ -163,6 +163,27 @@ describe('key', () => {
   });
 });
 
+describe('zoom', () => {
+  const click = {
+    stepIndex: 0,
+    action: 'click',
+    startMs: 0,
+    endMs: 300,
+    target: { box: { x: 0, y: 0, width: 80, height: 32 } },
+  };
+  const parse = (event: Record<string, unknown>) =>
+    TimelineSchema.safeParse({ ...timeline, events: [event] });
+
+  it.each([true, false, 1, 1.35, 3])('carries the step value %j', (zoom) => {
+    expect(parse({ ...click, zoom }).data?.events[0]?.zoom).toBe(zoom);
+  });
+
+  it.each([0.5, 3.5, 'yes'])('rejects %j at the zoom', (zoom) => {
+    const parsed = parse({ ...click, zoom });
+    expect(parsed.error?.issues[0]?.path).toEqual(['events', 0, 'zoom']);
+  });
+});
+
 describe('maskVisibility', () => {
   const box = { x: 100, y: 260, width: 300, height: 32 };
   const moved = { x: 100, y: 420, width: 300, height: 32 };
@@ -262,5 +283,66 @@ describe('maskVisibility', () => {
 
   it('rejects an interval without a box', () => {
     expect(parse([{ startMs: 1400 }]).success).toBe(false);
+  });
+});
+
+describe('navigations', () => {
+  const parse = (navigations: unknown) =>
+    TimelineSchema.safeParse({ ...timeline, navigations });
+
+  it('is optional: a timeline from before #114 still parses', () => {
+    expect(TimelineSchema.safeParse(timeline).success).toBe(true);
+  });
+
+  it('accepts closed navigations in order and an open last one', () => {
+    const parsed = parse([
+      { startMs: 0, endMs: 820 },
+      { startMs: 1300, endMs: 1900 },
+      { startMs: 2600 },
+    ]);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts a navigation that starts as the previous one ends', () => {
+    expect(
+      parse([
+        { startMs: 0, endMs: 820 },
+        { startMs: 820, endMs: 900 },
+      ]).success,
+    ).toBe(true);
+  });
+
+  it('rejects a navigation that ends before or as it starts', () => {
+    for (const endMs of [800, 820]) {
+      const parsed = parse([{ startMs: 820, endMs }]);
+      expect(parsed.error?.issues[0]?.path).toEqual([
+        'navigations',
+        0,
+        'endMs',
+      ]);
+    }
+  });
+
+  it('rejects overlapping or unordered navigations', () => {
+    for (const second of [
+      { startMs: 500, endMs: 1000 },
+      { startMs: 100, endMs: 200 },
+    ]) {
+      const parsed = parse([{ startMs: 0, endMs: 820 }, second]);
+      expect(parsed.error?.issues[0]?.path).toEqual([
+        'navigations',
+        1,
+        'startMs',
+      ]);
+    }
+  });
+
+  it('rejects an open navigation that is not the last', () => {
+    const parsed = parse([{ startMs: 0 }, { startMs: 1300, endMs: 1900 }]);
+    expect(parsed.error?.issues[0]?.path).toEqual(['navigations', 0, 'endMs']);
+  });
+
+  it('rejects an unknown field on a navigation', () => {
+    expect(parse([{ startMs: 0, endMs: 820, url: '/x' }]).success).toBe(false);
   });
 });

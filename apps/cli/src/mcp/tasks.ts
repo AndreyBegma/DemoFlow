@@ -1,4 +1,4 @@
-import type { RunResult } from '@demoflow/core';
+import type { RenderFormat, RunResult } from '@demoflow/core';
 import type { ChildExit, RunChild, SpawnRun } from './child.ts';
 
 export type TaskStatus =
@@ -24,6 +24,8 @@ export interface TaskSpec {
   /** A staged inline scenario, deleted once the task ends. */
   staged?: string;
   timeoutMs: number;
+  /** Passed as `--format`, replacing the project's `render.formats`. */
+  formats?: readonly RenderFormat[];
 }
 
 export interface Task {
@@ -148,6 +150,7 @@ export class TaskQueue {
         spec.taskId,
         '--project',
         spec.root,
+        ...(spec.formats ?? []).flatMap((format) => ['--format', format]),
       ],
       spec.root,
     );

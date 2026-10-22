@@ -1,7 +1,170 @@
 generator client {
-  provider        = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// An account. `passwordHash` is null for a user who signs in only with GitHub
+// (slice 3). `email` is stored trimmed and lower-cased.
+model User {
+  id              String          @id @default(cuid())
+  email           String          @unique
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  sessions        Session[]
+  emailTokens     EmailToken[]
+  githubIdentity  GithubIdentity?
+  runners         Runner[]
+  projects        Project[]
+}
+
+// The GitHub account a user signs in with (spec #126). At most one per user,
+// and one user per GitHub account. Holds no email and no token: the email
+// lives only in `User.email`, the access token is never stored (ADR-0008).
+model GithubIdentity {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // GitHub's numeric user id, as a string. Stable across login and email changes.
+  githubUserId String   @unique
+  login        String
+  createdAt    DateTime @default(now())
+}
+
+// A signed-in browser. Only the SHA-256 hash of the cookie's token is stored.
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  lastSeenAt DateTime
+  createdAt  DateTime @default(now())
+  userAgent  String?
+
+  @@index([userId])
+}
+
+enum EmailTokenPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+// A single-use emailed link. Only the SHA-256 hash of the token is stored.
+model EmailToken {
+  id        String            @id @default(cuid())
+  tokenHash String            @unique
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   EmailTokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  @@index([userId, purpose])
+}
+
+// A machine paired with an account (spec #135). Holds machine metadata only
+// (ADR-0008): no paths, no usernames, and of addresses only the last one seen,
+// for its owner (spec #151). Only the SHA-256 hash of the `dfr_` device token
+// is stored. A revoked row stays until the account goes.
+model Runner {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  // `process.platform` and release, e.g. "linux 6.19.10".
+  os               String
+  cliVersion       String
+  tokenHash        String    @unique
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime?
+  revokedAt        DateTime?
+  // The age rotation is measured from (spec #151 Decision 8).
+  tokenIssuedAt    DateTime  @default(now())
+  // A rotation in flight: the token sent in `rotate`, until `rotated`.
+  pendingTokenHash String?   @unique
+  pendingIssuedAt  DateTime?
+  // Latest values only, shown to the owner (Decision 10).
+  lastSeenAt       DateTime?
+  lastSeenIp       String?
+  projects         Project[]
+  runs             Run[]
+
+  @@index([userId])
+}
+
+// A folder demos are recorded in (spec #178). One per `(runnerId, rootPath)`:
+// made by the first run reported from that folder, or by hand on the site and
+// bound later. `runnerId` goes null when the Runner is revoked (Decision 7).
+model Project {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  runnerId  String?
+  runner    Runner?  @relation(fields: [runnerId], references: [id], onDelete: SetNull)
+  // Absolute path of the project root on that machine, as the CLI sent it.
+  rootPath  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  runs      Run[]
+
+  @@unique([runnerId, rootPath])
+  @@index([userId])
+}
+
+enum RunStatus {
+  passed
+  failed
+}
+
+// The metadata of one `demoflow run`. Never a video, a frame or a step value:
+// values can hold secrets, and videos stay on the machine (ADR-0008).
+model Run {
+  id           String    @id @default(uuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runnerId     String?
+  runner       Runner?   @relation(fields: [runnerId], references: [id], onDelete: SetNull)
+  scenarioName String
+  // Relative to the project root.
+  scenarioPath String
+  status       RunStatus
+  startedAt    DateTime
+  durationMs   Int
+  formats      String[]
+  // The 0-based index of the step that failed, when one did.
+  failedStep   Int?
+  cliVersion   String
+  createdAt    DateTime  @default(now())
+
+  @@index([projectId, startedAt(sort: Desc), id(sort: Desc)])
+}
+
+// A pending `demoflow login` (RFC 8628). Only the SHA-256 hash of the polling
+// secret is stored. `approvedById` is a plain column: the row lives at most
+// ten minutes and is deleted once its token is issued.
+model DeviceCode {
+  id             String    @id @default(uuid())
+  deviceCodeHash String    @unique
+  // "ABCD1234": stored without the dash.
+  userCode       String    @unique
+  hostname       String
+  os             String
+  cliVersion     String
+  expiresAt      DateTime
+  lastPolledAt   DateTime?
+  approvedAt     DateTime?
+  deniedAt       DateTime?
+  approvedById   String?
+  // The name the approver chose.
+  runnerName     String?
+  // Token issued; the row is dead.
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
 }

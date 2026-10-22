@@ -9,6 +9,7 @@ import {
 import type { Page, Locator as PlaywrightLocator } from 'playwright';
 import { describeLocator, resolveLocator } from './locator.ts';
 import type { EngineObserver } from './observer.ts';
+import { withNavigation } from './pending-navigation.ts';
 import { boxCentre, moveSteps, type Point } from './pointer.ts';
 import {
   navigateUrl,
@@ -23,8 +24,6 @@ export const TYPING_DELAY_MS = 35;
 const SCROLL_FRAME_FALLBACK_MS = 100;
 /** A target that moves while the pointer glides towards it is re-aimed at most this often. */
 const MAX_REAIMS = 3;
-/** How long after a click or key press a navigation it caused may take to start. */
-const NAVIGATION_START_MS = 100;
 
 export type FailedStage = 'execution' | 'verification';
 
@@ -94,24 +93,24 @@ export async function runAction(
       }
       const { box, from, to } = await glide(ctx, target, step.target);
       if (step.action === 'click') {
-        await ctx.page.mouse.down();
-        await ctx.page.mouse.up();
-        await navigationStart(ctx.page);
+        await settle(ctx, step.timeoutMs, async () => {
+          await ctx.page.mouse.down();
+          await ctx.page.mouse.up();
+        });
       }
       return { target: { box }, pointer: { from, to } };
     }
     case 'press': {
+      const press = () => ctx.page.keyboard.press(step.key);
       if (step.target === undefined) {
-        await ctx.page.keyboard.press(step.key);
-        await navigationStart(ctx.page);
+        await settle(ctx, step.timeoutMs, press);
         return { key: step.key };
       }
       const target = locate(ctx, step.target);
       await target.hover({ trial: true, timeout: step.timeoutMs });
       const { box, from, to } = await glide(ctx, target, step.target);
       await target.focus({ timeout: step.timeoutMs });
-      await ctx.page.keyboard.press(step.key);
-      await navigationStart(ctx.page);
+      await settle(ctx, step.timeoutMs, press);
       return { key: step.key, target: { box }, pointer: { from, to } };
     }
     case 'fill': {
@@ -264,19 +263,19 @@ async function glide(
   return { box, from, to };
 }
 
-/**
- * A click that follows a link starts its navigation a moment after the mouse
- * is released. Waiting for it here lets the origin guard see it during the
- * click step, as Playwright's own `click` waits for navigations it schedules.
- */
-async function navigationStart(page: Page): Promise<void> {
-  await page
-    .waitForEvent('request', {
-      predicate: (request) =>
-        request.isNavigationRequest() && request.frame() === page.mainFrame(),
-      timeout: NAVIGATION_START_MS,
-    })
-    .catch(() => undefined);
+/** Runs a click's or key press's input and waits for the navigation it starts to commit (#117). */
+async function settle(
+  ctx: StepContext,
+  timeoutMs: number,
+  input: () => Promise<void>,
+): Promise<void> {
+  const stuck = await withNavigation(ctx.page, timeoutMs, input);
+  if (stuck !== undefined) {
+    throw new StepFailure(
+      'execution',
+      `navigation to ${stuck.destination} did not commit within ${timeoutMs} ms`,
+    );
+  }
 }
 
 async function requireBox(

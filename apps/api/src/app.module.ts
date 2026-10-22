@@ -1,7 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AuthModule } from './auth/auth.module';
+import { ClockModule } from './common/clock.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health.controller';
+import { MailModule } from './mail/mail.module';
+import { ProjectsModule } from './projects/projects.module';
+import { RunnerModule } from './runner/runner.module';
 
 @Module({
   imports: [
@@ -10,6 +15,11 @@ import { HealthController } from './health.controller';
       envFilePath: '.env',
     }),
     DatabaseModule,
+    ClockModule,
+    MailModule,
+    AuthModule,
+    RunnerModule,
+    ProjectsModule,
   ],
   controllers: [HealthController],
 })

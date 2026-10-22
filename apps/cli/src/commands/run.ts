@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { RunResult } from '@demoflow/core';
+import type { RenderFormat, RunResult } from '@demoflow/core';
 import {
   createCaptureObserver,
   RUN_FILES,
@@ -21,6 +21,11 @@ import {
   runDir as runDirFor,
   scenarioId,
 } from '../config/index.ts';
+import {
+  defaultReportDeps,
+  type ReportDeps,
+  reportRun,
+} from '../runs-report/report.ts';
 import { type BrowserDeps, ensureChromium } from './browser.ts';
 import { CommandError, EXIT_STAGE_FAILED } from './errors.ts';
 import { exitCodeFor } from './exit.ts';
@@ -35,6 +40,8 @@ export interface RunFlags {
   out?: string;
   headed?: boolean;
   json?: boolean;
+  /** `--format`: replaces `render.formats` for this run (spec 133). */
+  format?: RenderFormat[];
   /** Hidden: names the run directory so a caller knows it before the start. */
   runId?: string;
   /** Hidden: the project root, for a scenario file kept outside it (`demoflow mcp`). */
@@ -47,6 +54,8 @@ export interface RunDeps {
   runId: () => string;
   /** Chromium's check and first-use install; Playwright's own by default. */
   browser?: BrowserDeps;
+  /** The report to the server after the run; the real one by default. */
+  report?: ReportDeps;
 }
 
 export function defaultRunDeps(): RunDeps {
@@ -167,6 +176,15 @@ export async function runCommand(
           },
           frame: config.render.frame,
           background: config.render.background,
+          cards: config.render.cards,
+          transitions: config.render.transitions,
+          formats: flags.format ?? config.render.formats,
+          gif: config.render.gif,
+          vertical: config.render.vertical,
+          scenario:
+            scenario.description === undefined
+              ? {}
+              : { description: scenario.description },
         });
         await ffmpegRenderer.render(runDir, plan);
       } catch (error) {
@@ -187,6 +205,7 @@ export async function runCommand(
         ? formatJson(result, runDir)
         : formatSummary(result, runDir),
     );
+    await reportRun({ root, result }, deps.report ?? defaultReportDeps(host));
     const code = exitCodeFor(result);
     // A render crash before the stage was recorded must not read as success.
     return code === 0 && renderError !== undefined ? EXIT_STAGE_FAILED : code;

@@ -4,7 +4,7 @@ name: package-smoke
 # stages apps/cli/dist/npm, and apps/cli/scripts/smoke.mjs packs that
 # directory — the one .woodpecker/release.yml publishes — installs the tarball
 # into an empty directory with npm and runs the installed bin, on Linux, macOS
-# and Windows, on Node 20 (the package's `engines` floor). With --browsers it
+# and Windows, on Node 22 (the package's `engines` floor). With --browsers it
 # also starts from an empty PLAYWRIGHT_BROWSERS_PATH: `demoflow run` installs
 # Chromium and renders the fixture's customers scenario, `demoflow setup`
 # installs it on its own.
@@ -62,7 +62,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build the CLI package and the fixture
-        run: bun run build --filter=demoflow --filter=@demoflow/fixture
+        run: bun run build --filter=@demoflow/cli --filter=@demoflow/fixture
 
       - name: Release script tests
         if: runner.os == 'Linux'
@@ -95,10 +95,11 @@ jobs:
       - name: Start the fixture preview
         run: node .github/scripts/serve-fixture.mjs start
 
-      # The installed package runs on the `engines` floor.
+      # The installed package runs on the `engines` floor: Node 22, the first
+      # with a built-in WebSocket client (spec 151, Decision 4).
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Smoke-test the packed tarball
         run: node apps/cli/scripts/smoke.mjs --browsers

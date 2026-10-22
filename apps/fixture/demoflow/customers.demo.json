@@ -36,7 +36,8 @@
     {
       "action": "click",
       "target": { "role": "button", "name": "Create", "exact": true },
-      "caption": "Create the customer"
+      "caption": "Create the customer",
+      "zoom": true
     },
     {
       "action": "assertText",

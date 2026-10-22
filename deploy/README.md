@@ -34,6 +34,15 @@ pin in `packages/engine`. `PLAYWRIGHT_BROWSERS_PATH` is `/ci-cache/playwright`
 in every step that mounts the caches; the host directory is
 `/home/archi/ci-cache/demoflow/playwright`.
 
+Pull requests get no Docker socket and no host cache (ADR-0011). `ci-image`,
+`build-staging` and `deploy-staging` run on push and manual events only; a pull
+request runs on the `demoflow-ci:node-bun` image the last push built, so a
+change to `deploy/ci-image/` reaches pull requests once it is merged. If an
+agent has never built the image, the pull request fails at image pull: start a
+manual run on `develop`. `install-pr`, `build-pr` and `test-pr` mount nothing —
+bun, turbo and Chromium are downloaded or rebuilt inside the pipeline every
+run — while `install`, `build` and `test` (push, manual) keep the host caches.
+
 The CI PostgreSQL is throwaway: tmpfs, with `fsync`, `synchronous_commit` and
 `full_page_writes` off.
 
@@ -86,7 +95,7 @@ scenario, `runs/<runId>/render/ffmpeg.mp4` and `runs/<runId>/result.json`.
   workflow installs Chromium's system libraries first, never the browser. Ubuntu
   also runs the release scripts' tests (`bun run test:release`).
 
-Locally: `bun run build --filter=demoflow`, then
+Locally: `bun run build --filter=@demoflow/cli`, then
 `node apps/cli/scripts/smoke.mjs` (add `--browsers` with the fixture preview up:
 `node .github/scripts/serve-fixture.mjs start`).
 
@@ -172,8 +181,9 @@ Nothing is published on the host. The stack runs on its own compose network
    Save the token as `~/.demoflow/cloudflared.env`, mode 600, with one
    line: `TUNNEL_TOKEN=...`.
 2. **Woodpecker.** Activate `AndreyBegma/DemoFlow` and apply these settings:
-   - *Trusted → volumes*: on. The steps mount the Docker socket, the stack
-     directory and the caches, and the postgres service mounts a tmpfs.
+   - *Trusted → volumes*: on. The push and manual steps mount the Docker
+     socket, the stack directory and the caches, and the postgres service
+     mounts a tmpfs. Pull request steps mount nothing (ADR-0011).
    - *Require approval*: forks. The repository is public.
    - *Cancel previous pipelines*: push, pull_request.
    - Timeout: 60 min.
@@ -208,3 +218,55 @@ Nothing is published on the host. The stack runs on its own compose network
 - **`530` / error 1033** from the public URL means the hostname exists but no
   cloudflared connector is running. Check that `TUNNEL_TOKEN` is set and look
   at `docker logs demoflow-staging-cloudflared`.
+
+### The runner socket on staging
+
+Paired machines hold one WebSocket each, `wss://demoflow-app.luna-realm.com/api/runner`
+(spec #151). It needs no configuration of its own: Cloudflare and the tunnel
+pass WebSocket upgrades, and Caddy's `/api/*` route strips the prefix and
+proxies the upgrade to `api:8370/runner` like any request. Both sides ping
+every 25 s, well under Cloudflare's 100 s idle limit.
+
+- **A deploy drops every socket.** The API says `bye` and closes with `1001`;
+  daemons reconnect with backoff and Caddy holds the upgrade until the new
+  API answers. Machines show Offline for those seconds.
+- **To check it**, with a paired machine: `demoflow runner start`, then
+  `/app/machines` shows it Online within 15 s. Without a CLI,
+  `curl -si --http1.1 -H 'Connection: Upgrade' -H 'Upgrade: websocket'
+  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=='
+  https://demoflow-app.luna-realm.com/api/runner` must answer `401`: the
+  upgrade reached the API, which refused the missing token. A `404` or `502`
+  means the upgrade did not get through.
+- Online state lives in the API's memory, so it is right only while staging
+  runs one API container (#120).
+
+### Mail on staging
+
+Account emails (verification, password reset) go through Resend. The key and
+the verified sender domain are the owner's to add, in `env/api.env`:
+`RESEND_API_KEY`, `MAIL_FROM`, and empty `MAIL_TRANSPORT=` (empty, not
+deleted: `refresh.sh` would append a deleted key again). Until then
+staging runs `MAIL_TRANSPORT=log`: each email — recipient, subject and link —
+is written to the API log instead of sent
+(`docker logs demoflow-staging-api 2>&1 | grep Mail`).
+
+Staging runs `APP_ENV=production`, which refuses to start with neither a
+Resend key nor `MAIL_TRANSPORT=log` — the error names `RESEND_API_KEY`.
+
+### GitHub sign-in on staging
+
+"Continue with GitHub" stays hidden until both `GITHUB_CLIENT_ID` and
+`GITHUB_CLIENT_SECRET` are set; while either is empty `/api/auth/providers`
+answers `{ "github": false }` and `/api/auth/github/start` is a 404. To turn it
+on, the owner:
+
+1. Creates an OAuth App (GitHub → Settings → Developer settings → OAuth Apps):
+   homepage `https://demoflow-app.luna-realm.com`, authorization callback URL
+   `https://demoflow-app.luna-realm.com/api/auth/github/callback`. A second
+   app for local development uses `http://localhost:3670/api/auth/github/callback`.
+2. Puts the client id and a generated client secret in `env/api.env` on the
+   host, and restarts the API container.
+
+The app asks for `read:user user:email` only, and keeps no GitHub token. The
+client secret also signs the short-lived `df_oauth` cookie, so rotating it
+only fails sign-ins that are in flight.

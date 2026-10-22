@@ -10,6 +10,7 @@ import {
   resolveProject,
   resolveScenarioFile,
 } from './project.ts';
+import { type RenderedVideo, renderedVideos } from './view.ts';
 
 export const DEFAULT_LIST_LIMIT = 20;
 export const MAX_LIST_LIMIT = 100;
@@ -54,7 +55,10 @@ export interface DemoSummary {
   status: string;
   startedAt: string;
   durationMs?: number;
+  /** The first of `videos`. */
   video?: string;
+  /** Every rendered file on disk, in order (spec 133). */
+  videos?: RenderedVideo[];
 }
 
 /** Recent runs of the project's home, newest first; unreadable ones are skipped. */
@@ -85,10 +89,11 @@ export async function listDemos(
         startedAt: result.startedAt,
       };
       const render = result.renders[0];
-      if (render !== undefined) {
-        demo.durationMs = render.durationMs;
-        const video = path.join(runDir, ...render.file.split('/'));
-        if (existsSync(video)) demo.video = video;
+      if (render !== undefined) demo.durationMs = render.durationMs;
+      const videos = renderedVideos(runDir, result.renders);
+      if (videos.length > 0) {
+        demo.video = videos[0].path;
+        demo.videos = videos;
       }
       demos.push(demo);
     } catch {

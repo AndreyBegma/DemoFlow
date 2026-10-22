@@ -3,8 +3,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { StepInput, TimelineEvent } from '@demoflow/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type RunOutcome, runScenario } from '../../src/index.ts';
+import {
+  type EngineObserver,
+  type RunOutcome,
+  runScenario,
+} from '../../src/index.ts';
 import { type FixtureServer, startFixtureServer } from './fixture-server.ts';
+import { expectPreciseEnd, pageFrames } from './page-frames.ts';
 import { scenario } from './scenario.ts';
 
 const SECRET = 'correct-horse-battery';
@@ -40,6 +45,33 @@ ${FIELD}
   '/second': `<!doctype html><title>second</title><body style="margin:0">
 <div style="position:absolute;left:40px;top:300px">${FIELD}</div>
 </body>`,
+  // "Hide" and "Show" flip the form's `display`, the field stays in the DOM.
+  '/display': `<!doctype html><title>display</title><body style="margin:0">
+<div id="form" style="position:absolute;left:40px;top:40px">${FIELD}</div>
+<button style="position:fixed;left:40px;top:400px" onclick="
+  document.getElementById('form').style.display = 'none'">Hide</button>
+<button style="position:fixed;left:140px;top:400px" onclick="
+  document.getElementById('form').style.display = ''">Show</button>
+</body>`,
+  // A link to a document without the field.
+  '/leave': `<!doctype html><title>leave</title><body style="margin:0">
+${FIELD}
+<a href="/away">Leave</a>
+</body>`,
+  '/away': `<!doctype html><title>away</title><body><p>Away</p></body>`,
+  // "Swap" puts a new field in the old one's place and removes it 30 ms later:
+  // the old field's edge is not where the secret left the screen.
+  '/swap': `<!doctype html><title>swap</title><body style="margin:0">
+<div id="form">${FIELD}</div>
+<button onclick="
+  const old = document.getElementById('secret');
+  const next = document.createElement('input');
+  next.type = 'password';
+  next.value = old.value;
+  old.replaceWith(next);
+  next.id = 'secret';
+  setTimeout(() => next.remove(), 30)">Swap</button>
+</body>`,
 };
 
 const fillSecret: StepInput = {
@@ -62,7 +94,10 @@ afterAll(async () => {
   );
 });
 
-async function run(steps: StepInput[]): Promise<RunOutcome> {
+async function run(
+  steps: StepInput[],
+  observers: readonly EngineObserver[] = [],
+): Promise<RunOutcome> {
   const runDir = await mkdtemp(path.join(tmpdir(), 'demoflow-mask-'));
   runDirs.push(runDir);
   const outcome = await runScenario(scenario(steps), {
@@ -71,6 +106,7 @@ async function run(steps: StepInput[]): Promise<RunOutcome> {
     allowedOrigins: [fixture.origin],
     env: { SECRET },
     observers: [
+      ...observers,
       {
         onPageCreated: async ({ page }) => {
           for (const [pathname, body] of Object.entries(PAGES)) {
@@ -108,25 +144,91 @@ describe('mask visibility', () => {
   });
 
   it('opens a second interval, with its own box, when the field comes back', async () => {
-    const { events } = await run([
-      { action: 'navigate', path: '/toggle' },
-      fillSecret,
-      { action: 'click', target: { role: 'button', name: 'Hide' } },
-      { action: 'wait', ms: 200 },
-      { action: 'click', target: { role: 'button', name: 'Show' } },
-      { action: 'wait', ms: 200 },
-    ]);
+    const frames = pageFrames('secret');
+    const { events } = await run(
+      [
+        { action: 'navigate', path: '/toggle' },
+        fillSecret,
+        { action: 'click', target: { role: 'button', name: 'Hide' } },
+        { action: 'wait', ms: 200 },
+        { action: 'click', target: { role: 'button', name: 'Show' } },
+        { action: 'wait', ms: 200 },
+      ],
+      [frames.observer],
+    );
     const [fill, hide, show] = [events[1], events[2], events[4]];
     const intervals = intervalsOf(fill);
     expect(intervals).toHaveLength(2);
-    expect(intervals[0]).toEqual({
+    expect(intervals[0]).toMatchObject({
       startMs: fill.startMs,
-      endMs: hide.endMs,
       box: fill.target?.box,
     });
+    expectPreciseEnd(intervals[0].endMs, hide, frames);
     expect(intervals[1].startMs).toBe(show.startMs);
     expect(intervals[1].endMs).toBeUndefined();
     expect(intervals[1].box.y - intervals[0].box.y).toBeCloseTo(200, 0);
+  });
+
+  it('ends both intervals where the page hid the field: display none, shown, hidden again', async () => {
+    const frames = pageFrames('secret');
+    const { events } = await run(
+      [
+        { action: 'navigate', path: '/display' },
+        fillSecret,
+        { action: 'click', target: { role: 'button', name: 'Hide' } },
+        { action: 'wait', ms: 200 },
+        { action: 'click', target: { role: 'button', name: 'Show' } },
+        { action: 'wait', ms: 200 },
+        { action: 'click', target: { role: 'button', name: 'Hide' } },
+        { action: 'wait', ms: 200 },
+      ],
+      [frames.observer],
+    );
+    const [fill, hide, show, hideAgain] = [
+      events[1],
+      events[2],
+      events[4],
+      events[6],
+    ];
+    const intervals = intervalsOf(fill);
+    expect(intervals).toHaveLength(2);
+    expect(intervals[0]).toMatchObject({
+      startMs: fill.startMs,
+      box: fill.target?.box,
+    });
+    expectPreciseEnd(intervals[0].endMs, hide, frames);
+    // A field that comes back starts as before: at the step that found it (#155, Decision 3).
+    expect(intervals[1]).toMatchObject({
+      startMs: show.startMs,
+      box: fill.target?.box,
+    });
+    expectPreciseEnd(intervals[1].endMs, hideAgain, frames);
+  });
+
+  it('ends at the step boundary when the page that held the field is replaced', async () => {
+    const { events } = await run([
+      { action: 'navigate', path: '/leave' },
+      fillSecret,
+      { action: 'click', target: { role: 'link', name: 'Leave' } },
+      { action: 'wait', ms: 200 },
+    ]);
+    const [fill, leave] = [events[1], events[2]];
+    expect(intervalsOf(fill)).toEqual([
+      { startMs: fill.startMs, endMs: leave.endMs, box: fill.target?.box },
+    ]);
+  });
+
+  it('ends at the step boundary when another field stood in for it and left', async () => {
+    const { events } = await run([
+      { action: 'navigate', path: '/swap' },
+      fillSecret,
+      { action: 'click', target: { role: 'button', name: 'Swap' } },
+      { action: 'wait', ms: 200 },
+    ]);
+    const [fill, swap] = [events[1], events[2]];
+    expect(intervalsOf(fill)).toEqual([
+      { startMs: fill.startMs, endMs: swap.endMs, box: fill.target?.box },
+    ]);
   });
 
   it('keeps the interval open while the field is scrolled out of the viewport', async () => {

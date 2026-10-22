@@ -1,5 +1,6 @@
-import type { Locator, MarkerKind, StepInput } from '@demoflow/core';
+import type { Locator, MarkerKind, ScenarioStepInput } from '@demoflow/core';
 import type { CaptureMode } from './capture-script.ts';
+import { type RepeatRequest, repeatableValue } from './repeat.ts';
 import type { RecordedStep } from './steps.ts';
 
 /** The binding the panel page calls with a `PanelCommand`. */
@@ -12,10 +13,18 @@ export type PanelCommand =
   | { type: 'remove'; index: number }
   | { type: 'move'; index: number; delta: number }
   | { type: 'secretEnv'; name: string }
+  | ({ type: 'repeat' } & RepeatRequest)
   | { type: 'stop' };
 
 export interface PanelState {
-  steps: { summary: string; warning?: string }[];
+  steps: {
+    summary: string;
+    warning?: string;
+    /** The text a fill types, when "Repeat over data" can take it over. */
+    fill?: string;
+    /** A `repeat`: it cannot be selected into another one. */
+    repeat?: true;
+  }[];
   mode: CaptureMode;
   secretEnv: string;
   /** The last problem to show, e.g. an element no locator could reach. */
@@ -29,10 +38,15 @@ export function panelState(
   notice?: string,
 ): PanelState {
   return {
-    steps: steps.map(({ step, warning }) => ({
-      summary: describeStep(step),
-      ...(warning === undefined ? {} : { warning }),
-    })),
+    steps: steps.map(({ step, warning }) => {
+      const fill = repeatableValue(step);
+      return {
+        summary: describeStep(step),
+        ...(warning === undefined ? {} : { warning }),
+        ...(fill === undefined ? {} : { fill }),
+        ...(step.action === 'repeat' ? { repeat: true as const } : {}),
+      };
+    }),
     mode,
     secretEnv,
     ...(notice === undefined ? {} : { notice }),
@@ -50,8 +64,10 @@ export function describeLocator(locator: Locator): string {
 }
 
 /** One line per step. A secret fill shows the variable name, never a value. */
-export function describeStep(step: StepInput): string {
+export function describeStep(step: ScenarioStepInput): string {
   switch (step.action) {
+    case 'repeat':
+      return `repeat over ${step.each} (${step.steps.length} steps)`;
     case 'navigate':
       return `navigate ${step.path ?? step.url ?? ''}`;
     case 'fill':
@@ -108,6 +124,10 @@ export const PANEL_HTML = `<!doctype html>
   li .warning { color: #b45309; font-size: 12px; display: block; }
   li .tools { display: inline-flex; gap: 2px; margin-left: 4px; }
   li .tools button { padding: 0 5px; }
+  #repeat { display: flex; flex-direction: column; gap: 8px; border: 1px solid; padding: 8px; }
+  #repeat[hidden] { display: none; }
+  #repeat fieldset { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+  #repeat textarea { font: inherit; min-height: 4.5em; }
 </style>
 </head>
 <body>
@@ -132,6 +152,20 @@ export const PANEL_HTML = `<!doctype html>
     <input id="env" aria-label="Secret variable" value="DEMO_PASSWORD">
   </div>
   <div id="notice" role="status"></div>
+  <div class="row">
+    <button id="open-repeat">Repeat over data</button>
+    <span>Tick a run of steps first.</span>
+  </div>
+  <form id="repeat" aria-label="Repeat over data" hidden>
+    <div class="row">
+      <input id="list" aria-label="List name" value="items">
+    </div>
+    <div id="fields"></div>
+    <div class="row">
+      <button type="submit">Create repeat</button>
+      <button type="button" id="cancel-repeat">Cancel</button>
+    </div>
+  </form>
   <ol id="steps" aria-label="Steps"></ol>
   <button id="stop">Stop and save</button>
 <script>
@@ -153,7 +187,60 @@ export const PANEL_HTML = `<!doctype html>
     button.onclick = () => send({ type: 'mode',
       mode: current === button.dataset.mode ? 'record' : button.dataset.mode });
   }
+  let known = [];
+  const selected = new Set();
+  const closeRepeat = () => { $('repeat').hidden = true; };
+  const say = (text) => { $('notice').textContent = text; };
+  $('cancel-repeat').onclick = closeRepeat;
+  $('open-repeat').onclick = () => {
+    const picked = [...selected].sort((a, b) => a - b);
+    if (picked.length === 0) return say('tick the steps to repeat first');
+    const from = picked[0];
+    const to = picked[picked.length - 1];
+    if (picked.length !== to - from + 1) return say('tick a run of steps without gaps');
+    const run = known.slice(from, to + 1);
+    if (run.some((step) => step.repeat)) return say('a repeat cannot hold another repeat');
+    const fills = run.filter((step) => step.fill !== undefined);
+    if (fills.length === 0) return say('the ticked steps type no text to repeat over');
+    say('');
+    $('fields').replaceChildren(...fills.map((step, position) => {
+      const group = document.createElement('fieldset');
+      const legend = document.createElement('legend');
+      legend.textContent = step.summary;
+      const name = document.createElement('input');
+      name.setAttribute('aria-label', 'Field name ' + (position + 1));
+      name.value = position === 0 ? 'text' : 'text' + (position + 1);
+      const lines = document.createElement('textarea');
+      lines.setAttribute('aria-label', 'Values ' + (position + 1) + ', one per line');
+      lines.value = step.fill;
+      group.append(legend, name, lines);
+      return group;
+    }));
+    $('repeat').hidden = false;
+    $('repeat').dataset.from = String(from);
+    $('repeat').dataset.to = String(to);
+  };
+  $('repeat').onsubmit = (event) => {
+    event.preventDefault();
+    const groups = [...document.querySelectorAll('#fields fieldset')];
+    send({
+      type: 'repeat',
+      from: Number($('repeat').dataset.from),
+      to: Number($('repeat').dataset.to),
+      list: $('list').value.trim(),
+      fields: groups.map((group) => ({
+        name: group.querySelector('input').value.trim(),
+        lines: group.querySelector('textarea').value.replace(/\\n+$/, '').split('\\n'),
+      })),
+    });
+  };
   window.render = (state) => {
+    // Ticks and an open form name steps by place: a changed list voids them.
+    if (state.steps.length !== known.length || state.steps.some((step, i) => step.summary !== known[i].summary)) {
+      selected.clear();
+      closeRepeat();
+    }
+    known = state.steps;
     current = state.mode;
     $('mode').textContent = state.mode;
     for (const button of document.querySelectorAll('[data-mode]')) {
@@ -164,6 +251,16 @@ export const PANEL_HTML = `<!doctype html>
     const list = $('steps');
     list.replaceChildren(...state.steps.map((step, index) => {
       const item = document.createElement('li');
+      const tick = document.createElement('input');
+      tick.type = 'checkbox';
+      tick.setAttribute('aria-label', 'Select step ' + (index + 1));
+      tick.checked = selected.has(index);
+      tick.disabled = Boolean(step.repeat);
+      tick.style.flex = 'none';
+      tick.onchange = () => {
+        if (tick.checked) selected.add(index);
+        else selected.delete(index);
+      };
       const summary = document.createElement('span');
       summary.className = 'summary';
       summary.textContent = step.summary;
@@ -180,7 +277,7 @@ export const PANEL_HTML = `<!doctype html>
         button.onclick = () => send(command);
         tools.append(button);
       }
-      item.append(summary, tools);
+      item.append(tick, summary, tools);
       if (step.warning) {
         const warning = document.createElement('span');
         warning.className = 'warning';

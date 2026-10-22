@@ -114,6 +114,14 @@ function click(
   });
 }
 
+/** The event with the step's `zoom` (ADR-0012). */
+function zoomed(
+  e: TimelineEvent,
+  zoom: NonNullable<TimelineEvent['zoom']> = true,
+): TimelineEvent {
+  return { ...e, zoom };
+}
+
 function zoomAt(rendered: RenderPlan, atMs: number): number {
   return VIEWPORT.width / cameraAt(rendered, atMs).width;
 }
@@ -290,20 +298,21 @@ describe('sync mark', () => {
     });
   }
 
-  it('measures the offset on the clear and pads masks by one source frame', () => {
+  it('measures the offset on the clear and pads masks by three source frames', () => {
     const rendered = planWith(mark, 120);
     expect(rendered.offsetMs).toBe(120 - 180);
     expect(rendered.offsetMeasured).toBe(true);
-    expect(rendered.maskLeadMs).toBe(40);
+    expect(rendered.maskLeadMs).toBe(120);
     // The output starts on the first frame after the mark (Decision 6).
     expect(rendered.timeMap[0].sourceStartMs).toBe(120);
     expect(frameAt(rendered, 0).sourceMs).toBe(120);
-    // Field on the page at 600 → source 540 → output 420; less one frame.
-    expect(rendered.masks[0].startMs).toBeCloseTo(540 - 120 - 40);
+    // Field on the page at 600 → source 540 → output 420; less three frames.
+    expect(rendered.masks[0].startMs).toBeCloseTo(540 - 120 - 120);
   });
 
-  // #48: an end padded like the start, so a field never shows for the last frame.
-  it('ends a mask one source frame after out(endMs) when the offset is measured, 200 ms when not', () => {
+  // #48: an end padded like the start, so a field never shows for the last
+  // frame; three frames, for a source frame that lands late (#185).
+  it('ends a mask three source frames after out(endMs) when the offset is measured, 200 ms when not', () => {
     const closed = events.map((item) =>
       item.masked === true
         ? {
@@ -328,9 +337,9 @@ describe('sync mark', () => {
       });
 
     const measured = render(120);
-    expect(measured.maskTrailMs).toBe(40);
-    // Off the page at 2000 → source 1940 → output 1820; plus one frame.
-    expect(measured.masks[0].endMs).toBeCloseTo(1940 - 120 + 40);
+    expect(measured.maskTrailMs).toBe(120);
+    // Off the page at 2000 → source 1940 → output 1820; plus three frames.
+    expect(measured.masks[0].endMs).toBeCloseTo(1940 - 120 + 120);
 
     const unmeasured = render(undefined);
     expect(unmeasured.maskTrailMs).toBe(200);
@@ -390,13 +399,151 @@ describe('sync mark', () => {
 });
 
 describe('camera', () => {
+  it('does not zoom on a scenario without zoom: every keyframe is scale 1', () => {
+    const rendered = plan(
+      [
+        click(0, 1000, { x: 200, y: 200 }),
+        event({
+          action: 'fill',
+          startMs: 1000,
+          endMs: 2000,
+          target: { box: { x: 300, y: 300, width: 200, height: 30 } },
+          value: 'Ada',
+        }),
+        event({
+          action: 'select',
+          startMs: 2000,
+          endMs: 2500,
+          target: { box: { x: 300, y: 400, width: 200, height: 30 } },
+        }),
+        click(2500, 3500, { x: 1100, y: 600 }),
+      ],
+      [],
+    );
+    expect(rendered.camera.every((key) => key.zoom === 1)).toBe(true);
+    for (const atMs of [0, 1000, 2000, 2500, rendered.clicks[1].atMs]) {
+      expect(zoomAt(rendered, atMs)).toBe(1);
+    }
+  });
+
+  it('does not zoom on zoom: false or zoom: 1', () => {
+    const rendered = plan(
+      [
+        zoomed(click(0, 1000, { x: 200, y: 200 }), false),
+        zoomed(click(2000, 3000, { x: 800, y: 400 }), 1),
+      ],
+      [],
+    );
+    expect(rendered.camera.every((key) => key.zoom === 1)).toBe(true);
+  });
+
+  it('zooms at the strength the step names, within the fit cap', () => {
+    const rendered = plan(
+      [zoomed(click(1000, 2000, { x: 640, y: 360 }), 2)],
+      [],
+    );
+    expect(zoomAt(rendered, rendered.clicks[0].atMs)).toBeCloseTo(2);
+    // A 1 000 px wide target fills at most 90 % of the view: 0.9 · 1280 / 1000.
+    const wide = plan(
+      [
+        zoomed(
+          event({
+            action: 'click',
+            startMs: 1000,
+            endMs: 2000,
+            target: { box: { x: 140, y: 300, width: 1000, height: 40 } },
+          }),
+          3,
+        ),
+      ],
+      [],
+    );
+    expect(zoomAt(wide, 1900)).toBeCloseTo(1.152);
+  });
+
+  it('zooms on any targeted step that asks, not only click, fill and select', () => {
+    const rendered = plan(
+      [
+        zoomed(
+          event({
+            action: 'hover',
+            startMs: 1000,
+            endMs: 2000,
+            target: { box: { x: 580, y: 340, width: 120, height: 40 } },
+          }),
+        ),
+      ],
+      [],
+    );
+    expect(zoomAt(rendered, 1500)).toBeCloseTo(1.25);
+  });
+
+  it('zooms out around an unzoomed targeted step between two zoomed ones', () => {
+    const rendered = plan(
+      [
+        zoomed(click(0, 1000, { x: 560, y: 300 })),
+        click(1000, 3000, { x: 660, y: 300 }),
+        zoomed(click(3000, 4000, { x: 760, y: 300 })),
+      ],
+      [],
+    );
+    const [first, middle, last] = rendered.clicks;
+    expect(zoomAt(rendered, first.atMs)).toBeCloseTo(1.25);
+    expect(zoomAt(rendered, middle.atMs)).toBe(1);
+    expect(zoomAt(rendered, last.atMs)).toBeCloseTo(1.25);
+  });
+
+  it('eases a zoom-in that has no room only after the zoom-out ends', () => {
+    // The middle step's press is 100 ms before the last one's: the zoom-in
+    // waits for the zoom-out and arrives 500 ms after it starts.
+    const rendered = plan(
+      [
+        zoomed(click(0, 1000, { x: 560, y: 300 })),
+        click(1000, 1100, { x: 660, y: 300 }),
+        zoomed(click(1100, 1200, { x: 760, y: 300 })),
+      ],
+      [],
+    );
+    const keys = rendered.camera;
+    for (const [index, key] of keys.entries()) {
+      expect(key.atMs).toBeGreaterThanOrEqual(keys[index - 1]?.atMs ?? 0);
+    }
+    const outEnd = rendered.clicks[0].atMs + 400;
+    expect(zoomAt(rendered, outEnd)).toBe(1);
+    expect(zoomAt(rendered, outEnd + 500)).toBeCloseTo(1.25);
+  });
+
+  it('keeps the zoom across steps without a target', () => {
+    const rendered = plan(
+      [
+        zoomed(click(0, 1000, { x: 560, y: 300 })),
+        event({ action: 'wait', startMs: 1000, endMs: 1200 }),
+        event({
+          action: 'marker',
+          startMs: 1200,
+          endMs: 1200,
+          marker: { title: 'Next', kind: 'caption' },
+        }),
+        event({ action: 'press', startMs: 1200, endMs: 1300, key: 'Tab' }),
+        zoomed(click(1300, 2300, { x: 760, y: 300 }, { x: 560, y: 300 })),
+      ],
+      [],
+    );
+    const firstPress = rendered.clicks[0].atMs;
+    const secondPress = rendered.clicks[1].atMs;
+    for (const frame of frames(rendered, firstPress, secondPress + 1)) {
+      const atMs = (frame * 1000) / rendered.output.fps;
+      expect(zoomAt(rendered, atMs), `zoom at ${atMs} ms`).toBeCloseTo(1.25);
+    }
+  });
+
   it('keeps one continuous zoom over two clicks 200 px apart', () => {
     const rendered = plan(
       [
         // Away from the edges, so the view is not clamped to the frame.
-        click(0, 1000, { x: 560, y: 300 }),
+        zoomed(click(0, 1000, { x: 560, y: 300 })),
         event({ action: 'wait', startMs: 1000, endMs: 2500 }),
-        click(2500, 3500, { x: 760, y: 300 }, { x: 560, y: 300 }),
+        zoomed(click(2500, 3500, { x: 760, y: 300 }, { x: 560, y: 300 })),
       ],
       [],
     );
@@ -415,9 +562,9 @@ describe('camera', () => {
   it('zooms out between two distant clicks far apart in time', () => {
     const rendered = plan(
       [
-        click(0, 1000, { x: 200, y: 200 }),
+        zoomed(click(0, 1000, { x: 200, y: 200 })),
         event({ action: 'wait', startMs: 1000, endMs: 4000 }),
-        click(4000, 5000, { x: 1100, y: 600 }, { x: 200, y: 200 }),
+        zoomed(click(4000, 5000, { x: 1100, y: 600 }, { x: 200, y: 200 })),
       ],
       [],
     );
@@ -427,7 +574,7 @@ describe('camera', () => {
   });
 
   it('eases in over 500 ms before the action and out over 400 ms after', () => {
-    const rendered = plan([click(1000, 2000, { x: 400, y: 300 })], []);
+    const rendered = plan([zoomed(click(1000, 2000, { x: 400, y: 300 }))], []);
     const press = rendered.clicks[0].atMs;
     expect(zoomAt(rendered, press - 501)).toBe(1);
     expect(zoomAt(rendered, press - 250)).toBeGreaterThan(1);
@@ -436,10 +583,10 @@ describe('camera', () => {
     expect(zoomAt(rendered, press + 401)).toBe(1);
   });
 
-  it('zooms 1.6× on a 2× source and never leaves the frame', () => {
+  it('resolves zoom: true to 1.35× on a 2× source and never leaves the frame', () => {
     const rendered = planRender(
       {
-        timeline: timeline([click(1000, 2000, { x: 20, y: 20 })]),
+        timeline: timeline([zoomed(click(1000, 2000, { x: 20, y: 20 }))]),
         result: result(),
         source: {
           width: 2560,
@@ -454,7 +601,7 @@ describe('camera', () => {
     );
     expect(rendered.source.scale).toBe(2);
     const view = cameraAt(rendered, rendered.clicks[0].atMs);
-    expect(VIEWPORT.width / view.width).toBeCloseTo(1.6);
+    expect(VIEWPORT.width / view.width).toBeCloseTo(1.35);
     expect(view.x).toBe(0);
     expect(view.y).toBe(0);
   });
@@ -871,9 +1018,14 @@ describe('output', () => {
       width: 1920,
       height: 1080,
       fps: 30,
-      codec: 'h264',
-      pixelFormat: 'yuv420p',
-      faststart: true,
+      files: [
+        {
+          format: 'mp4',
+          codec: 'h264',
+          pixelFormat: 'yuv420p',
+          faststart: true,
+        },
+      ],
     });
     expect(rendered.fit).toEqual({ x: 0, y: 0, scale: 1.5 });
     expect(rendered.frame).toBeUndefined();
@@ -962,7 +1114,7 @@ describe('the window on a background (spec 100)', () => {
     const target = { x: 500, y: 300 };
     const rendered = framed([
       event({ action: 'navigate', startMs: 0, endMs: 500 }),
-      click(1000, 2000, target),
+      zoomed(click(1000, 2000, target)),
       event({ action: 'wait', startMs: 2000, endMs: 4000 }),
     ]);
     const press = rendered.clicks[0].atMs;
@@ -989,11 +1141,12 @@ describe('the window on a background (spec 100)', () => {
   it('keeps the camera on the stage when the target is near its edge', () => {
     const rendered = framed([
       event({ action: 'navigate', startMs: 0, endMs: 500 }),
-      click(1000, 2000, { x: 60, y: 20 }),
+      zoomed(click(1000, 2000, { x: 60, y: 20 })),
       event({ action: 'wait', startMs: 2000, endMs: 4000 }),
     ]);
     const [frame] = frames(rendered, rendered.clicks[0].atMs, 99_999);
     const view = frameAt(rendered, frame).frame?.view;
+    expect(view?.width).toBeCloseTo(1920 / 1.25);
     expect(view?.x).toBe(0);
     expect(view?.y).toBe(0);
   });
@@ -1002,22 +1155,24 @@ describe('the window on a background (spec 100)', () => {
     const password = { x: 264, y: 230, width: 384, height: 28 };
     const rendered = framed([
       event({ action: 'navigate', startMs: 0, endMs: 100 }),
-      event({
-        action: 'fill',
-        startMs: 800,
-        endMs: 1400,
-        target: { box: password },
-        masked: true,
-        value: '***',
-      }),
-      click(1400, 1800, { x: 456, y: 284 }),
+      zoomed(
+        event({
+          action: 'fill',
+          startMs: 800,
+          endMs: 1400,
+          target: { box: password },
+          masked: true,
+          value: '***',
+        }),
+      ),
+      zoomed(click(1400, 1800, { x: 456, y: 284 })),
       event({ action: 'navigate', startMs: 1800, endMs: 2100 }),
       event({ action: 'wait', startMs: 2100, endMs: 3000 }),
     ]);
-    let zoomed = 0;
+    let zoomedFrames = 0;
     for (const frame of frames(rendered, 800, 2100)) {
       const state = frameAt(rendered, frame);
-      if ((state.frame?.view.width ?? 1920) < 1919) zoomed++;
+      if ((state.frame?.view.width ?? 1920) < 1919) zoomedFrames++;
       expect(state.masks, `frame ${frame}`).toHaveLength(1);
       const [box] = state.masks;
       const corner = toOutput(rendered, state, password);
@@ -1030,7 +1185,7 @@ describe('the window on a background (spec 100)', () => {
         corner.y + password.height * state.scale,
       );
     }
-    expect(zoomed).toBeGreaterThan(5);
+    expect(zoomedFrames).toBeGreaterThan(5);
   });
 
   it('clips a whole-page mask to the part of the window on the frame', () => {

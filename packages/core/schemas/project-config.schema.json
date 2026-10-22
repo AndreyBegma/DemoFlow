@@ -181,6 +181,145 @@
               "additionalProperties": false
             }
           ]
+        },
+        "cards": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "intro": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "durationMs": {
+                  "default": 2000,
+                  "type": "integer",
+                  "minimum": 500,
+                  "maximum": 10000
+                }
+              },
+              "additionalProperties": false
+            },
+            "scenes": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "durationMs": {
+                  "default": 1500,
+                  "type": "integer",
+                  "minimum": 500,
+                  "maximum": 10000
+                }
+              },
+              "additionalProperties": false
+            },
+            "outro": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "\\S"
+                },
+                "cta": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80,
+                  "pattern": "\\S"
+                },
+                "durationMs": {
+                  "default": 2500,
+                  "type": "integer",
+                  "minimum": 500,
+                  "maximum": 10000
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "transitions": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "default": true,
+              "type": "boolean"
+            },
+            "durationMs": {
+              "description": "Milliseconds; at most half the shortest card that is on. Default 300, or half the shortest card when that is less.",
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 1000
+            }
+          },
+          "additionalProperties": false
+        },
+        "formats": {
+          "default": ["mp4"],
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["mp4", "gif", "webm", "mp4-vertical"]
+          }
+        },
+        "gif": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "width": {
+              "description": "Pixels, at most render.width. Default 800, or render.width when that is less.",
+              "type": "integer",
+              "minimum": 160,
+              "maximum": 9007199254740991
+            },
+            "fps": {
+              "description": "At most render.fps. Default 12, or render.fps when that is less.",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        },
+        "vertical": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "followMs": {
+              "default": 400,
+              "description": "Milliseconds the crop takes to move to the next target, eased in and out.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2000
+            },
+            "deadZone": {
+              "default": 0.1,
+              "description": "A move shorter than this share of the crop width is skipped, so the camera does not jitter.",
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 0.5
+            },
+            "captionBand": {
+              "default": 0.22,
+              "description": "The share of the frame height, at the bottom, that captions sit in.",
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 0.5
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

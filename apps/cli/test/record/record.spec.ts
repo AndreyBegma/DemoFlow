@@ -2,6 +2,7 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
+import { expandScenario, parseScenario } from '@demoflow/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // Read-only helper of the engine's tests: serves the built fixture on an ephemeral port.
 import {
@@ -98,7 +99,10 @@ describe('demoflow record against the fixture', () => {
     const scenario = await readScenario(root, 'customers');
     expect(scenario.name).toBe('customers');
     expect(scenario.viewport).toEqual({ width: 1280, height: 720 });
-    expect(scenario.steps).toEqual([
+    expect(
+      scenario.steps,
+      `recorded steps: ${JSON.stringify(scenario.steps, null, 2)}`,
+    ).toEqual([
       // The start and the typed URL fold into one navigation.
       { action: 'navigate', path: '/login' },
       { action: 'click', target: { role: 'link', name: 'Customers' } },
@@ -158,6 +162,99 @@ describe('demoflow record against the fixture', () => {
       target: { label: 'Password' },
       valueFrom: { env: 'DEMO_PASSWORD' },
     });
+  });
+});
+
+describe('demoflow record: Repeat over data', () => {
+  it('wraps a ticked fill in a repeat over three lines, and the scenario validates and replays three times', async () => {
+    const root = await project(fixture.origin);
+    const result = await record(root, 'repeat', {}, async (session) => {
+      const { app, panel } = session;
+      await panelShows(panel, 'navigate /');
+      await app.goto(`${fixture.origin}/login`);
+      await panelShows(panel, 'navigate /login');
+      await app.getByRole('link', { name: 'Customers' }).click();
+      await panelShows(panel, 'click link "Customers"');
+      await app
+        .getByRole('searchbox', { name: 'Search customers' })
+        .pressSequentially('Ada', { delay: 40 });
+      await panelShows(panel, '= "Ada"');
+      // An assertion, so the replay verifies something.
+      await panelButton(panel, 'Pick: text');
+      await app.getByRole('heading', { name: 'Customers' }).click();
+      await panelShows(panel, 'assert text heading "Customers"');
+
+      await panel.getByRole('checkbox', { name: 'Select step 3' }).check();
+      await panelButton(panel, 'Repeat over data');
+      await panel.getByLabel('List name').fill('names');
+      await panel.getByLabel('Values 1, one per line').fill('Ada\nGrace\nAlan');
+      await panelButton(panel, 'Create repeat');
+      await panelShows(panel, 'repeat over names (1 steps)');
+      await stopAndSave(session);
+    });
+
+    expect(result.code).toBe(0);
+    const scenario = await readScenario(root, 'repeat');
+    expect(scenario).toMatchObject({
+      data: { names: [{ text: 'Ada' }, { text: 'Grace' }, { text: 'Alan' }] },
+    });
+    expect(scenario.steps.slice(2, 3)).toEqual([
+      {
+        action: 'repeat',
+        each: 'names',
+        steps: [
+          {
+            action: 'fill',
+            target: { role: 'searchbox', name: 'Search customers' },
+            value: '{{item.text}}',
+          },
+        ],
+      },
+    ]);
+
+    const parsed = parseScenario(scenario);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(
+      expandScenario(parsed.value).steps.map((step) => step.action),
+    ).toEqual(['navigate', 'click', 'fill', 'fill', 'fill', 'assertText']);
+
+    let stdout = '';
+    const code = await runCommand(
+      scenarioFile(root, 'repeat'),
+      { json: true, project: root, out: path.join(root, 'artifacts') },
+      { stdout: (text) => (stdout += text), stderr: () => {} },
+    );
+    const run = JSON.parse(stdout) as {
+      status: string;
+      stages: { verification: { status: string } };
+    };
+    expect(run.stages.verification.status).toBe('passed');
+    expect(code).toBe(0);
+  });
+
+  it('refuses a ticked run with gaps, and a selection with no typed text', async () => {
+    const root = await project(counterOrigin);
+    const result = await record(root, 'gaps', {}, async (session) => {
+      const { app, panel } = session;
+      await panelShows(panel, 'navigate /');
+      await app.getByRole('button', { name: 'Count' }).click();
+      await panelShows(panel, 'click button "Count"');
+      await panel.getByRole('checkbox', { name: 'Select step 2' }).check();
+      await panelButton(panel, 'Repeat over data');
+      await panel
+        .getByText('the ticked steps type no text to repeat over')
+        .waitFor();
+      await stopAndSave(session);
+    });
+
+    expect(result.code).toBe(0);
+    const scenario = await readScenario(root, 'gaps');
+    expect(scenario).not.toHaveProperty('data');
+    expect(scenario.steps.map((step) => step.action)).toEqual([
+      'navigate',
+      'click',
+    ]);
   });
 });
 
