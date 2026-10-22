@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { RunResult } from '@demoflow/core';
@@ -166,10 +167,25 @@ describe('reportRun', () => {
       authorization: `Bearer ${TOKEN}`,
     });
     expect(JSON.parse(String(call?.init.body))).toMatchObject({
-      rootPath: ROOT,
+      rootPath: path.resolve(ROOT),
       projectName: 'shop',
       cliVersion: '1.2.3',
     });
+  });
+
+  it('sends the canonical root: a symlinked folder is the same project', async () => {
+    pair();
+    const real = path.join(home, 'real');
+    const link = path.join(home, 'link');
+    mkdirSync(real);
+    // A junction needs no privilege on Windows; POSIX ignores the type.
+    symlinkSync(real, link, 'junction');
+    await reportRun({ root: link, result: result() }, deps(ok));
+    await reportRun({ root: real, result: result() }, deps(ok));
+    const roots = calls.map(
+      (call) => JSON.parse(String(call.init.body)).rootPath,
+    );
+    expect(roots).toEqual([await realpath(real), await realpath(real)]);
   });
 
   it('sends nothing when the machine is not paired', async () => {

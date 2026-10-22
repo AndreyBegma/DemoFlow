@@ -1,3 +1,4 @@
+import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { RenderFormat, RunResult } from '@demoflow/core';
 import { readCredentials } from '../auth/credentials.ts';
@@ -79,6 +80,19 @@ export function buildReport(input: {
 }
 
 /**
+ * The project key is `(runnerId, rootPath)`, so one folder must have one path:
+ * symlinks and junctions are resolved (`/tmp` → `/private/tmp` on macOS). A
+ * root that cannot be resolved is sent as an absolute path.
+ */
+export async function canonicalRoot(root: string): Promise<string> {
+  try {
+    return await realpath(root);
+  } catch {
+    return path.resolve(root);
+  }
+}
+
+/**
  * Decision 3: after a run on a paired machine, tell the server it happened.
  * Never throws, never prints, and is over within the timeout: the run's own
  * output and exit code are untouched.
@@ -92,7 +106,7 @@ export async function reportRun(
     const credentials = readCredentials(deps.host);
     if (credentials === null) return;
     const body = buildReport({
-      root: input.root,
+      root: await canonicalRoot(input.root),
       result: input.result,
       cliVersion: deps.version(),
       pathApi: pathFor(deps.host.platform),
