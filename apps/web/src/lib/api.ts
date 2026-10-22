@@ -200,3 +200,76 @@ export function revokeRunner(id: string) {
     method: 'DELETE',
   });
 }
+
+// Projects and the run library (spec #178).
+
+/** A run's metadata; videos stay on the machine (ADR-0008). */
+export interface ProjectRun {
+  id: string;
+  scenarioName: string;
+  scenarioPath: string;
+  status: 'passed' | 'failed';
+  startedAt: string;
+  durationMs: number;
+  formats: string[];
+  failedStep: number | null;
+  cliVersion: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  rootPath: string | null;
+  /** Null for a project never bound, or whose machine was revoked. */
+  runner: { id: string; name: string } | null;
+  runCount: number;
+  lastRun: ProjectRun | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectRunsPage {
+  runs: ProjectRun[];
+  nextCursor: string | null;
+}
+
+export function listProjects(target?: Target) {
+  return request<{ projects: Project[] }>(
+    '/projects',
+    { method: 'GET' },
+    target,
+  );
+}
+
+export function createProject(name: string) {
+  return request<{ project: Project }>('/projects', {
+    method: 'POST',
+    body: { name },
+  });
+}
+
+/** Renames and binds; `runnerId` and `rootPath` come together or not at all. */
+export function updateProject(
+  id: string,
+  changes: { name?: string; runnerId?: string; rootPath?: string },
+) {
+  return request<{ project: Project }>(`/projects/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: changes,
+  });
+}
+
+export function deleteProject(id: string) {
+  return request<void>(`/projects/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function listProjectRuns(id: string, cursor?: string, target?: Target) {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  return request<ProjectRunsPage>(
+    `/projects/${encodeURIComponent(id)}/runs${query}`,
+    { method: 'GET' },
+    target,
+  );
+}
