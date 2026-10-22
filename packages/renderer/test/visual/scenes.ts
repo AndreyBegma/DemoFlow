@@ -100,6 +100,8 @@ export interface Scene {
   plan?: RenderPlan;
   /** A held source time (spec 114): drawn from `previousPageSource()`. */
   heldSourceMs?: number;
+  /** Drawn as the vertical output of `plan` (spec 176), at its size. */
+  vertical?: true;
 }
 
 const PASSED_STAGES: Stages = {
@@ -212,6 +214,10 @@ const TRANSITIONED = framedPlan(
 );
 const HELD_SOURCE_MS = TRANSITIONED.transitions?.holds[1]?.sourceMs;
 
+/** Spec 176: the framed run with the vertical output; the frame is not used there. */
+const VERTICAL = framedPlan({ formats: ['mp4', 'mp4-vertical'] });
+const VERTICAL_SIZE = { width: 1080, height: 1920 } as const;
+
 export const SCENES: readonly Scene[] = [
   {
     name: 'cursor',
@@ -305,6 +311,43 @@ export const SCENES: readonly Scene[] = [
   // Spec 146: the first frame of the loaded page alone, 2 600 ms. The masked
   // field's box is gone with the page it was on.
   transitioned('live-after-navigation', 2600),
+  {
+    // Spec 176: the crop on the red block at the press, zoomed, with the
+    // cursor, the ring and a caption long enough to need a third line.
+    name: 'vertical-zoomed',
+    frame: {
+      ...frameAt(VERTICAL, PRESS_FRAME, 'vertical'),
+      caption:
+        'Open the invoice, check the total and the due date, then send it to the customer — Создать клиента',
+    },
+    region: { x: 0, y: 0, ...VERTICAL_SIZE },
+    plan: VERTICAL,
+    vertical: true,
+  },
+  {
+    // At the start: the crop on the page centre, the field's mask in it.
+    name: 'vertical-follow',
+    frame: frameAt(VERTICAL, 0, 'vertical'),
+    region: { x: 0, y: 0, ...VERTICAL_SIZE },
+    plan: VERTICAL,
+    vertical: true,
+  },
+  {
+    // A card centred in the vertical frame, wrapped to its width.
+    name: 'vertical-card',
+    frame: state({
+      sourceMs: null,
+      content: { x: 0, y: 0, ...VERTICAL_SIZE },
+      card: {
+        title: 'Create a customer',
+        subtitle: 'From the dashboard to a saved record',
+        background: BACKGROUND_PRESET_COLOURS.ocean,
+      },
+    }),
+    region: { x: 0, y: 0, ...VERTICAL_SIZE },
+    plan: VERTICAL,
+    vertical: true,
+  },
 ];
 
 function transitioned(name: string, atMs: number): Scene {
@@ -381,9 +424,20 @@ const PREVIOUS_PAGE = previousPageSource();
 
 /** Draws `scene` and returns the region it keeps. */
 export function renderScene(scene: Scene, source: Picture): Picture {
-  const target = createPicture(OUTPUT.width, OUTPUT.height);
-  const stage = scene.plan === undefined ? undefined : renderStage(scene.plan);
-  drawLayers(createCompositor(OUTPUT, stage), target, scene.frame, (ms) =>
+  const vertical = scene.vertical === true ? scene.plan?.vertical : undefined;
+  const output =
+    vertical === undefined
+      ? OUTPUT
+      : { ...OUTPUT, width: vertical.width, height: vertical.height };
+  const target = createPicture(output.width, output.height);
+  const compositor =
+    vertical === undefined
+      ? createCompositor(
+          output,
+          scene.plan === undefined ? undefined : renderStage(scene.plan),
+        )
+      : createCompositor(output, undefined, vertical.caption);
+  drawLayers(compositor, target, scene.frame, (ms) =>
     ms === scene.heldSourceMs ? PREVIOUS_PAGE : source,
   );
   const { x, y, width, height } = scene.region;

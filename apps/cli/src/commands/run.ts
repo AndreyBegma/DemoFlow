@@ -173,6 +173,7 @@ export async function runCommand(
           transitions: config.render.transitions,
           formats: flags.format ?? config.render.formats,
           gif: config.render.gif,
+          vertical: config.render.vertical,
           scenario:
             scenario.description === undefined
               ? {}

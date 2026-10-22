@@ -1,5 +1,5 @@
 import type { CardsConfig, TimelineEvent } from '@demoflow/core';
-import { cameraStateAt, cursorAt, maskBoxAt } from './frame.ts';
+import { cameraStateAt, cursorAt, followAt, maskBoxAt } from './frame.ts';
 import { type CardSlot, shiftPastCards } from './time-map.ts';
 import type {
   CameraKeyframe,
@@ -7,6 +7,7 @@ import type {
   CardSpec,
   ClickRing,
   CursorMove,
+  FollowKey,
   KeyBadge,
   MaskSpan,
 } from './types.ts';
@@ -80,6 +81,8 @@ export interface Overlays {
   cursor: CursorMove[];
   clicks: ClickRing[];
   camera: CameraKeyframe[];
+  /** The vertical output's follow camera (spec 176). */
+  follow: FollowKey[];
   masks: MaskSpan[];
   captions: Caption[];
   keys: KeyBadge[];
@@ -115,6 +118,10 @@ export function shiftOverlays(
     camera: holdAcross(overlays.camera, cards, at, (pageMs, atMs) => ({
       atMs,
       ...cameraStateAt(overlays.camera, pageMs),
+    })),
+    follow: holdAcross(overlays.follow, cards, at, (pageMs, atMs) => ({
+      atMs,
+      x: followAt(overlays.follow, pageMs) ?? 0,
     })),
     masks: overlays.masks.map((mask) => ({
       ...span(mask),

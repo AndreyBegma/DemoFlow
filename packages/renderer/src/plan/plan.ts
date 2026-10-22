@@ -12,10 +12,12 @@ import {
   type Timeline,
   type TimelineEvent,
   TimelineSchema,
+  VerticalConfigSchema,
 } from '@demoflow/core';
 import { resolveBackground } from './background.ts';
 import { placeCards, shiftOverlays } from './cards.ts';
 import { probeVideo } from './ffmpeg.ts';
+import { verticalCropSize } from './frame.ts';
 import { findSyncClear, syncOffset } from './sync-mark.ts';
 import {
   buildTimeMap,
@@ -30,6 +32,7 @@ import type {
   ClickRing,
   CursorMove,
   FailureSpec,
+  FollowKey,
   FrameSpec,
   Interval,
   KeyBadge,
@@ -39,6 +42,7 @@ import type {
   RenderPlan,
   RenderPlanOptions,
   TransitionsSpec,
+  VerticalSpec,
   VideoProbe,
 } from './types.ts';
 
@@ -248,11 +252,19 @@ export function planRender(
     transitions: options.transitions?.enabled === true,
     sourceFrameMs: 1000 / source.fps,
   });
-  const overlays = shiftOverlays(
+  const verticalConfig = VerticalConfigSchema.parse(options.vertical ?? {});
+  const { follow, ...overlays } = shiftOverlays(
     {
       cursor: cursorMoves(events, out),
       clicks: clickRings(events, out),
       camera: cameraKeyframes(events, out, viewport, defaultZoom),
+      follow: followKeys(
+        events,
+        out,
+        viewport,
+        verticalCropSize(viewport, VERTICAL).width,
+        verticalConfig,
+      ),
       masks,
       captions: captions(events, out, pageEndMs),
       keys: keyBadges(events, out, pageEndMs, viewport),
@@ -287,13 +299,21 @@ export function planRender(
     failure === undefined
       ? undefined
       : failureCard(failure, videoEndMs, TIMING.endCardMs);
+  const files = outputFiles(output, options);
+  const vertical: VerticalSpec | undefined = files.some(
+    (file) => file.format === 'mp4-vertical',
+  )
+    ? {
+        width: VERTICAL.width,
+        height: VERTICAL.height,
+        follow,
+        caption: verticalCaption(verticalConfig.captionBand),
+      }
+    : undefined;
 
   return {
     version: 1,
-    output: {
-      ...output,
-      files: outputFiles(output, options),
-    },
+    output: { ...output, files },
     source: {
       file: timeline.videoFile,
       width: source.width,
@@ -318,7 +338,61 @@ export function planRender(
     ...overlays,
     ...(transitions === undefined ? {} : { transitions }),
     ...(failureSpec === undefined ? {} : { failure: failureSpec }),
+    ...(vertical === undefined ? {} : { vertical }),
   };
+}
+
+/** The vertical output's size and caption type (spec 176, Decisions 1 and 4). */
+export const VERTICAL = {
+  width: 1080,
+  height: 1920,
+  /** At 1080 wide; at least the 44 px Decision 4 asks for. */
+  captionFontPx: 48,
+  captionMaxLines: 3,
+} as const;
+
+/** The band over the bottom `band` of the vertical frame, the type scaled with its width. */
+function verticalCaption(band: number): VerticalSpec['caption'] {
+  const height = Math.round(VERTICAL.height * band);
+  return {
+    top: VERTICAL.height - height,
+    height,
+    fontPx: (VERTICAL.captionFontPx * VERTICAL.width) / 1080,
+    maxLines: VERTICAL.captionMaxLines,
+  };
+}
+
+/**
+ * The vertical crop's horizontal centre (spec 176, Decision 3): the page
+ * centre at the start, then the centre of each step's target, reached as the
+ * step starts — or as soon as the previous move ends — over `followMs`. A
+ * step without a target keeps it. A move under `deadZone` of the crop width,
+ * measured where the clamped crop would actually go, is skipped. The keys
+ * hold the target itself; the crop is clamped to the page when drawn, so a
+ * zoom on an edge target still centres it as far as the page allows.
+ */
+function followKeys(
+  events: readonly TimelineEvent[],
+  out: (timelineMs: number) => number,
+  viewport: { width: number; height: number },
+  cropWidth: number,
+  { followMs, deadZone }: { followMs: number; deadZone: number },
+): FollowKey[] {
+  const half = cropWidth / 2;
+  const onPage = (x: number): number =>
+    clamp(x, half, Math.max(half, viewport.width - half));
+  let x = viewport.width / 2;
+  const keys: FollowKey[] = [{ atMs: 0, x }];
+  for (const event of events) {
+    if (event.target === undefined) continue;
+    const to = centreOf(event.target.box).x;
+    if (Math.abs(onPage(to) - onPage(x)) < deadZone * cropWidth) continue;
+    const last = keys[keys.length - 1].atMs;
+    const startMs = Math.max(last, out(event.startMs) - followMs);
+    keys.push({ atMs: startMs, x }, { atMs: startMs + followMs, x: to });
+    x = to;
+  }
+  return keys;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -401,6 +475,13 @@ function outputFile(
 ): OutputFile {
   switch (format) {
     case 'mp4':
+      return {
+        format,
+        codec: 'h264',
+        pixelFormat: 'yuv420p',
+        faststart: true,
+      };
+    case 'mp4-vertical':
       return {
         format,
         codec: 'h264',

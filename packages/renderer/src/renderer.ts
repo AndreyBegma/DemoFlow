@@ -29,13 +29,21 @@ export interface Renderer {
   render(runDir: string, plan: RenderPlan): Promise<RenderOutput[]>;
 }
 
-/** `<runDir>/render/<renderer>.<format>` */
+/** The file name after `<renderer>.`: the format, the vertical MP4's `.vertical` before its extension (spec 176). */
+const EXTENSIONS: Record<RenderFormat, string> = {
+  mp4: 'mp4',
+  gif: 'gif',
+  webm: 'webm',
+  'mp4-vertical': 'vertical.mp4',
+};
+
+/** `<runDir>/render/<renderer>.<format>`, or `<renderer>.vertical.mp4`. */
 export function renderPath(
   runDir: string,
   renderer: string,
   format: RenderFormat = 'mp4',
 ): string {
-  return path.join(runDir, 'render', `${renderer}.${format}`);
+  return path.join(runDir, 'render', `${renderer}.${EXTENSIONS[format]}`);
 }
 
 /**
