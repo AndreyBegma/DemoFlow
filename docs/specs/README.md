@@ -79,3 +79,9 @@ decisions live in [../adr/](../adr/README.md).
 
 Phase 2 onwards is specified now that the renderer spike has decided the
 renderer.
+
+## Camera
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#163](https://github.com/AndreyBegma/DemoFlow/issues/163) | [Zoom set per step, no automatic zoom](163-step-zoom.md) | — |
