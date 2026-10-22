@@ -160,6 +160,18 @@ A crash is restarted (systemd, launchd). A runner stopped on purpose, or
 revoked on the website, exits cleanly and stays down. Windows does not
 restart a crash; the next logon starts it again. Neither file holds the token.
 
+## Runs on the website
+
+On a paired machine, `demoflow run` tells the website that the run happened, so
+it appears in your project's library. Only metadata is sent: the project folder
+and its name, the scenario's name and path, the verdict, the start time, the
+duration, the rendered formats, the failed step's number and the CLI version.
+Videos, frames and step values never leave the machine.
+
+The report waits at most two seconds and fails silently; the run's output and
+exit code are never affected. It is off without `demoflow login`, under `CI`,
+and with `DEMOFLOW_NO_REPORT=1`.
+
 ## With Claude Code
 
 ```sh
