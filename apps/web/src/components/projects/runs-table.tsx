@@ -3,6 +3,7 @@
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button } from '@andrewbehma/glass-ui/button';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
+import Link from 'next/link';
 import { useState } from 'react';
 import { t } from '@/i18n';
 import {
@@ -11,16 +12,8 @@ import {
   type ProjectRunsPage,
 } from '@/lib/api';
 import { formatDate } from '@/lib/format-date';
+import { formatDuration } from '@/lib/format-duration';
 import { RunStatus } from './run-status';
-
-/** 1.2 s, 3 min 4 s: a run's duration at a glance. */
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms} ms`;
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)} s`;
-  const whole = Math.round(seconds);
-  return `${Math.floor(whole / 60)} min ${whole % 60} s`;
-}
 
 export function RunsTable({
   projectId,
@@ -87,9 +80,12 @@ export function RunsTable({
             {runs.map((run) => (
               <tr key={run.id} className="border-t border-current/10">
                 <td className="py-3 pr-4 align-top">
-                  <div className="break-words font-medium">
+                  <Link
+                    href={`/app/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(run.id)}`}
+                    className="break-words font-medium underline"
+                  >
                     {run.scenarioName}
-                  </div>
+                  </Link>
                   <div className="break-all text-xs text-ink-2">
                     {run.scenarioPath}
                   </div>
@@ -111,12 +107,7 @@ export function RunsTable({
                       {t('projects.library.noFormats')}
                     </span>
                   ) : (
-                    <div className="flex flex-col">
-                      <span>{run.formats.join(', ')}</span>
-                      <span className="text-xs text-ink-2">
-                        {t('projects.library.playsLater')}
-                      </span>
-                    </div>
+                    <span>{run.formats.join(', ')}</span>
                   )}
                 </td>
                 <td className="py-3 align-top">
