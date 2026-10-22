@@ -290,6 +290,7 @@ export function planRender(
               pageEndMs,
               masks,
               sourceFrameMs: 1000 / source.fps,
+              maskLeadMs,
               durationMs: options.transitions.durationMs,
             }),
             cards,
