@@ -10,6 +10,7 @@ on:
       - packages/core/**
       - packages/engine/**
       - packages/renderer/**
+      - packages/playwright/**
       - apps/cli/**
       - apps/fixture/**
       - package.json
@@ -80,7 +81,20 @@ jobs:
           --filter=@demoflow/core
           --filter=@demoflow/engine
           --filter=@demoflow/renderer
+          --filter=@demoflow/playwright
           --filter=@demoflow/cli
+
+      # Spec 208, Decision 10: demoflow/playwright's probes on the older
+      # supported minors of @playwright/test (npm aliases in its
+      # devDependencies), each with its own Chromium. Linux only: what differs
+      # across versions is how Page and Locator tolerate a Proxy, not the OS.
+      - name: Test demoflow/playwright on @playwright/test 1.62 and 1.63
+        if: runner.os == 'Linux'
+        working-directory: packages/playwright
+        run: |
+          node ../../node_modules/playwright-test-1-62/cli.js install chromium
+          node ../../node_modules/playwright-test-1-63/cli.js install chromium
+          npx vitest run --config vitest.minors.config.ts
 
       - name: Start the fixture preview
         run: node .github/scripts/serve-fixture.mjs start
