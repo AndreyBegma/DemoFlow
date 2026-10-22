@@ -6,7 +6,7 @@ import type { MaskSpan, NavigationHold } from './types.ts';
 
 /**
  * The holds of a run's page loads, in page ms (spec 114). Each navigation
- * holds the last source frame before it from its start to its `endMs` — the
+ * holds a frame of the page before it from just before its start to its `endMs` — the
  * page's `load` — then dissolves into the ready page over `durationMs`, never
  * past the next navigation or the end of the page. No time is inserted: the
  * hold covers the loading time and the dissolve reveals the ready page.
@@ -15,9 +15,20 @@ import type { MaskSpan, NavigationHold } from './types.ts';
  * the background from page 0. A navigation still loading when the recording
  * ended holds until the next step starts, or the page ends (Risks).
  *
- * A hold carries every mask active when its navigation started — or one
- * source frame before, the frame held — at its box then: the held frame
- * shows that page, whatever the live page's masks do meanwhile.
+ * The frame held is taken a lead before the navigation's start, not the last
+ * one before it: a source frame's time can be early — the recorder snaps
+ * frames to its frame rate, and the sync offset has its own error — and the
+ * new document's blank page can be painted within that error of the start
+ * (#150). An older frame of the same page is invisible; a blank flash is not.
+ * For the same reason the hold starts at the frame held, not at the
+ * navigation: a live frame in the lead can already read the blank page. It
+ * never starts before the previous hold's dissolve ends, nor before the step
+ * before the triggering one: at most a lead-long tail of that step's page
+ * pixels freezes; the cursor and rings stay live.
+ *
+ * A hold carries every mask active from the frame held — or one source frame
+ * before it — to its navigation's start, at its box on the frame held: that
+ * frame shows that page, whatever the live page's masks do meanwhile.
  */
 export function planHolds(input: {
   navigations: readonly Navigation[];
@@ -32,15 +43,28 @@ export function planHolds(input: {
   /** In page ms, before the cards are inserted. */
   masks: readonly MaskSpan[];
   sourceFrameMs: number;
+  /** The plan's mask lead: the same sync uncertainty, budgeted for masks. */
+  maskLeadMs: number;
   durationMs: number;
 }): NavigationHold[] {
   const { navigations, events, out, pageEndMs } = input;
+  const leadMs = Math.max(input.maskLeadMs, 2 * input.sourceFrameMs);
+  // Steps that take time: a marker is no action of its own.
+  const steps = events.filter((event) => event.endMs > event.startMs);
   const holds: NavigationHold[] = [];
   for (const [index, navigation] of navigations.entries()) {
     const first = index === 0;
-    const startMs = first ? 0 : out(navigation.startMs);
     // After a failure the page has ended: this load never showed.
-    if (startMs >= pageEndMs) break;
+    if (!first && out(navigation.startMs) >= pageEndMs) break;
+    // The page ms of the frame held.
+    const heldAtMs = out(navigation.startMs - leadMs);
+    const startMs = first
+      ? 0
+      : Math.max(
+          heldAtMs,
+          holds.at(-1)?.fadeEndMs ?? 0,
+          out(stepBefore(steps, navigation.startMs)?.startMs ?? 0),
+        );
     // `showsHeldPage` is this loop's rule for which holds show the old page; keep the two in step.
     const readyMs =
       navigation.endMs ??
@@ -54,11 +78,11 @@ export function planHolds(input: {
       endMs,
       Math.min(
         endMs + input.durationMs,
-        next === undefined ? pageEndMs : out(next.startMs),
+        next === undefined ? pageEndMs : out(next.startMs - leadMs),
         pageEndMs,
       ),
     );
-    const heldFromMs = startMs - input.sourceFrameMs;
+    const navigationMs = out(navigation.startMs);
     holds.push({
       startMs,
       endMs,
@@ -67,26 +91,43 @@ export function planHolds(input: {
       ...(first
         ? {}
         : {
+            // From before the navigation even when a clamp starts the hold
+            // later than the frame's own time.
             sourceMs: Math.max(
               input.sourceStartMs,
-              input.toSource(navigation.startMs) - 1,
+              input.toSource(navigation.startMs) - leadMs,
             ),
           }),
       masks: first
         ? []
         : input.masks
             .filter(
-              (mask) => mask.startMs <= startMs && mask.endMs > heldFromMs,
+              (mask) =>
+                mask.startMs <= navigationMs &&
+                mask.endMs > heldAtMs - input.sourceFrameMs,
             )
             .map((mask) =>
               maskBoxAt(
                 mask,
-                Math.min(Math.max(startMs, mask.startMs), mask.endMs),
+                Math.min(Math.max(heldAtMs, mask.startMs), mask.endMs),
               ),
             ),
     });
   }
   return holds;
+}
+
+/**
+ * The step before the one a navigation started in: a hold may freeze the
+ * tail of it, never more. Not the triggering step itself — a `navigate` step
+ * sends its request a few ms after it starts, well inside the error (#150).
+ */
+function stepBefore(
+  steps: readonly TimelineEvent[],
+  atMs: number,
+): TimelineEvent | undefined {
+  const trigger = steps.findLastIndex((step) => step.startMs <= atMs);
+  return trigger > 0 ? steps[trigger - 1] : undefined;
 }
 
 /**
