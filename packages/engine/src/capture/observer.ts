@@ -72,6 +72,9 @@ export function createCaptureObserver(options: CaptureOptions): EngineObserver {
           ...(outcome.navigations === undefined
             ? {}
             : { navigations: outcome.navigations }),
+          ...(outcome.maskedElements === undefined
+            ? {}
+            : { maskedElements: outcome.maskedElements }),
         });
         await writeJson(path.join(runDir, RUN_FILES.timeline), timeline);
       }
