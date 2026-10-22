@@ -1,6 +1,7 @@
 import type { BrowserContext } from 'playwright';
 import type { MarkedMasks } from './marked-masks.ts';
 import { installNavigationProbe } from './pending-navigation.ts';
+import { installReadySignal } from './ready.ts';
 
 /**
  * The scripts every document of the run gets, before its own (#117, #197):
@@ -12,4 +13,5 @@ export async function installPageScripts(
 ): Promise<void> {
   await installNavigationProbe(context);
   await marked.install(context);
+  await installReadySignal(context);
 }

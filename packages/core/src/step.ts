@@ -111,7 +111,8 @@ const PressKeySchema = z.string().superRefine((key, ctx) => {
   if (problem !== undefined) ctx.addIssue({ code: 'custom', message: problem });
 });
 
-const READY_NAME = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+/** The format of a ready name; the engine's page script checks the same one. */
+export const READY_NAME = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
 
 /** A name the application passes to `window.demoflow.ready` (ADR-0013 §4). */
 export const ReadyNameSchema = z

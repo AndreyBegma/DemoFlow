@@ -17,6 +17,7 @@ import {
   type OriginGuard,
   originNotAllowed,
 } from './readiness.ts';
+import { waitForReady } from './ready.ts';
 
 /** Spec 3: the recording shows typing, one character every 35 ms. */
 export const TYPING_DELAY_MS = 35;
@@ -183,6 +184,9 @@ export async function runAction(
       return { marker: { title: step.title, kind: step.kind } };
     case 'wait':
       await sleep(step.ms);
+      return {};
+    case 'waitForReady':
+      await waitForReady(ctx.page, step.name, step.timeoutMs);
       return {};
   }
 }
