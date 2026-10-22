@@ -191,6 +191,30 @@ export const en = {
       docs: 'Docs',
     },
   },
+  docs: {
+    meta: {
+      title: 'Documentation',
+    },
+    header: {
+      home: 'DemoFlow home',
+      openApp: 'Open app',
+    },
+    nav: {
+      label: 'Documentation',
+      title: 'Docs',
+      start: 'Getting started',
+      scenarios: 'Scenarios',
+      config: 'Project config',
+      cli: 'CLI',
+      record: 'Recording',
+      runner: 'Runner',
+      mcp: 'MCP tools',
+      more: 'More guides',
+    },
+    toc: {
+      label: 'On this page',
+    },
+  },
   auth: {
     fields: {
       email: 'Email',

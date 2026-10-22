@@ -1,0 +1,77 @@
+export const metadata = { title: 'Runner' };
+
+# Runner
+
+You can pair a machine with your DemoFlow account and keep it connected, so the
+website shows it online. Nothing here is needed to make videos: every other
+command works without an account. No jobs run over the connection yet.
+
+## Pair a machine
+
+```sh
+npx demoflow login
+```
+
+The command prints a code such as `ABCD-1234` and opens
+`<server>/app/device?code=ABCD-1234`. Check that the code matches your
+terminal, then approve it while signed in with a verified email. Over SSH with
+no browser, open `<server>/app/device` yourself and type the code. The code
+expires after 10 minutes.
+
+- Already paired: `login` prints the account and machine name. `--force` pairs again and revokes the old token first.
+- `demoflow logout` revokes the token on the server, then deletes the file. If the server cannot be reached it still deletes the file, and the machine stays listed under **Machines** until you revoke it there.
+- The server is the website's origin. `--server <url>` or `DEMOFLOW_SERVER` picks it; the API is under `/api`.
+- The token is in `credentials.json`, mode 0600, next to the global `config.json`: `~/.config/demoflow/` (or `$XDG_CONFIG_HOME/demoflow/`), `~/Library/Application Support/demoflow/`, or `%APPDATA%\demoflow\`. It is never printed or logged.
+- The cloud learns the machine's name, OS and release, CLI version, and when the token was last used. Nothing else.
+
+## Keep it connected
+
+```sh
+npx demoflow runner start
+```
+
+The runner is a background process that holds one connection to the server. After
+`login`, the CLI asks whether to start it; `--start` and `--no-start` answer in
+advance, and with no terminal it only prints the command.
+
+| Command | What it does |
+|---|---|
+| `demoflow runner start` | Start the runner. A second `start` prints the PID of the one running. |
+| `demoflow runner stop` | Stop it. `logout` stops it first. |
+| `demoflow runner status` | Show whether it runs, its connection, the server and whether autostart is installed. `--json` prints one object. |
+| `demoflow runner logs` | Print the runner's log. `-f` or `--follow` keeps printing. |
+| `demoflow runner install` | Start the runner at every login, and now. |
+| `demoflow runner uninstall` | Stop starting it at login. A running runner keeps running until `stop`. |
+
+The connection is `connected`, `reconnecting in Ns` or `revoked`. When it drops,
+the runner reconnects with a backoff from 1 second doubling to 60. It exits for
+good if the machine is revoked on the website. Every 30 days the server rotates
+the token over the connection and the runner rewrites `credentials.json`.
+
+## Start at login
+
+```sh
+npx demoflow runner install
+```
+
+This registers the runner for your user, with no admin rights, and starts it
+now. It needs `demoflow login` first. The unit runs the same `node` and CLI that
+ran `install`, by absolute path, so run `install` again if you move or upgrade
+the CLI.
+
+| OS | What it creates |
+|---|---|
+| Linux | a systemd user unit, `~/.config/systemd/user/demoflow-runner.service` |
+| macOS | a LaunchAgent, `~/Library/LaunchAgents/dev.demoflow.runner.plist` |
+| Windows | a Task Scheduler task, `DemoFlowRunner`, at logon for the current user |
+
+A crash is restarted by systemd and launchd. A runner stopped on purpose, or
+revoked on the website, stays down. Windows does not restart a crash; the next
+logon starts it again. Neither unit holds the token.
+
+## Status on the site
+
+Signed in, open **Machines** in the app. Each paired machine is listed with its
+name and a status dot: online while its runner is connected, otherwise offline,
+with when and from which address it was last seen. You can rename a machine or
+revoke it there.

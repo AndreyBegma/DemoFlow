@@ -1,0 +1,139 @@
+export const metadata = { title: 'Project config' };
+
+# Project config
+
+`demoflow.config.json` sits at the root of your project. It is data, never
+code. Only `baseUrl` is required.
+
+```json
+{
+  "baseUrl": "http://localhost:3000",
+  "allowedOrigins": ["http://localhost:3000"],
+  "devCommand": {
+    "command": "npm",
+    "args": ["run", "dev"],
+    "readyUrl": "http://localhost:3000",
+    "timeoutMs": 60000
+  },
+  "artifactsDir": "demo-artifacts",
+  "render": {}
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `baseUrl` | Where your app runs. Scenario paths are relative to it. |
+| `allowedOrigins` | The origins a run may visit, as bare origins such as `https://example.com`. Defaults to the origin of `baseUrl`. |
+| `devCommand` | How to start your app. See below. |
+| `artifactsDir` | Where runs are written, relative to the project root. |
+| `render` | How the video looks. See below. |
+
+`--base-url` on `demoflow run` overrides `baseUrl` for one run.
+
+## Starting your app
+
+With a `devCommand`, `demoflow run` and `demoflow record` start your app
+themselves, wait until `readyUrl` answers, and stop it when they finish. Any
+HTTP answer below 500 counts as up. If the app exits early, or does not answer
+within `timeoutMs`, the command fails and tells you which.
+
+## Artifacts
+
+Runs are written to `<home>/runs/<id>/`. The home is the first of: `--out`,
+the `DEMOFLOW_HOME` environment variable, `artifactsDir` in the project config,
+`artifactsDir` in the global `config.json`, and the OS data directory.
+
+## Render
+
+Every `render` key is optional. These are the defaults:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `width`, `height` | 1920, 1080 | The video size in pixels. |
+| `fps` | 30 | Frames per second. |
+| `idle.thresholdMs` | 1000 | A still stretch longer than this is shortened. |
+| `idle.compressToMs` | 400 | …to this long. |
+| `frame` | on | See below. |
+| `background` | `{ "preset": "ocean" }` | See below. |
+| `cards` | see below | Intro, scene and outro cards. |
+| `transitions` | on | Dissolves. |
+| `formats` | `["mp4"]` | The files to render. |
+| `gif` | 800 px, 12 fps | The GIF's own size and rate. |
+
+### Frame
+
+The page is drawn in a rounded, shadowed window on the background.
+
+```json
+{ "render": { "frame": { "enabled": true, "marginRatio": 0.06, "radius": 12, "shadow": true } } }
+```
+
+`enabled: false` renders the page full-bleed. `marginRatio` is the margin on
+every side as a share of the video height (under 0.25). `radius` is in pixels
+at 1080p and scales with the output.
+
+### Background
+
+One of a preset, a solid colour, or a two-stop gradient. Images are not
+supported.
+
+```json
+{ "render": { "background": { "preset": "sunset" } } }
+{ "render": { "background": { "color": "#1e3a5f" } } }
+{ "render": { "background": { "gradient": { "from": "#1e3a5f", "to": "#0b2e4f", "angle": 90 } } } }
+```
+
+The presets are `ocean`, `sunset`, `forest`, `dusk`, `graphite` and `paper`.
+`angle` is in degrees as in CSS `linear-gradient`: 0 runs towards the top,
+clockwise.
+
+### Cards
+
+Cards are full-screen titles between the page frames.
+
+```json
+{
+  "render": {
+    "cards": {
+      "intro": { "enabled": true, "durationMs": 2000 },
+      "scenes": { "enabled": true, "durationMs": 1500 },
+      "outro": { "title": "Try DemoFlow", "cta": "example.com/signup", "durationMs": 2500 }
+    }
+  }
+}
+```
+
+- The **intro** shows the scenario's `name` and `description`.
+- A **scene** card appears at every `marker` step with `kind: "scene"`.
+- The **outro** is off unless it has a `title`; `cta` adds a second line, such as a URL. Text is 1 to 80 characters.
+- A duration is 500 to 10000 ms.
+
+### Transitions
+
+A dissolve between a card and the page.
+
+```json
+{ "render": { "transitions": { "enabled": true, "durationMs": 300 } } }
+```
+
+`durationMs` is 100 to 1000 and at most half the shortest card that is on. The
+default is 300, or half the shortest card when that is less.
+
+### Output formats
+
+A run renders an MP4 by default. `formats` asks for more, all encoded in one
+pass: `mp4`, `gif` and `webm` (VP9), each at most once.
+
+```json
+{
+  "render": {
+    "formats": ["mp4", "gif"],
+    "gif": { "width": 800, "fps": 12 }
+  }
+}
+```
+
+The files are `render/ffmpeg.mp4`, `render/ffmpeg.gif` and
+`render/ffmpeg.webm`. The GIF's `width` may not exceed `render.width`, nor its
+`fps` `render.fps`; its height follows the video's aspect ratio.
+`demoflow run --format gif --format mp4` replaces `formats` for one run.
