@@ -6,6 +6,12 @@ Decisions it may touch: [ADR-0001](../adr/0001-control-plane-execution-plane-one
 
 Depends on: nothing
 
+**Outcome: a Playwright Test fixture that records a scenario, which the engine
+replays (28 of 30 steps); trace import and source conversion reach 24 of 30.**
+See the report,
+[202-playwright-reuse-spike.md](../research/202-playwright-reuse-spike.md),
+with a draft ADR and four follow-up issues.
+
 ## Summary
 
 Many applications that DemoFlow could demonstrate already have Playwright

@@ -119,8 +119,10 @@ All four, in this order:
 - Specs: [197](../specs/197-mask-attribute.md) (`data-demoflow-mask`),
   [198](../specs/198-ready-signal.md) (`window.demoflow.ready`, `waitForReady`),
   [201](../specs/201-page-annotations.md) (`window.demoflow.scene`, `caption`),
-  [202](../specs/202-playwright-reuse-spike.md) (item 4: a spike first, with a
-  written report; the approach is not known yet),
+  [202](../specs/202-playwright-reuse-spike.md) (item 4: a spike first; its
+  [report](../research/202-playwright-reuse-spike.md) recommends a
+  `demoflow/playwright` fixture that records a scenario for the engine to
+  replay, with a draft ADR and four follow-up issues),
   [203](../specs/203-sdk-docs.md) (the website's Application SDK page, after
   197, 198 and 201).
 
