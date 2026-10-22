@@ -86,3 +86,14 @@ renderer.
 |---|---|---|
 | [#163](https://github.com/AndreyBegma/DemoFlow/issues/163) | [Zoom set per step, no automatic zoom](163-step-zoom.md) | — |
 | [#165](https://github.com/AndreyBegma/DemoFlow/issues/165) | [Scenario data and `repeat`](165-scenario-data-repeat.md) | #163 |
+| [#173](https://github.com/AndreyBegma/DemoFlow/issues/173) | [Mask timing test flakes on macOS](173-mask-timing-flake.md) | — |
+
+## Phase 4–5 remainder
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#150](https://github.com/AndreyBegma/DemoFlow/issues/150) | [Real-run hold test flake](150-real-run-hold-flake.md) | — |
+| [#176](https://github.com/AndreyBegma/DemoFlow/issues/176) | [Vertical 9:16 export](176-vertical-export.md) | — |
+| [#177](https://github.com/AndreyBegma/DemoFlow/issues/177) | [Delete my account](177-account-deletion.md) | — |
+| [#178](https://github.com/AndreyBegma/DemoFlow/issues/178) | [Projects and the demo library](178-projects-and-library.md) | — |
+| [#179](https://github.com/AndreyBegma/DemoFlow/issues/179) | [Documentation section](179-docs-section.md) | — |
