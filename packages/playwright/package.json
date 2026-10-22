@@ -1,0 +1,39 @@
+{
+  "name": "@demoflow/playwright",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "tsc -p tsconfig.json && vitest run",
+    "test:minors": "vitest run --config vitest.minors.config.ts",
+    "lint": "biome lint src test"
+  },
+  "dependencies": {
+    "@demoflow/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.62.0 <2.0.0"
+  },
+  "devDependencies": {
+    "@demoflow/engine": "workspace:*",
+    "@demoflow/fixture": "workspace:*",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.19.0",
+    "playwright-test-1-62": "npm:@playwright/test@1.62.1",
+    "playwright-test-1-63": "npm:@playwright/test@1.63.0",
+    "typescript": "6.0.2",
+    "vitest": "5.0.3"
+  }
+}
