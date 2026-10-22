@@ -3,6 +3,7 @@ import {
   deriveRunStatus,
   type ExpandedStep,
   expandScenario,
+  type MaskedElement,
   type Navigation,
   type Scenario,
   type Stage,
@@ -18,6 +19,7 @@ import {
   StepFailure,
 } from './execute/actions.ts';
 import { type Clock, startClock } from './execute/clock.ts';
+import { MarkedMasks } from './execute/marked-masks.ts';
 import { MaskTracker } from './execute/mask.ts';
 import { NavigationRecorder } from './execute/navigations.ts';
 import type { EngineObserver, RunOutcome } from './execute/observer.ts';
@@ -108,13 +110,17 @@ export async function runScenario(
   try {
     await emit('onBrowserLaunched', { browser });
     const context = await browser.newContext(toContextOptions(recording));
+    // The scripts every document of the run gets, before its own (#117, #197).
+    const marked = new MarkedMasks(scenario.viewport);
     await installNavigationProbe(context);
+    await marked.install(context);
     const guard = new OriginGuard(options.allowedOrigins);
     const navigation = watchNavigation(context, guard);
 
     stages.recording = { status: 'running', startedAt: timestamp() };
     const page = await context.newPage();
     const clock = startClock();
+    marked.attach(page, clock);
     const navigations = new NavigationRecorder(page, clock);
     await emit('onPageCreated', { page, recording });
     const syncMark = await recordSyncMark(page, clock);
@@ -140,9 +146,12 @@ export async function runScenario(
       events,
       navigation,
       masks: new MaskTracker(page, clock),
+      marked,
       scrub,
       emit,
     });
+    // Before the context closes: a document's clock exchange may still be running on it.
+    const maskedElements = await marked.list();
 
     if (failure === undefined) {
       stages.execution = finish(stages.execution, 'passed');
@@ -181,6 +190,7 @@ export async function runScenario(
       videoPath,
       syncMark,
       navigations: navigations.list(),
+      maskedElements,
     });
     await emit('onRunFinished', { outcome, video });
     return outcome;
@@ -201,6 +211,7 @@ interface ExecuteInput {
   events: TimelineEvent[];
   navigation: NavigationWatch;
   masks: MaskTracker;
+  marked: MarkedMasks;
   scrub: (message: string) => string;
   emit: <K extends keyof EngineObserver>(
     hook: K,
@@ -221,6 +232,7 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
   let pointer = input.pointer;
   for (const [stepIndex, step] of input.steps.entries()) {
     const startMs = clock.now();
+    input.marked.stepStarted(startMs);
     await emit('onStepStarted', { stepIndex, step, startMs });
 
     const ctx = {
@@ -258,6 +270,7 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
     const sightings = await input.masks.look();
     const endMs = Math.max(startMs, clock.now());
     input.masks.record(sightings, startMs, endMs);
+    input.marked.stepEnded(endMs);
 
     const event: TimelineEvent = {
       stepIndex,
@@ -370,9 +383,10 @@ function conclude(
     videoPath?: string | undefined;
     syncMark?: SyncMark | undefined;
     navigations?: Navigation[];
+    maskedElements?: MaskedElement[];
   } = {},
 ): RunOutcome {
-  const { videoPath, syncMark, navigations } = recorded;
+  const { videoPath, syncMark, navigations, maskedElements } = recorded;
   const warnings: string[] = [];
   return {
     startedAt,
@@ -383,6 +397,10 @@ function conclude(
     warnings,
     ...(syncMark === undefined ? {} : { syncMark }),
     ...(navigations === undefined ? {} : { navigations }),
+    // Omitted when none was on screen: the timeline is then written as before #197.
+    ...(maskedElements === undefined || maskedElements.length === 0
+      ? {}
+      : { maskedElements }),
     ...(videoPath === undefined ? {} : { videoPath }),
   };
 }

@@ -16,7 +16,12 @@ import { resolveFfmpeg } from '../../src/plan/ffmpeg.ts';
  */
 
 /** The fixture scenarios in `apps/fixture/demoflow/`. */
-export type FixtureScenario = 'customers' | 'login' | 'tour' | 'failing';
+export type FixtureScenario =
+  | 'customers'
+  | 'login'
+  | 'tour'
+  | 'failing'
+  | 'masked-elements';
 
 /** The password `login` types; a run never writes it to a file. */
 export const FIXTURE_PASSWORD = 'correct-horse-battery';

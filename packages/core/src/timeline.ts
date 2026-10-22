@@ -68,6 +68,17 @@ const MaskVisibilitySchema = z
       }
     }
   });
+export type MaskVisibility = z.infer<typeof MaskVisibilitySchema>;
+
+/**
+ * An element the application marked with `data-demoflow-mask` (ADR-0013 §2):
+ * when it was on screen, and its border box then. A box that moves starts a
+ * new interval, one frame before the old one ends (#197).
+ */
+const MaskedElementSchema = z.strictObject({
+  intervals: MaskVisibilitySchema.min(1),
+});
+export type MaskedElement = z.infer<typeof MaskedElementSchema>;
 
 /**
  * A main-frame document navigation: from its request to the page's `load`
@@ -201,6 +212,8 @@ export const TimelineSchema = z
       .optional(),
     // Document navigations only: a same-document route change has no blank page (#114).
     navigations: NavigationsSchema.optional(),
+    // One per marked element, in the order they first appeared; omitted when none was (#197).
+    maskedElements: z.array(MaskedElementSchema).optional(),
   })
   .refine(
     (timeline) => {

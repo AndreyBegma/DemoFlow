@@ -1,5 +1,6 @@
 import {
   deriveRunStatus,
+  type MaskedElement,
   type RunResult,
   type Stages,
   type Timeline,
@@ -72,12 +73,18 @@ function result(failed?: {
 function plan(
   events: TimelineEvent[],
   freezes: Interval[],
-  options: RenderPlanOptions & { failed?: Parameters<typeof result>[0] } = {},
+  options: RenderPlanOptions & {
+    failed?: Parameters<typeof result>[0];
+    maskedElements?: MaskedElement[];
+  } = {},
 ): RenderPlan {
-  const { failed, ...rest } = options;
+  const { failed, maskedElements, ...rest } = options;
   return planRender(
     {
-      timeline: timeline(events),
+      timeline: {
+        ...timeline(events),
+        ...(maskedElements === undefined ? {} : { maskedElements }),
+      },
       result: result(failed),
       source: {
         width: 1280,
@@ -861,6 +868,90 @@ describe('masks', () => {
         [],
       );
       expect(rendered.masks[0].keys).toHaveLength(1);
+    });
+  });
+
+  describe('with maskedElements (#197)', () => {
+    const key = { x: 40, y: 40, width: 200, height: 24 };
+    const grown = { x: 36, y: 36, width: 208, height: 32 };
+    const scroll = event({
+      action: 'scroll',
+      startMs: 1200,
+      endMs: 1800,
+      scroll: { before: { x: 0, y: 0 }, after: { x: 0, y: 500 } },
+    });
+
+    it('spans an interval from its start less the lead to its end plus the trail, with one grown box', () => {
+      const rendered = plan(
+        [event({ action: 'wait', startMs: 0, endMs: 3000 })],
+        [],
+        {
+          maskedElements: [
+            { intervals: [{ startMs: 1000, endMs: 2000, box: key }] },
+          ],
+        },
+      );
+      expect(rendered.masks).toEqual([
+        { startMs: 800, endMs: 2200, keys: [{ atMs: 800, box: grown }] },
+      ]);
+      expect(frameAt(rendered, frames(rendered, 2200, 2300)[0]).masks).toEqual(
+        [],
+      );
+    });
+
+    it('runs an open interval to the end of the video', () => {
+      const rendered = plan(
+        [event({ action: 'wait', startMs: 0, endMs: 3000 })],
+        [],
+        { maskedElements: [{ intervals: [{ startMs: 1000, box: key }] }] },
+      );
+      expect(rendered.masks).toHaveLength(1);
+      expect(rendered.masks[0].endMs).toBe(rendered.durationMs);
+    });
+
+    it('does not move the box with a page scroll: the engine measured it', () => {
+      const rendered = plan(
+        [event({ action: 'wait', startMs: 0, endMs: 1200 }), scroll],
+        [],
+        { maskedElements: [{ intervals: [{ startMs: 1000, box: key }] }] },
+      );
+      expect(rendered.masks[0].keys).toEqual([{ atMs: 800, box: grown }]);
+    });
+
+    it('masks both boxes of a move while its intervals overlap by a frame', () => {
+      const moved = { ...key, y: 300 };
+      const rendered = plan(
+        [event({ action: 'wait', startMs: 0, endMs: 3000 })],
+        [],
+        {
+          maskedElements: [
+            {
+              intervals: [
+                { startMs: 1000, endMs: 1500, box: key },
+                { startMs: 1480, box: moved },
+              ],
+            },
+          ],
+        },
+      );
+      expect(rendered.masks).toHaveLength(2);
+      expect(
+        frameAt(rendered, frames(rendered, 1500, 1550)[0]).masks,
+      ).toHaveLength(2);
+    });
+
+    it('masks every element alongside a masked fill', () => {
+      const rendered = plan(
+        [masked, event({ action: 'wait', startMs: 1400, endMs: 3000 })],
+        [],
+        {
+          maskedElements: [
+            { intervals: [{ startMs: 1000, box: key }] },
+            { intervals: [{ startMs: 1100, endMs: 1300, box: key }] },
+          ],
+        },
+      );
+      expect(rendered.masks).toHaveLength(3);
     });
   });
 });

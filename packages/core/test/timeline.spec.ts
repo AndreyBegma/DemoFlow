@@ -346,3 +346,83 @@ describe('navigations', () => {
     expect(parse([{ startMs: 0, endMs: 820, url: '/x' }]).success).toBe(false);
   });
 });
+
+describe('maskedElements', () => {
+  const box = { x: 40, y: 40, width: 200, height: 24 };
+  const parse = (maskedElements: unknown) =>
+    TimelineSchema.safeParse({ ...timeline, maskedElements });
+
+  it('is optional: a timeline from before #197 still parses', () => {
+    expect(TimelineSchema.safeParse(timeline).success).toBe(true);
+  });
+
+  it('accepts elements with closed, open and one-frame-overlapping intervals', () => {
+    const parsed = parse([
+      {
+        intervals: [
+          { startMs: 0, endMs: 500, box },
+          // A move: the new box starts one frame before the old one ends.
+          { startMs: 484, endMs: 900, box: { ...box, y: 60 } },
+          { startMs: 1200, box },
+        ],
+      },
+      { intervals: [{ startMs: 300, endMs: 400, box }] },
+    ]);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts an empty list of elements', () => {
+    expect(parse([]).success).toBe(true);
+  });
+
+  it('rejects an element without intervals', () => {
+    const parsed = parse([{ intervals: [] }]);
+    expect(parsed.error?.issues[0]?.path).toEqual([
+      'maskedElements',
+      0,
+      'intervals',
+    ]);
+  });
+
+  it('rejects unordered intervals', () => {
+    const parsed = parse([
+      {
+        intervals: [
+          { startMs: 500, endMs: 600, box },
+          { startMs: 100, endMs: 200, box },
+        ],
+      },
+    ]);
+    expect(parsed.error?.issues[0]?.path).toEqual([
+      'maskedElements',
+      0,
+      'intervals',
+      1,
+      'startMs',
+    ]);
+  });
+
+  it('rejects an open interval that is not the last', () => {
+    const parsed = parse([
+      {
+        intervals: [
+          { startMs: 0, box },
+          { startMs: 100, endMs: 200, box },
+        ],
+      },
+    ]);
+    expect(parsed.error?.issues[0]?.path).toEqual([
+      'maskedElements',
+      0,
+      'intervals',
+      0,
+      'endMs',
+    ]);
+  });
+
+  it('rejects an unknown field on an element', () => {
+    expect(
+      parse([{ intervals: [{ startMs: 0, box }], selector: '#key' }]).success,
+    ).toBe(false);
+  });
+});
