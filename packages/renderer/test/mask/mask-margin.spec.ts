@@ -80,7 +80,7 @@ function plan() {
       },
       syncClearMs: CLEAR_MS,
     },
-    { frame: { enabled: false } },
+    { frame: { enabled: false }, formats: ['mp4', 'mp4-vertical'] },
   );
 }
 
@@ -94,14 +94,19 @@ function plan() {
  *
  * Here the source shows the field on every slot that starts within `lagMs`
  * of the page's frames: from the slot `lagMs` early to the slot `lagMs` late.
- * Every output frame that draws one of those slots has the field covered.
+ * Every output frame that draws one of those slots has the field covered, in
+ * both outputs: the vertical one reads the same spans (#176).
  */
 describe.each([
   80, -80,
 ])('a source frame landing %i ms off the page stamp', (lagMs) => {
-  it('is covered by the mask on every output frame that draws it', () => {
+  it.each([
+    'landscape',
+    'vertical',
+  ] as const)('is covered by the mask on every %s frame that draws it', (layout) => {
     const rendered = plan();
     expect(rendered.offsetMs).toBe(OFFSET_MS);
+    expect(rendered.vertical).toBeDefined();
     const early = Math.min(0, lagMs);
     const late = Math.max(0, lagMs);
     const firstSlot =
@@ -114,7 +119,7 @@ describe.each([
     };
     let checked = 0;
     for (let n = 0; n < frameCount(rendered); n++) {
-      const { sourceMs, masks } = frameAt(rendered, n);
+      const { sourceMs, masks } = frameAt(rendered, n, layout);
       if (sourceMs === null || !shows(sourceMs)) continue;
       checked++;
       expect(
