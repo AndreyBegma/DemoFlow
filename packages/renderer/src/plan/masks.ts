@@ -1,5 +1,6 @@
 import type {
   Box,
+  MaskedElement,
   MaskInterval,
   Navigation,
   TimelineEvent,
@@ -31,6 +32,11 @@ const MASK_MARGIN_PX = 4;
  *
  * A masked event with no box (its field could not be measured, #42) masks the
  * whole viewport from its start to the end of the video.
+ *
+ * An element the application marked `data-demoflow-mask` (#197) gets one span
+ * per interval of `maskedElements`, timed the same way, with one static box:
+ * the engine measured it in viewport space on every frame, and a move starts
+ * a new interval, so a page scroll does not move it.
  */
 export function maskSpans(
   events: readonly TimelineEvent[],
@@ -40,10 +46,12 @@ export function maskSpans(
   {
     leadMs,
     trailMs,
+    maskedElements,
     ...leaving
   }: {
     leadMs: number;
     trailMs: number;
+    maskedElements: readonly MaskedElement[];
     navigations: readonly Navigation[];
     transitions: boolean;
     sourceFrameMs: number;
@@ -126,6 +134,23 @@ export function maskSpans(
       keys,
     });
   }
+  for (const element of maskedElements) {
+    for (const interval of element.intervals) {
+      const startMs = Math.max(0, out(interval.startMs) - leadMs);
+      const endMs =
+        interval.endMs === undefined
+          ? videoEndMs
+          : Math.min(out(interval.endMs) + trailMs, videoEndMs);
+      spans.push({
+        startMs,
+        // A move overlaps the next box by one frame: both are masked as measured.
+        endMs: overlapsSibling(interval, element.intervals)
+          ? endMs
+          : documentEnd(interval.startMs, endMs),
+        keys: [{ atMs: startMs, box: grow(interval.box, MASK_MARGIN_PX) }],
+      });
+    }
+  }
   return spans;
 }
 
@@ -179,7 +204,7 @@ function documentEndMs(
   return Math.min(out(navigation.endMs) + trailMs, videoEndMs);
 }
 
-/** Whether `interval` shares any time with another interval of the same field. */
+/** Whether `interval` shares any time with another interval of the same field or element. */
 function overlapsSibling(
   interval: MaskInterval,
   intervals: readonly MaskInterval[],

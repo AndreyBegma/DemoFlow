@@ -249,6 +249,7 @@ export function planRender(
   const masks = maskSpans(events, out, viewport, pageEndMs, {
     leadMs: maskLeadMs,
     trailMs: maskTrailMs,
+    maskedElements: timeline.maskedElements ?? [],
     navigations: timeline.navigations ?? [],
     transitions: options.transitions?.enabled === true,
     sourceFrameMs: 1000 / source.fps,
