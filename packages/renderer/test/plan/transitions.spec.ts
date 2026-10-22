@@ -193,15 +193,19 @@ describe('page-load holds (spec 114)', () => {
     // The old page still shows the field there: the held frame keeps its mask.
     expect(held.masks).toEqual([MASKED]);
 
-    // Measured offset: two source frames, wider than the one-frame mask lead.
+    // Measured offset: the measured mask lead, three source frames (#185),
+    // never less than two.
     const measured = plan({
       transitions: FADE,
       sync: { mark: { colour: '#ff00ff', onMs: 25, offMs: 180 }, clearMs: 240 },
     });
     expect(measured.offsetMeasured).toBe(true);
-    expect(measured.maskLeadMs).toBe(40);
+    expect(measured.maskLeadMs).toBe(120);
     const [, measuredHold] = measured.transitions?.holds ?? [];
-    expect(measuredHold.sourceMs).toBeCloseTo(1950 + measured.offsetMs - 80, 6);
+    expect(measuredHold.sourceMs).toBeCloseTo(
+      1950 + measured.offsetMs - 120,
+      6,
+    );
   });
 
   it('draws no live frame in the lead before a navigation: the hold starts at the frame held (#150)', () => {
