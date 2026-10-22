@@ -100,7 +100,79 @@ const actions: {
     required: 'ms',
     errorPath: 'steps[0].ms',
   },
+  {
+    action: 'waitForReady',
+    valid: { name: 'customers-loaded' },
+    required: 'name',
+    errorPath: 'steps[0].name',
+  },
 ];
+
+describe('parseScenario — waitForReady', () => {
+  const ready = (extra: Record<string, unknown>) =>
+    scenario({ action: 'waitForReady', ...extra });
+
+  it.each([
+    'a',
+    'customers-loaded',
+    'app.ready:v2_1',
+    '9lives',
+    'x'.repeat(64),
+  ])('accepts the name %s', (name) => {
+    expect(parseScenario(ready({ name })).ok).toBe(true);
+  });
+
+  it.each([
+    '',
+    ' lead',
+    'bad name!',
+    '-dash',
+    '_under',
+    'tail/slash',
+    'x'.repeat(65),
+  ])('rejects the name %j with the format message', (name) => {
+    expect(errorsOf(ready({ name }))).toEqual([
+      expect.objectContaining({
+        path: 'steps[0].name',
+        message:
+          'expected 1–64 characters: letters, digits and . _ : -, starting with a letter or digit',
+      }),
+    ]);
+  });
+
+  it('rejects a name that is not a string', () => {
+    expect(errorsOf(ready({ name: 42 }))).toEqual([
+      expect.objectContaining({ path: 'steps[0].name' }),
+    ]);
+  });
+
+  it('rejects a target', () => {
+    expect(errorsOf(ready({ name: 'a', target }))).toEqual([
+      {
+        path: 'steps[0].target',
+        code: 'unrecognized_keys',
+        message: 'unknown field',
+      },
+    ]);
+  });
+
+  it('rejects a zoom', () => {
+    expect(errorsOf(ready({ name: 'a', zoom: true }))).toEqual([
+      {
+        path: 'steps[0].zoom',
+        code: 'unrecognized_keys',
+        message: 'unknown field',
+      },
+    ]);
+  });
+
+  it('applies the common defaults', () => {
+    expect(parseScenario(ready({ name: 'a' }))).toMatchObject({
+      ok: true,
+      value: { steps: [{ name: 'a', timeoutMs: 10_000 }] },
+    });
+  });
+});
 
 describe('parseScenario — press', () => {
   const press = (extra: Record<string, unknown>) =>
@@ -236,6 +308,7 @@ describe('parseScenario — every action', () => {
         'screenshot',
         'marker',
         'wait',
+        'waitForReady',
       ].sort(),
     );
   });

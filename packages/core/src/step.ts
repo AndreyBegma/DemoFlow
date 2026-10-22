@@ -21,6 +21,7 @@ export const STEP_ACTIONS = [
   'screenshot',
   'marker',
   'wait',
+  'waitForReady',
 ] as const;
 export const StepActionSchema = z.enum(STEP_ACTIONS);
 export type StepAction = z.infer<typeof StepActionSchema>;
@@ -109,6 +110,16 @@ const PressKeySchema = z.string().superRefine((key, ctx) => {
   const problem = pressKeyProblem(key);
   if (problem !== undefined) ctx.addIssue({ code: 'custom', message: problem });
 });
+
+const READY_NAME = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+
+/** A name the application passes to `window.demoflow.ready` (ADR-0013 §4). */
+export const ReadyNameSchema = z
+  .string()
+  .regex(
+    READY_NAME,
+    'expected 1–64 characters: letters, digits and . _ : -, starting with a letter or digit',
+  );
 
 const ENV_NAME = /^[A-Z_][A-Z0-9_]*$/;
 
@@ -248,6 +259,8 @@ function stepSchema<M extends PlainSteps | TemplateSteps>(mode: M) {
         kind: format(MarkerKindSchema.default('scene')),
       }),
       step('wait', { ms: z.number().int().min(1).max(5_000) }),
+      // No target and no zoom: the page reports the state, not a locator.
+      step('waitForReady', { name: format(ReadyNameSchema) }),
     ],
     {
       error: (issue) =>
