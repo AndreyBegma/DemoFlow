@@ -1,0 +1,170 @@
+export const metadata = { title: 'Scenarios' };
+
+# Scenarios
+
+A scenario is a JSON file, `demoflow/**/*.demo.json`, that lists the steps a
+browser runs against your app. `demoflow validate <file>` checks it against the
+schema and reports problems by path, such as `steps[1].target`.
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "Sign in",
+  "description": "A returning user signs in.",
+  "baseUrl": "http://localhost:3000",
+  "viewport": { "width": 1920, "height": 1080 },
+  "steps": []
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `schemaVersion` | Always `1`. |
+| `name` | Required. Shown on the intro card. |
+| `description` | Optional. Shown under the name on the intro card. |
+| `baseUrl` | Optional. Overrides the project config for this scenario. |
+| `viewport` | The browser size. Default 1920×1080. |
+| `data` | Lists a `repeat` step runs over. See [Repeat over data](#repeat-over-data). |
+| `steps` | 1 to 200 steps. |
+
+## Locators
+
+A step that acts on an element names it with a `target`, which holds exactly
+one of these. They map one-to-one onto Playwright's locators, and there are no
+coordinates.
+
+| Key | Finds |
+|---|---|
+| `role` (with optional `name`) | an element by ARIA role and accessible name |
+| `label` | a form field by its label |
+| `testId` | an element by its test id |
+| `text` | an element by its text |
+| `placeholder` | a field by its placeholder |
+| `css` | a CSS selector; accepted with a warning, prefer the others |
+
+`role`, `label`, `text` and `placeholder` take `"exact": true` to match the
+whole string instead of a part of it.
+
+## Steps
+
+Every step has an `action`. Every step may also carry a `caption` and a
+`timeoutMs`.
+
+| Action | What it does | Fields |
+|---|---|---|
+| `navigate` | Opens a page. | exactly one of `path` (starts with a single `/`) or `url` |
+| `waitFor` | Waits for an element. | `target`, `state` (`visible` by default, or `hidden`) |
+| `click` | Clicks an element. | `target` |
+| `fill` | Types into a field. | `target`, exactly one of `value` or `valueFrom` |
+| `select` | Picks an option of a select. | `target`, `option` |
+| `hover` | Moves the pointer over an element. | `target` |
+| `press` | Presses a key or a chord, such as `Enter` or `Control+a`. | `key`, optional `target` |
+| `scroll` | Scrolls the page or a container. | exactly one of `to` (`top` or `bottom`) or `target`; optional `within` |
+| `assertVisible` | Fails the run unless the element is visible. | `target` |
+| `assertText` | Fails the run unless the element has the text. | `target`, `text`, `match` (`contains` by default, or `exact`) |
+| `screenshot` | Saves a still. | `name` (lowercase letters, digits and `-`) |
+| `marker` | Marks a scene or a caption in the video. | `title`, `kind` (`scene` by default, or `caption`) |
+| `wait` | Pauses on screen. | `ms` (1 to 5000) |
+| `repeat` | Runs steps once per item of a list. | See below. |
+
+### caption
+
+`caption` is up to 120 characters of text shown in the video while the step
+runs.
+
+```json
+{
+  "action": "click",
+  "target": { "role": "button", "name": "Publish" },
+  "caption": "Publish the post"
+}
+```
+
+### timeoutMs
+
+`timeoutMs` is how long the step may wait for its element or condition before
+the run fails: 100 to 60000 ms, 10000 by default.
+
+### Zoom
+
+`zoom` moves the camera in on the step's target. `true` uses the renderer's
+default strength; a number from `1` (no zoom) to `3` sets it. It is available on
+steps that have a target, `waitFor` for a hidden element excepted, and on
+`press` only when the `press` has a `target`. Nothing zooms unless a step asks.
+
+```json
+{
+  "action": "click",
+  "target": { "role": "button", "name": "Publish" },
+  "zoom": 1.8
+}
+```
+
+### Scene markers
+
+A `marker` with `kind: "scene"` starts a new scene. It gets a scene card in the
+video unless [cards](/docs/config#cards) are off.
+
+## Secrets and masking
+
+A secret never appears in a scenario. A `fill` takes its text from an
+environment variable instead of `value`:
+
+```json
+{
+  "action": "fill",
+  "target": { "label": "Password" },
+  "valueFrom": { "env": "DEMO_PASSWORD" }
+}
+```
+
+- The value is read from the environment when the run starts. It does not touch
+  disk or logs, and the timeline records a placeholder instead of it.
+- A field filled this way is masked: the video blurs it from the `fill` until
+  the field leaves the page.
+- `valueFrom` takes a variable name (`A-Z`, `0-9` and `_`) and never a `{{…}}`
+  placeholder, so data lists cannot carry secrets either.
+- If the variable is missing, the run fails at readiness, before the browser
+  starts, with exit code `2`.
+
+## Repeat over data
+
+A scenario can declare `data` lists and run a group of steps once per item.
+`{{post.text}}` is the item's `text` field and `{{index}}` its 1-based position.
+They work in every string of a step inside the `repeat`.
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "Post three updates",
+  "data": {
+    "posts": [
+      { "text": "Hello" },
+      { "text": "Shipping today" },
+      { "text": "Thanks!" }
+    ]
+  },
+  "steps": [
+    { "action": "navigate", "path": "/feed" },
+    {
+      "action": "repeat",
+      "each": "posts",
+      "as": "post",
+      "caption": "Three posts",
+      "steps": [
+        { "action": "click", "target": { "role": "button", "name": "Compose" } },
+        { "action": "fill", "target": { "label": "Post" }, "value": "{{post.text}}" },
+        { "action": "click", "target": { "role": "button", "name": "Publish" } }
+      ]
+    }
+  ]
+}
+```
+
+- A list holds 1 to 100 items. An item is an object of strings, numbers and booleans.
+- `each` names the list; `as` names the item and defaults to `item`. `index` is taken by `{{index}}`.
+- A `repeat` holds 1 to 50 steps and no `repeat` of its own: loops are one level deep.
+- Its `caption` is shown once, before the first iteration.
+- Every field a step uses must be in every item, and a URL, path or key must be valid once filled in. `demoflow validate` reports a problem by step path, such as `steps[1].steps[1].value`, before anything runs.
+- `{{…}}` is an error outside a `repeat`. Write `\\{{` in JSON for a literal `{{`.
+- The timeline and `result.json` count the expanded steps. A failure reads like `step 4 (repeat steps[1], iteration 3)`.
