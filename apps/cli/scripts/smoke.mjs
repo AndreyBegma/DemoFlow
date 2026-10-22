@@ -3,7 +3,9 @@
 // the tarball into an empty directory with npm, and runs the installed bin.
 //
 //   node scripts/smoke.mjs              pack, install, --version, validate,
-//                                       runner status, mcp tools/list
+//                                       runner status, mcp tools/list, and
+//                                       `demoflow/playwright` installed beside
+//                                       @playwright/test (spec 208)
 //   node scripts/smoke.mjs --browsers   also, with an empty PLAYWRIGHT_BROWSERS_PATH:
 //                                       `demoflow run` of the fixture's customers
 //                                       scenario (installs Chromium, then renders)
@@ -47,6 +49,12 @@ const TOOLS = [
   'validate_scenario',
 ];
 const browsers = process.argv.includes('--browsers');
+const PEER = '@playwright/test';
+const PEER_RANGE = '>=1.62.0 <2.0.0';
+/** The version `demoflow/playwright` is installed beside: the engine's pin. */
+const PEER_VERSION = '1.64.1';
+const PLAYWRIGHT_ENTRY = 'dist/playwright/index.js';
+const PLAYWRIGHT_TYPES = 'dist/playwright/index.d.ts';
 
 const temporary = [];
 function tempDir(name) {
@@ -106,6 +114,8 @@ function pack() {
   }
   const manifest = JSON.parse(manifestText);
   if (manifest.private) fail('the staged package.json is private');
+  checkPlaywrightManifest(manifest);
+  checkPlaywrightFiles(manifest);
 
   const out = tempDir('pack');
   const result = run('npm', ['pack', '--json', '--pack-destination', out], {
@@ -122,6 +132,8 @@ function pack() {
     'fonts/Inter-Regular.ttf',
     'fonts/Inter-SemiBold.ttf',
     'fonts/OFL.txt',
+    PLAYWRIGHT_ENTRY,
+    PLAYWRIGHT_TYPES,
   ]) {
     if (!files.has(required)) fail(`the tarball lacks ${required}`);
   }
@@ -134,7 +146,56 @@ function pack() {
   };
 }
 
+/** `exports` and the optional peer of spec 208, Decision 8. */
+function checkPlaywrightManifest(manifest) {
+  step('the manifest exports demoflow/playwright with an optional peer');
+  const expected = {
+    exports: {
+      './playwright': {
+        types: `./${PLAYWRIGHT_TYPES}`,
+        import: `./${PLAYWRIGHT_ENTRY}`,
+      },
+      './package.json': './package.json',
+    },
+    peerDependencies: { [PEER]: PEER_RANGE },
+    peerDependenciesMeta: { [PEER]: { optional: true } },
+  };
+  for (const [field, value] of Object.entries(expected)) {
+    if (JSON.stringify(manifest[field]) !== JSON.stringify(value)) {
+      fail(
+        `the staged package.json has ${field} ${JSON.stringify(manifest[field])}, expected ${JSON.stringify(value)}`,
+      );
+    }
+  }
+  if (PEER in (manifest.dependencies ?? {})) {
+    fail(`${PEER} is in dependencies: it must be an optional peer only`);
+  }
+  console.log(JSON.stringify(manifest.exports));
+}
+
+/** The CLI never loads the fixture; the fixture's types need only the peer. */
+function checkPlaywrightFiles(manifest) {
+  const main = readFileSync(path.join(STAGED, manifest.bin.demoflow), 'utf8');
+  if (main.includes(PEER)) fail(`${manifest.bin.demoflow} references ${PEER}`);
+  const types = readFileSync(path.join(STAGED, PLAYWRIGHT_TYPES), 'utf8');
+  const imported = [
+    ...types.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g),
+    ...types.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
+  ].map((match) => match[1]);
+  if (imported.length === 0 || imported.some((name) => name !== PEER)) {
+    fail(`${PLAYWRIGHT_TYPES} imports ${imported.join(', ') || 'nothing'}`);
+  }
+}
+
 // --- install ----------------------------------------------------------------
+
+/** npm's complaints about peers: an optional one must raise none. */
+function expectNoPeerProblem(result, what) {
+  const output = `${result.stdout}\n${result.stderr}`;
+  if (/ERESOLVE|peer dep|missing peer|unmet peer/i.test(output)) {
+    fail(`${what} reported a peer dependency problem:\n${output}`);
+  }
+}
 
 function install(tarball) {
   step('npm install <tarball> into an empty directory');
@@ -148,6 +209,10 @@ function install(tarball) {
     cwd: dir,
   });
   expectExit(result, 0, 'npm install');
+  expectNoPeerProblem(result, 'npm install');
+  if (existsSync(path.join(dir, 'node_modules', ...PEER.split('/')))) {
+    fail(`npm installed the optional peer ${PEER}`);
+  }
   const bin = path.join(
     dir,
     'node_modules',
@@ -271,6 +336,57 @@ function toolsList(bin, cwd) {
   });
 }
 
+/** `demoflow/playwright`, installed beside the peer, imports in a plain ESM module. */
+function playwrightEntry(tarball) {
+  step(`import('demoflow/playwright') beside ${PEER}@${PEER_VERSION}`);
+  const dir = tempDir('playwright');
+  writeFileSync(
+    path.join(dir, 'package.json'),
+    `${JSON.stringify({ name: 'demoflow-smoke-playwright', private: true, type: 'module' }, null, 2)}\n`,
+  );
+  const installed = run(
+    'npm',
+    ['install', '--no-fund', '--no-audit', tarball, `${PEER}@${PEER_VERSION}`],
+    { cwd: dir },
+  );
+  expectExit(installed, 0, `npm install demoflow ${PEER}`);
+  expectNoPeerProblem(installed, `npm install demoflow ${PEER}`);
+  // Not recording: `expect` is the peer's own, `test` its `extend({})`.
+  const script = [
+    "const entry = await import('demoflow/playwright');",
+    `const peer = await import('${PEER}');`,
+    'console.log(JSON.stringify({',
+    '  test: typeof entry.test,',
+    '  step: typeof entry.test.step,',
+    '  expect: entry.expect === peer.expect,',
+    '  exports: Object.keys(entry).sort(),',
+    '}));',
+  ].join('\n');
+  // Node itself, no shell: nothing to quote on Windows.
+  const result = spawnSync(
+    process.execPath,
+    ['--input-type=module', '-e', script],
+    {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...process.env, DEMOFLOW_RECORD: '' },
+    },
+  );
+  if (result.error) throw result.error;
+  expectExit(result, 0, "import('demoflow/playwright')");
+  const seen = result.stdout.trim();
+  const expected = JSON.stringify({
+    test: 'function',
+    step: 'function',
+    expect: true,
+    exports: ['expect', 'test'],
+  });
+  if (seen !== expected) {
+    fail(`import('demoflow/playwright') gave ${seen}, expected ${expected}`);
+  }
+  console.log(seen);
+}
+
 function runWithoutChromium(bin) {
   step('demoflow run, with no Chromium installed');
   const browsersPath = tempDir('browsers-run');
@@ -316,6 +432,7 @@ try {
   validate(bin, dir);
   runnerStatus(bin, dir);
   await toolsList(bin, dir);
+  playwrightEntry(tarball);
   if (browsers) {
     runWithoutChromium(bin);
     setupWithoutChromium(bin, dir);
