@@ -1,13 +1,6 @@
 import { spawn } from 'node:child_process';
-import {
-  cp,
-  mkdtemp,
-  readFile,
-  realpath,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { cp, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
@@ -251,7 +244,7 @@ describe('demoflow run on a paired machine', () => {
     const [report] = received;
     expect(report?.auth).toBe('Bearer dfr_test');
     expect(report?.body).toMatchObject({
-      rootPath: await realpath(project),
+      rootPath: realpathSync.native(project),
       projectName: path.basename(project),
       scenarioName: JSON.parse(result.stdout).scenarioName,
       scenarioPath: 'demoflow/customers.demo.json',

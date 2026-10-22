@@ -1,5 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { realpath } from 'node:fs/promises';
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { RunResult } from '@demoflow/core';
@@ -185,7 +190,10 @@ describe('reportRun', () => {
     const roots = calls.map(
       (call) => JSON.parse(String(call.init.body)).rootPath,
     );
-    expect(roots).toEqual([await realpath(real), await realpath(real)]);
+    expect(roots).toEqual([
+      realpathSync.native(real),
+      realpathSync.native(real),
+    ]);
   });
 
   it('sends nothing when the machine is not paired', async () => {

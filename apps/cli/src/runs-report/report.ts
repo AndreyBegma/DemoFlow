@@ -1,4 +1,4 @@
-import { realpath } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import type { RenderFormat, RunResult } from '@demoflow/core';
 import { readCredentials } from '../auth/credentials.ts';
@@ -86,7 +86,8 @@ export function buildReport(input: {
  */
 export async function canonicalRoot(root: string): Promise<string> {
   try {
-    return await realpath(root);
+    // `.native` also expands Windows 8.3 short names (RUNNER~1).
+    return realpathSync.native(root);
   } catch {
     return path.resolve(root);
   }
