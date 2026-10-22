@@ -18,6 +18,7 @@ import { resolveBackground } from './background.ts';
 import { placeCards, shiftOverlays } from './cards.ts';
 import { probeVideo } from './ffmpeg.ts';
 import { verticalCropSize } from './frame.ts';
+import { measuredMaskMarginMs } from './mask-margin.ts';
 import { findSyncClear, syncOffset } from './sync-mark.ts';
 import {
   buildTimeMap,
@@ -80,7 +81,7 @@ const TIMING = {
   minPanMs: 400,
   /** The engine waits up to this long for a navigation after the press. */
   pressToEndMs: 100,
-  /** Masks start this early, to absorb the residual clock offset; one source frame when it is measured. */
+  /** Masks start this early, to absorb the residual clock offset; `measuredMaskMarginMs` when it is measured. */
   maskLeadMs: 200,
   /** Masks end this late, for the same reason: an early end leaks, a late one is safe (#48). */
   maskTrailMs: 200,
@@ -166,8 +167,12 @@ export function planRender(
   const offsetMs = options.offsetMs ?? measuredMs ?? DEFAULT_OFFSET_MS;
   const offsetMeasured =
     options.offsetMs === undefined && measuredMs !== undefined;
-  const maskLeadMs = offsetMeasured ? 1000 / source.fps : TIMING.maskLeadMs;
-  const maskTrailMs = offsetMeasured ? 1000 / source.fps : TIMING.maskTrailMs;
+  const maskLeadMs = offsetMeasured
+    ? measuredMaskMarginMs(source.fps)
+    : TIMING.maskLeadMs;
+  const maskTrailMs = offsetMeasured
+    ? measuredMaskMarginMs(source.fps)
+    : TIMING.maskTrailMs;
   // The output starts on the first frame after the mark, so none shows it (Decision 6).
   const startMs =
     measuredMs === undefined

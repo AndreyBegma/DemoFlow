@@ -300,9 +300,9 @@ export interface RenderPlan {
   offsetMs: number;
   /** Whether `offsetMs` was measured on the run's sync mark (#19). */
   offsetMeasured: boolean;
-  /** Masks start this long before the field is on the page: one source frame when measured, else 200. */
+  /** Masks start this long before the field is on the page: three source frames when measured (#185), else 200. */
   maskLeadMs: number;
-  /** Masks end this long after the field leaves the page: one source frame when measured, else 200 (#48). */
+  /** Masks end this long after the field leaves the page: three source frames when measured (#185), else 200 (#48). */
   maskTrailMs: number;
   /** The whole video, cards and end card included. */
   durationMs: number;

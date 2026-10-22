@@ -9,7 +9,7 @@ import {
   runScenario,
 } from '../../src/index.ts';
 import { type FixtureServer, startFixtureServer } from './fixture-server.ts';
-import { pageFrames } from './page-frames.ts';
+import { expectPreciseEnd, pageFrames } from './page-frames.ts';
 import { scenario } from './scenario.ts';
 
 const SECRET = 'correct-horse-battery';
@@ -127,39 +127,6 @@ function intervalsOf(event: TimelineEvent) {
   expect(event.masked).toBe(true);
   expect(event.maskVisibility).toBeDefined();
   return event.maskVisibility ?? [];
-}
-
-/**
- * An end the page saw (#155), by the page's own frames (#173): mapped into
- * page time, not before the first frame drawn without the field, and before
- * the frame after it — each widened by the clock exchange's uncertainty, the
- * only tolerance. A wall-clock margin after the click does not hold on a
- * runner that skips frames for 100 ms. Also before the click step's own end,
- * and never before the click began.
- */
-function expectPreciseEnd(
-  endMs: number | undefined,
-  click: TimelineEvent,
-  frames: ReturnType<typeof pageFrames>,
-): void {
-  expect(endMs).toBeDefined();
-  expect(endMs).toBeLessThan(click.endMs);
-  expect(endMs).toBeGreaterThan(click.startMs);
-  const read = frames.reads.get(click.stepIndex);
-  expect(read).toBeDefined();
-  if (endMs === undefined || read === undefined) return;
-  // The last time the field left the screen by the click step's end.
-  const drawn = read.frames;
-  const hidden = drawn.findLastIndex(
-    ([, shown], i) => !shown && i > 0 && drawn[i - 1][1],
-  );
-  expect(hidden).toBeGreaterThan(0);
-  expect(hidden).toBeLessThan(drawn.length - 1);
-  const { minMs, maxMs } = read.shift;
-  const uncertaintyMs = maxMs - minMs;
-  const pageEndMs = endMs + frames.zeroMs() - maxMs;
-  expect(pageEndMs).toBeGreaterThanOrEqual(drawn[hidden][0] - uncertaintyMs);
-  expect(pageEndMs).toBeLessThan(drawn[hidden + 1][0] + uncertaintyMs);
 }
 
 describe('mask visibility', () => {

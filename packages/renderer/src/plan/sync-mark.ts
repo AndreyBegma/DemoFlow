@@ -110,7 +110,8 @@ export async function findSyncClear(
  * `offMs` is the page's timestamp of the first frame without the mark, mapped
  * onto the engine clock (#48), and the clear frame is up to a frame after it.
  * The offset is therefore at most a frame later than the truth, which the
- * one-frame mask lead and trail absorb, and never corrected toward later.
+ * mask lead and trail absorb (`measuredMaskMarginMs`), and never corrected
+ * toward later.
  */
 export function syncOffset(
   mark: SyncMark,

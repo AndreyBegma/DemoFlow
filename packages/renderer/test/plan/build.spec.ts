@@ -448,8 +448,8 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     const plan = customersPlan;
     // #48: the mark is in every recording, not in most.
     expect(plan.offsetMeasured, 'the sync mark was not found').toBe(true);
-    expect(plan.maskLeadMs).toBe(40);
-    expect(plan.maskTrailMs).toBe(40);
+    expect(plan.maskLeadMs).toBe(120);
+    expect(plan.maskTrailMs).toBe(120);
 
     // clock-drift.spec.ts: the first frame showing the change, less the
     // instant the page reported it, both decoded and timed independently.
