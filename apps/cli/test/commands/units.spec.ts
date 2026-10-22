@@ -142,6 +142,26 @@ describe('output', () => {
     expect(text).toContain(mp4);
     expect(text.indexOf(gif)).toBeGreaterThan(text.indexOf(mp4));
   });
+
+  it('names the failed step, and the repeat and iteration it came from', () => {
+    const run = result({ verification: 'failed', execution: 'passed' });
+    run.stages.verification.error = {
+      message: 'expected "Ken"',
+      stepIndex: 4,
+      origin: { repeatIndex: 1, iteration: 2 },
+    };
+    run.stages.recording.error = { message: 'no video recorded' };
+    const text = formatSummary(run, '/runs/x');
+    expect(text).toMatch(
+      /verification\s+failed {2}step 4 \(repeat steps\[1\], iteration 3\): expected "Ken"\n/,
+    );
+    expect(text).toMatch(/recording\s+passed {2}no video recorded\n/);
+
+    run.stages.verification.error = { message: 'expected "Ken"', stepIndex: 4 };
+    expect(formatSummary(run, '/runs/x')).toMatch(
+      /verification\s+failed {2}step 4: expected "Ken"\n/,
+    );
+  });
 });
 
 describe('settleRun', () => {

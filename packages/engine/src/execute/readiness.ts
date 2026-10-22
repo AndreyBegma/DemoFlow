@@ -1,9 +1,16 @@
-import type { Scenario, Step } from '@demoflow/core';
+import {
+  expandScenario,
+  type Scenario,
+  type Step,
+  type StepOrigin,
+} from '@demoflow/core';
 
 /** Why a run cannot start. `message` is `<code> <detail>`, e.g. `missing-env FIXTURE_PASSWORD`. */
 export interface ReadinessProblem {
   message: string;
+  /** Of the expanded steps, like the timeline's. */
   stepIndex?: number;
+  origin?: StepOrigin;
 }
 
 export type Readiness =
@@ -76,21 +83,26 @@ export function checkReadiness(
       return { ok: false, problem: { message: originNotAllowed(origin) } };
     }
   }
+  // Keyed by expanded step: a `repeat` fills the same secret once per iteration.
   const secrets = new Map<number, string>();
-  for (const [stepIndex, step] of scenario.steps.entries()) {
+  for (const [stepIndex, step] of expandScenario(scenario).steps.entries()) {
+    const at = {
+      stepIndex,
+      ...(step.origin === undefined ? {} : { origin: step.origin }),
+    };
     if (step.action === 'navigate') {
       const url = navigateUrl(step, input.baseUrl);
       if (url === undefined) {
         return {
           ok: false,
-          problem: { message: `missing-base-url ${step.path}`, stepIndex },
+          problem: { message: `missing-base-url ${step.path}`, ...at },
         };
       }
       const origin = guard.check(url);
       if (origin !== undefined) {
         return {
           ok: false,
-          problem: { message: originNotAllowed(origin), stepIndex },
+          problem: { message: originNotAllowed(origin), ...at },
         };
       }
     }
@@ -100,7 +112,7 @@ export function checkReadiness(
       if (value === undefined || value === '') {
         return {
           ok: false,
-          problem: { message: `missing-env ${name}`, stepIndex },
+          problem: { message: `missing-env ${name}`, ...at },
         };
       }
       secrets.set(stepIndex, value);

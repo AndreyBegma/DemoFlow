@@ -39,7 +39,7 @@ an AI agent such as Claude Code ask for a demo over MCP.
 
 | Feature | What it does |
 |---|---|
-| **[Scenarios](https://github.com/AndreyBegma/DemoFlow/wiki/Scenarios)** | A JSON file with up to 200 steps and accessible-role locators, validated by a JSON Schema. |
+| **[Scenarios](https://github.com/AndreyBegma/DemoFlow/wiki/Scenarios)** | A JSON file with up to 200 steps and accessible-role locators, validated by a JSON Schema. Data lists and a `repeat` step run the same steps once per item. |
 | **[Running demos](https://github.com/AndreyBegma/DemoFlow/wiki/Running-Demos)** | `demoflow run` checks readiness, starts your app if configured, runs the steps and renders the video. |
 | **[Recording scenarios](https://github.com/AndreyBegma/DemoFlow/wiki/Recording-Scenarios)** | `demoflow record` writes the scenario while you click through the app in a browser. |
 | **[Rendering and effects](https://github.com/AndreyBegma/DemoFlow/wiki/Rendering-and-Effects)** | An FFmpeg compositor adds cursor, rings, zoom, captions, key badges, a window frame and a background. |
@@ -115,6 +115,48 @@ npx demoflow run demoflow/first.demo.json
 
 Chromium is downloaded on first use. The summary prints the path of the video.
 To connect Claude Code instead: `claude mcp add demoflow -- npx demoflow mcp`.
+
+### Repeat steps over data
+
+A scenario can declare `data` lists and run a group of steps once per item.
+`{{post.text}}` is the item's `text` field and `{{index}}` its 1-based
+position; they work in every string of a step inside the `repeat`:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "Post three updates",
+  "data": {
+    "posts": [{ "text": "Hello" }, { "text": "Shipping today" }, { "text": "Thanks!" }]
+  },
+  "steps": [
+    { "action": "navigate", "path": "/feed" },
+    {
+      "action": "repeat",
+      "each": "posts",
+      "as": "post",
+      "caption": "Three posts",
+      "steps": [
+        { "action": "click", "target": { "role": "button", "name": "Compose" } },
+        { "action": "fill", "target": { "label": "Post" }, "value": "{{post.text}}" },
+        { "action": "click", "target": { "role": "button", "name": "Publish" } }
+      ]
+    }
+  ]
+}
+```
+
+- A list holds 1–100 items of strings, numbers and booleans; `as` defaults to
+  `item`; a `repeat` holds 1–50 steps and no `repeat` of its own.
+- Its `caption` is shown once, before the first iteration.
+- Every field a step uses must be in every item, and a URL, path or key must
+  be valid once filled in. `demoflow validate` reports any problem by step
+  path (`steps[1].steps[1].value`) before anything runs.
+- `{{…}}` is an error outside a `repeat` and in `valueFrom`; write `\\{{` in
+  JSON for a literal `{{`.
+- The timeline and `result.json` count the expanded steps, and tag each with
+  `origin: { repeatIndex, iteration }` (0-based). A failure reads
+  `step 4 (repeat steps[1], iteration 3)`.
 
 ### Pair a machine with your account
 

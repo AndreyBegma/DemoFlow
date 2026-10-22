@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { NonEmptyStringSchema } from './common.ts';
+import { StepOriginSchema } from './timeline.ts';
 
 export const StageStatusSchema = z.enum([
   'pending',
@@ -39,6 +40,8 @@ export const StageSchema = z.strictObject({
     .strictObject({
       message: z.string(),
       stepIndex: z.number().int().nonnegative().optional(),
+      // The failed step came from a `repeat` (spec 165).
+      origin: StepOriginSchema.optional(),
     })
     .optional(),
 });
