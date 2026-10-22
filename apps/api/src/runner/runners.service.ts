@@ -68,22 +68,29 @@ export class RunnersService {
 
   /**
    * Revokes the token, drops a rotation in flight and the last-seen address
-   * (spec #151 Decision 10), and closes a live socket with `4401`.
+   * (spec #151 Decision 10), unbinds its projects, which stay (spec #178
+   * Decision 7), and closes a live socket with `4401`.
    */
   async revoke(userId: string, id: string): Promise<void> {
-    const { count } = await this.prisma.runner.updateMany({
-      where: { id, userId, revokedAt: null },
-      data: {
-        revokedAt: this.clock.now(),
-        pendingTokenHash: null,
-        pendingIssuedAt: null,
-        lastSeenAt: null,
-        lastSeenIp: null,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.runner.updateMany({
+        where: { id, userId, revokedAt: null },
+        data: {
+          revokedAt: this.clock.now(),
+          pendingTokenHash: null,
+          pendingIssuedAt: null,
+          lastSeenAt: null,
+          lastSeenIp: null,
+        },
+      });
+      if (count !== 1) {
+        throw new NotFoundException();
+      }
+      await tx.project.updateMany({
+        where: { runnerId: id },
+        data: { runnerId: null },
+      });
     });
-    if (count !== 1) {
-      throw new NotFoundException();
-    }
     this.connections.disconnect(id, CLOSE_REVOKED, 'revoked');
   }
 

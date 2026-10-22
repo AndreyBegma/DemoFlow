@@ -19,6 +19,7 @@ model User {
   emailTokens     EmailToken[]
   githubIdentity  GithubIdentity?
   runners         Runner[]
+  projects        Project[]
 }
 
 // The GitHub account a user signs in with (spec #126). At most one per user,
@@ -91,8 +92,58 @@ model Runner {
   // Latest values only, shown to the owner (Decision 10).
   lastSeenAt       DateTime?
   lastSeenIp       String?
+  projects         Project[]
+  runs             Run[]
 
   @@index([userId])
+}
+
+// A folder demos are recorded in (spec #178). One per `(runnerId, rootPath)`:
+// made by the first run reported from that folder, or by hand on the site and
+// bound later. `runnerId` goes null when the Runner is revoked (Decision 7).
+model Project {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  runnerId  String?
+  runner    Runner?  @relation(fields: [runnerId], references: [id], onDelete: SetNull)
+  // Absolute path of the project root on that machine, as the CLI sent it.
+  rootPath  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  runs      Run[]
+
+  @@unique([runnerId, rootPath])
+  @@index([userId])
+}
+
+enum RunStatus {
+  passed
+  failed
+}
+
+// The metadata of one `demoflow run`. Never a video, a frame or a step value:
+// values can hold secrets, and videos stay on the machine (ADR-0008).
+model Run {
+  id           String    @id @default(uuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runnerId     String?
+  runner       Runner?   @relation(fields: [runnerId], references: [id], onDelete: SetNull)
+  scenarioName String
+  // Relative to the project root.
+  scenarioPath String
+  status       RunStatus
+  startedAt    DateTime
+  durationMs   Int
+  formats      String[]
+  // The 0-based index of the step that failed, when one did.
+  failedStep   Int?
+  cliVersion   String
+  createdAt    DateTime  @default(now())
+
+  @@index([projectId, startedAt(sort: Desc), id(sort: Desc)])
 }
 
 // A pending `demoflow login` (RFC 8628). Only the SHA-256 hash of the polling
