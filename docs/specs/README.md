@@ -110,6 +110,8 @@ renderer.
 
 The page-side contract is [ADR-0013](../adr/0013-page-side-contract.md),
 extended for annotations by [ADR-0014](../adr/0014-page-annotations.md).
+Reuse of Playwright tests is [ADR-0015](../adr/0015-playwright-tests-become-scenarios.md),
+from the [#202 spike report](../research/202-playwright-reuse-spike.md).
 
 | Issue | Spec | Depends on |
 |---|---|---|
@@ -118,3 +120,6 @@ extended for annotations by [ADR-0014](../adr/0014-page-annotations.md).
 | [#201](https://github.com/AndreyBegma/DemoFlow/issues/201) | [Scenes and captions from the page](201-page-annotations.md) | #198 |
 | [#202](https://github.com/AndreyBegma/DemoFlow/issues/202) | [Spike: reuse Playwright tests as scenarios](202-playwright-reuse-spike.md) | — |
 | [#203](https://github.com/AndreyBegma/DemoFlow/issues/203) | [Docs: the Application SDK page](203-sdk-docs.md) | #197, #198, #201 |
+| [#208](https://github.com/AndreyBegma/DemoFlow/issues/208) | [`demoflow/playwright`: a fixture that records a scenario](208-playwright-fixture.md) | — |
+| [#209](https://github.com/AndreyBegma/DemoFlow/issues/209) | [Fixture: container scrolls, `caption` and `scene` helpers](209-playwright-scrolls-captions.md) | #208 |
+| [#210](https://github.com/AndreyBegma/DemoFlow/issues/210) | [Docs: reuse Playwright tests](210-playwright-docs.md) | #208; after #209; not beside #203 |

@@ -116,6 +116,9 @@ All four, in this order:
 - The page-side contract of items 1–2 is
   [ADR-0013](../adr/0013-page-side-contract.md); item 3 extends it in
   [ADR-0014](../adr/0014-page-annotations.md).
+- Item 4 is [ADR-0015](../adr/0015-playwright-tests-become-scenarios.md): a
+  `demoflow/playwright` Playwright Test fixture records a `.demo.json`, and
+  the engine replays it.
 - Specs: [197](../specs/197-mask-attribute.md) (`data-demoflow-mask`),
   [198](../specs/198-ready-signal.md) (`window.demoflow.ready`, `waitForReady`),
   [201](../specs/201-page-annotations.md) (`window.demoflow.scene`, `caption`),
@@ -124,7 +127,13 @@ All four, in this order:
   `demoflow/playwright` fixture that records a scenario for the engine to
   replay, with a draft ADR and four follow-up issues),
   [203](../specs/203-sdk-docs.md) (the website's Application SDK page, after
-  197, 198 and 201).
+  197, 198 and 201),
+  [208](../specs/208-playwright-fixture.md) (item 4: the `demoflow/playwright`
+  fixture),
+  [209](../specs/209-playwright-scrolls-captions.md) (container scrolls, the
+  `caption` and `scene` helpers),
+  [210](../specs/210-playwright-docs.md) (the website's "Reuse Playwright
+  tests" page).
 
 ## Cross-cutting
 
