@@ -190,6 +190,11 @@ export function renameRunner(id: string, name: string) {
   });
 }
 
+/** Deletes the signed-in account at once (spec #177); `email` confirms it. */
+export function deleteAccount(email: string) {
+  return request<void>('/me', { method: 'DELETE', body: { email } });
+}
+
 export function revokeRunner(id: string) {
   return request<void>(`/runners/${encodeURIComponent(id)}`, {
     method: 'DELETE',

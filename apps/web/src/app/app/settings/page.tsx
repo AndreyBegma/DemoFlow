@@ -4,13 +4,15 @@ import { Card } from '@andrewbehma/glass-ui/card';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { UnlinkGithubButton } from '@/components/auth/unlink-github-button';
+import { DeleteAccount } from '@/components/settings/delete-account';
 import { t } from '@/i18n';
 import { githubStartUrl } from '@/lib/api';
 import { githubErrorMessage } from '@/lib/github-errors';
 import { getProviders, getSessionUser } from '@/lib/session';
 
-// Account settings cover linking and unlinking GitHub only (spec #126,
-// Decision 1). A failed link comes back here with `?error=<code>`.
+// Account settings: linking and unlinking GitHub (spec #126, Decision 1), and
+// deleting the account (spec #177). A failed link comes back here with
+// `?error=<code>`.
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -66,6 +68,7 @@ export default async function SettingsPage({
           </div>
         </dl>
       </Card>
+      <DeleteAccount email={user.email} />
     </main>
   );
 }

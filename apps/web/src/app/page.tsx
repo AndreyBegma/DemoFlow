@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { CopyInstall } from '@/components/landing/copy-install';
 import { DemoVideo } from '@/components/landing/demo-video';
+import { AccountDeletedNotice } from '@/components/settings/account-deleted-notice';
 import { t } from '@/i18n';
 import { getSessionUser } from '@/lib/session';
 
@@ -81,6 +82,7 @@ export default async function LandingPage() {
         </div>
       </header>
       <main className="mx-auto flex max-w-5xl flex-col gap-16 px-4 pb-16 pt-8 sm:px-6 sm:pt-16">
+        <AccountDeletedNotice />
         <section className="flex flex-col gap-4 text-center">
           <h1 className="mx-auto max-w-3xl text-balance text-3xl font-semibold sm:text-5xl">
             {t('landing.hero.title')}

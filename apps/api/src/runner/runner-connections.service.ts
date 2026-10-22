@@ -157,6 +157,19 @@ export class RunnerConnections
     connection.socket.close(code, reason);
   }
 
+  /**
+   * The machine is gone with its account (spec #177, Decision 3): says
+   * `bye revoked` first, so the daemon knows why, then closes with `4401`.
+   */
+  revoke(runnerId: string): void {
+    const connection = this.open.get(runnerId);
+    if (!connection) {
+      return;
+    }
+    this.send(connection.socket, { type: 'bye', reason: 'revoked' });
+    this.disconnect(runnerId, CLOSE_REVOKED, 'revoked');
+  }
+
   /** Pings and the idle timeout. Runs every `HEARTBEAT_TICK_MS`. */
   tick(): void {
     const now = this.clock.now().getTime();
