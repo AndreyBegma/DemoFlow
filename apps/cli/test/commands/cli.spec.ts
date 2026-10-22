@@ -1,18 +1,35 @@
 import { spawn } from 'node:child_process';
-import { cp, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
+import {
+  cp,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
 import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runFfmpegRaw } from '@demoflow/renderer';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 // Read-only helper of the engine's tests: serves the built fixture on an ephemeral port.
 import {
   type FixtureServer,
   startFixtureServer,
 } from '../../../../packages/engine/test/execute/fixture-server.ts';
+import { writeCredentials } from '../../src/auth/credentials.ts';
 
 const CLI_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -39,7 +56,14 @@ function demoflow(
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [MAIN, ...args], {
       cwd,
-      env: { ...process.env, FIXTURE_PASSWORD: '', DEMOFLOW_HOME: '', ...env },
+      env: {
+        ...process.env,
+        FIXTURE_PASSWORD: '',
+        DEMOFLOW_HOME: '',
+        // A paired developer machine must not report from the test suite.
+        DEMOFLOW_NO_REPORT: '1',
+        ...env,
+      },
     });
     let stdout = '';
     let stderr = '';
@@ -160,6 +184,113 @@ describe('demoflow validate', () => {
         'steps[1].steps[2].value: unknown field customer.email: missing in data.customers[3]',
       );
     }
+  });
+});
+
+describe('demoflow run on a paired machine', () => {
+  let home: string;
+  let api: Server;
+  let received: { auth: string | undefined; body: Record<string, unknown> }[];
+  let status: number;
+
+  const pairedEnv = (server: string) => {
+    const env = {
+      HOME: home,
+      USERPROFILE: home,
+      XDG_CONFIG_HOME: path.join(home, 'xdg'),
+      APPDATA: path.join(home, 'appdata'),
+      DEMOFLOW_NO_REPORT: '',
+      CI: '',
+    };
+    writeCredentials(
+      { platform: process.platform, env, homedir: home },
+      { server, token: 'dfr_test', runnerId: 'r1' },
+    );
+    return env;
+  };
+  const apiUrl = () =>
+    `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
+
+  beforeEach(async () => {
+    home = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-home-'));
+    received = [];
+    status = 201;
+    api = createServer((request, response) => {
+      let text = '';
+      request.on('data', (chunk) => {
+        text += chunk;
+      });
+      request.on('end', () => {
+        if (request.url === '/api/runner/runs') {
+          received.push({
+            auth: request.headers.authorization,
+            body: JSON.parse(text) as Record<string, unknown>,
+          });
+        }
+        response.statusCode = status;
+        response.end('{}');
+      });
+    });
+    await new Promise<void>((resolve) => api.listen(0, '127.0.0.1', resolve));
+  });
+
+  afterEach(async () => {
+    await new Promise((resolve) => api.close(resolve));
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it('reports the run once, with the project root and the run fields', async () => {
+    const env = pairedEnv(apiUrl());
+    const result = await demoflow(
+      ['run', scenario('customers'), '--json', '--out', out],
+      project,
+      env,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(received).toHaveLength(1);
+    const [report] = received;
+    expect(report?.auth).toBe('Bearer dfr_test');
+    expect(report?.body).toMatchObject({
+      rootPath: await realpath(project),
+      projectName: path.basename(project),
+      scenarioName: JSON.parse(result.stdout).scenarioName,
+      scenarioPath: 'demoflow/customers.demo.json',
+      status: 'passed',
+      formats: ['mp4'],
+    });
+  });
+
+  it('sends no report with DEMOFLOW_NO_REPORT=1', async () => {
+    const env = { ...pairedEnv(apiUrl()), DEMOFLOW_NO_REPORT: '1' };
+    const result = await demoflow(
+      ['run', scenario('customers'), '--json', '--out', out],
+      project,
+      env,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(received).toHaveLength(0);
+  });
+
+  it('keeps the output and the exit code when the API answers 500', async () => {
+    status = 500;
+    const result = await demoflow(
+      ['run', scenario('customers'), '--json', '--out', out],
+      project,
+      pairedEnv(apiUrl()),
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).status).toBe('completed');
+    expect(result.stderr).not.toMatch(/report|500|runner\/runs/i);
+  });
+
+  it('keeps the output and the exit code when the API is unreachable', async () => {
+    const result = await demoflow(
+      ['run', scenario('customers'), '--json', '--out', out],
+      project,
+      pairedEnv('http://127.0.0.1:1'),
+    );
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).status).toBe('completed');
   });
 });
 

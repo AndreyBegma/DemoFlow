@@ -21,6 +21,11 @@ import {
   runDir as runDirFor,
   scenarioId,
 } from '../config/index.ts';
+import {
+  defaultReportDeps,
+  type ReportDeps,
+  reportRun,
+} from '../runs-report/report.ts';
 import { type BrowserDeps, ensureChromium } from './browser.ts';
 import { CommandError, EXIT_STAGE_FAILED } from './errors.ts';
 import { exitCodeFor } from './exit.ts';
@@ -49,6 +54,8 @@ export interface RunDeps {
   runId: () => string;
   /** Chromium's check and first-use install; Playwright's own by default. */
   browser?: BrowserDeps;
+  /** The report to the server after the run; the real one by default. */
+  report?: ReportDeps;
 }
 
 export function defaultRunDeps(): RunDeps {
@@ -197,6 +204,7 @@ export async function runCommand(
         ? formatJson(result, runDir)
         : formatSummary(result, runDir),
     );
+    await reportRun({ root, result }, deps.report ?? defaultReportDeps(host));
     const code = exitCodeFor(result);
     // A render crash before the stage was recorded must not read as success.
     return code === 0 && renderError !== undefined ? EXIT_STAGE_FAILED : code;
