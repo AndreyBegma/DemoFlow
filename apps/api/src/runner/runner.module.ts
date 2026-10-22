@@ -29,6 +29,6 @@ import { RunnersService } from './runners.service';
     RunnerConnections,
     RunnerGateway,
   ],
-  exports: [RunnerAuthService, RunnerTokenGuard],
+  exports: [RunnerAuthService, RunnerTokenGuard, RunnerConnections],
 })
 export class RunnerModule {}
