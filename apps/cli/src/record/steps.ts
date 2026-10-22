@@ -1,13 +1,16 @@
 import type {
   Locator,
   ScenarioInput,
+  ScenarioStepInput,
   StepInput,
   Viewport,
 } from '@demoflow/core';
+import { type RecordedData, usedData } from './repeat.ts';
 
 /** A step as the recorder holds it: the step, and why the panel should flag it. */
 export interface RecordedStep {
-  step: StepInput;
+  /** A `repeat` only once the person wrapped a run of steps in one. */
+  step: ScenarioStepInput;
   warning?: string;
   /** For a fill: the field it was typed into, as the page identifies it. */
   field?: string;
@@ -118,11 +121,14 @@ export function buildScenario(
   name: string,
   viewport: Viewport,
   steps: readonly RecordedStep[],
+  data: RecordedData = {},
 ): ScenarioInput {
+  const used = usedData(steps, data);
   return {
     schemaVersion: 1,
     name,
     viewport,
+    ...(Object.keys(used).length === 0 ? {} : { data: used }),
     steps: steps.map(({ step }) => step),
   };
 }

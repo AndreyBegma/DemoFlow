@@ -45,8 +45,16 @@ as well, all encoded in one pass; the GIF is 800 px wide at 12 fps unless
 run; `generate_demo` takes the same list as `formats`. The files are
 `render/ffmpeg.mp4`, `render/ffmpeg.gif` and `render/ffmpeg.webm`.
 
+`demoflow record` writes a scenario from what you do in the app. To post the
+same thing for several items, tick a run of steps in the recording panel and
+choose **Repeat over data**. Name the list, then give one line per item for each
+typed value (the first line is what you recorded). The panel writes the `data`
+block and wraps the steps in a `repeat` with `{{item.text}}` in place of each
+typed value. Secret fills are left as recorded.
+
 | Command | What it does |
 |---|---|
+| `demoflow record [name]` | record a scenario by using the app |
 | `demoflow validate <scenario>` | check a scenario against the schema |
 | `demoflow run <scenario>` | run it in a browser and render the video |
 | `demoflow setup` | install Chromium now instead of on the first run |

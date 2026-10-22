@@ -97,7 +97,7 @@ export async function recordCommand(
     return EXIT_STAGE_FAILED;
   }
 
-  let steps: Awaited<RecordSession['done']>;
+  let recording: Awaited<RecordSession['done']>;
   const browser = await chromium.launch({ headless: deps.headless });
   let interrupt = (): void => {};
   try {
@@ -112,7 +112,7 @@ export async function recordCommand(
       'Recording: use the app window; the panel window adds scenes, captions, waits and checks. Stop and save from the panel.\n',
     );
     await deps.onSession?.(session);
-    steps = await session.done;
+    recording = await session.done;
   } finally {
     process.off('SIGINT', interrupt);
     await browser.close().catch(() => {});
@@ -121,7 +121,7 @@ export async function recordCommand(
 
   let warnings: Awaited<ReturnType<typeof saveScenario>>;
   try {
-    if (steps.length === 0) {
+    if (recording.steps.length === 0) {
       throw new RecordError(
         'nothing-recorded',
         'no steps were recorded; nothing was written',
@@ -129,7 +129,7 @@ export async function recordCommand(
     }
     warnings = await saveScenario(
       file,
-      buildScenario(scenarioName, viewport, steps),
+      buildScenario(scenarioName, viewport, recording.steps, recording.data),
       force,
     );
   } catch (error) {
