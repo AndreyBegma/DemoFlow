@@ -17,3 +17,4 @@ it is accepted: a later record supersedes it and says so.
 | [0010](0010-source-video-at-viewport-size.md) | The source video is recorded at the viewport size (1×) | accepted |
 | [0011](0011-no-docker-socket-or-host-cache-on-pull-requests.md) | No Docker socket and no host cache on a pull request | accepted |
 | [0012](0012-camera-directed-by-the-scenario.md) | The camera zooms only where a step asks for it (`zoom`); no automatic zoom | accepted |
+| [0013](0013-page-side-contract.md) | The page-side contract: `data-demoflow-mask` and `window.demoflow` (`ready`, `waitForReady`) | accepted |

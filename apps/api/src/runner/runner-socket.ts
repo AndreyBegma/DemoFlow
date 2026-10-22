@@ -1,10 +1,13 @@
 import type { IncomingMessage } from 'node:http';
+import { applyDecorators } from '@nestjs/common';
 import { type ClassConstructor, plainToInstance } from 'class-transformer';
 import {
   IsIn,
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
+  Max,
   MaxLength,
   Min,
   validateSync,
@@ -35,18 +38,46 @@ export const CLOSE_REPLACED = 4409;
 export const CLOSE_GOING_AWAY = 1001;
 export const CLOSE_NORMAL = 1000;
 
+/** A run's video over the socket (spec #191): one binary frame carries this much at most. */
+export const VIDEO_CHUNK_MAX = 32 * 1024;
+/** Bytes a daemon may have sent and not yet seen acknowledged, per stream. */
+export const VIDEO_CREDIT = 512 * 1024;
+/** Streams a daemon serves at once; the fifth is `busy`. */
+export const MAX_STREAMS_PER_RUNNER = 4;
+/** Byte 0 of a binary chunk. */
+export const VIDEO_FRAME_VERSION = 0x01;
+const VIDEO_FRAME_HEADER = 1 + 16;
+
+/** `bytes=a-b` (inclusive), `bytes=a-` (`end` omitted), `bytes=-n`, or the whole file. */
+export type VideoRange = { start: number; end?: number } | { suffix: number };
+
 export type ServerMessage =
   | { type: 'hello'; runnerId: string; serverTime: string }
   | { type: 'ping'; at: number }
   | { type: 'pong'; at: number }
   | { type: 'rotate'; token: string }
-  | { type: 'bye'; reason: string };
+  | { type: 'bye'; reason: string }
+  | {
+      type: 'video.open';
+      streamId: string;
+      runId: string;
+      format: string;
+      range: VideoRange | null;
+    }
+  | { type: 'video.ack'; streamId: string; bytes: number }
+  | { type: 'video.cancel'; streamId: string };
 
 export type ClientMessage =
   | PingMessage
   | PongMessage
   | RotatedMessage
-  | ByeMessage;
+  | ByeMessage
+  | VideoMessage;
+
+export type VideoMessage =
+  | VideoHeadMessage
+  | VideoEndMessage
+  | VideoErrorMessage;
 
 class PingMessage {
   @IsIn(['ping'])
@@ -81,6 +112,58 @@ class ByeMessage {
   reason?: string;
 }
 
+/** A byte count or offset: a file can outgrow 32 bits. */
+const IsByteCount = () =>
+  applyDecorators(IsInt(), Min(0), Max(Number.MAX_SAFE_INTEGER));
+
+class VideoHeadMessage {
+  @IsIn(['video.head'])
+  type!: 'video.head';
+
+  @IsUUID('4')
+  streamId!: string;
+
+  /** The whole file's size. */
+  @IsByteCount()
+  size!: number;
+
+  /** The inclusive bytes the daemon will send. */
+  @IsByteCount()
+  start!: number;
+
+  @IsByteCount()
+  end!: number;
+}
+
+class VideoEndMessage {
+  @IsIn(['video.end'])
+  type!: 'video.end';
+
+  @IsUUID('4')
+  streamId!: string;
+}
+
+class VideoErrorMessage {
+  @IsIn(['video.error'])
+  type!: 'video.error';
+
+  @IsUUID('4')
+  streamId!: string;
+
+  /**
+   * `not-found`, `bad-range`, `busy` or `io`. Any string, so a code a newer
+   * daemon adds still ends the stream instead of being dropped.
+   */
+  @IsString()
+  @MaxLength(64)
+  code!: string;
+
+  /** With `bad-range`. */
+  @IsOptional()
+  @IsByteCount()
+  size?: number;
+}
+
 const CLIENT_MESSAGES: Record<
   ClientMessage['type'],
   ClassConstructor<ClientMessage>
@@ -89,23 +172,76 @@ const CLIENT_MESSAGES: Record<
   pong: PongMessage,
   rotated: RotatedMessage,
   bye: ByeMessage,
+  'video.head': VideoHeadMessage,
+  'video.end': VideoEndMessage,
+  'video.error': VideoErrorMessage,
 };
+
+/** A binary frame: part of a stream's file, in order. */
+export interface VideoChunk {
+  streamId: string;
+  bytes: Buffer;
+}
 
 export type ParsedMessage =
   | { ok: true; message: ClientMessage }
+  | { ok: true; chunk: VideoChunk }
   | { ok: false; problem: string };
+
+/** `0x01`, the stream id as 16 raw bytes, then up to `VIDEO_CHUNK_MAX` of the file. */
+export function encodeVideoChunk(streamId: string, bytes: Buffer): Buffer {
+  return Buffer.concat([
+    Buffer.from([VIDEO_FRAME_VERSION]),
+    Buffer.from(streamId.replaceAll('-', ''), 'hex'),
+    bytes,
+  ]);
+}
+
+/** The inverse of `encodeVideoChunk`; null for a frame that is not one. */
+export function decodeVideoChunk(data: RawData): VideoChunk | null {
+  const frame = toBuffer(data);
+  if (
+    frame.length <= VIDEO_FRAME_HEADER ||
+    frame.length > VIDEO_FRAME_HEADER + VIDEO_CHUNK_MAX ||
+    frame[0] !== VIDEO_FRAME_VERSION
+  ) {
+    return null;
+  }
+  const hex = frame.subarray(1, VIDEO_FRAME_HEADER).toString('hex');
+  return {
+    streamId: [
+      hex.slice(0, 8),
+      hex.slice(8, 12),
+      hex.slice(12, 16),
+      hex.slice(16, 20),
+      hex.slice(20),
+    ].join('-'),
+    bytes: frame.subarray(VIDEO_FRAME_HEADER),
+  };
+}
+
+function toBuffer(data: RawData): Buffer {
+  if (Buffer.isBuffer(data)) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return Buffer.concat(data);
+  }
+  return Buffer.from(data);
+}
 
 /**
  * One frame from a daemon, validated. Fields beyond the message's own are
  * dropped, so a newer daemon can add some; an unknown `type` is a problem the
- * caller logs and ignores.
+ * caller logs and ignores. A binary frame is a video chunk or a problem.
  */
 export function parseClientMessage(
   data: RawData,
   isBinary: boolean,
 ): ParsedMessage {
   if (isBinary) {
-    return { ok: false, problem: 'binary frame' };
+    const chunk = decodeVideoChunk(data);
+    return chunk ? { ok: true, chunk } : { ok: false, problem: 'binary frame' };
   }
   let raw: unknown;
   try {

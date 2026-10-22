@@ -60,7 +60,7 @@ type ProjectWithSummary = Prisma.ProjectGetPayload<{
   include: typeof PROJECT_INCLUDE;
 }>;
 
-function toRunView(run: Run): RunView {
+export function toRunView(run: Run): RunView {
   return {
     id: run.id,
     scenarioName: run.scenarioName,
