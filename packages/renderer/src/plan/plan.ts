@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  type Annotation,
   type Box,
   FrameConfigSchema,
   type RenderFormat,
@@ -70,6 +71,8 @@ const TIMING = {
   zoomInMs: 500,
   zoomOutMs: 400,
   captionTailMs: 800,
+  /** A caption the page set stays this long, unless the next caption cuts it (spec 201). */
+  pageCaptionMs: 3_000,
   /** A key badge stays this long after the press step ends. */
   keyTailMs: 600,
   endCardMs: 3_000,
@@ -238,6 +241,7 @@ export function planRender(
   const cards = placeCards({
     ...(options.cards === undefined ? {} : { config: options.cards }),
     events,
+    annotations: timeline.annotations ?? [],
     out,
     pageEndMs,
     scenarioName: result.scenarioName,
@@ -268,7 +272,7 @@ export function planRender(
         verticalConfig,
       ),
       masks,
-      captions: captions(events, out, pageEndMs),
+      captions: captions(events, timeline.annotations ?? [], out, pageEndMs),
       keys: keyBadges(events, out, pageEndMs, viewport),
     },
     cards,
@@ -736,14 +740,31 @@ function keyBadges(
 
 /**
  * A lower-third for every step `caption` and `caption` marker, from the
- * step's start until 800 ms after its end. A later caption cuts an earlier one.
+ * step's start until 800 ms after its end, and for every `caption` the page
+ * set (#201), for 3 s from the call. A later caption cuts an earlier one,
+ * whichever source it came from.
  */
 function captions(
   events: readonly TimelineEvent[],
+  annotations: readonly Annotation[],
   out: (timelineMs: number) => number,
   videoEndMs: number,
 ): Caption[] {
-  const list: Caption[] = events.flatMap((event) => {
+  const fromPage: Caption[] = annotations.flatMap((annotation) =>
+    annotation.kind === 'caption'
+      ? [
+          {
+            startMs: out(annotation.atMs),
+            endMs: Math.min(
+              videoEndMs,
+              out(annotation.atMs) + TIMING.pageCaptionMs,
+            ),
+            text: annotation.title,
+          },
+        ]
+      : [],
+  );
+  const fromSteps: Caption[] = events.flatMap((event) => {
     const text =
       event.marker?.kind === 'caption' ? event.marker.title : event.caption;
     if (text === undefined || text.trim() === '') return [];
@@ -755,6 +776,10 @@ function captions(
       },
     ];
   });
+  // Stable: at an equal start a step's caption comes before the page's.
+  const list = [...fromSteps, ...fromPage].sort(
+    (a, b) => a.startMs - b.startMs,
+  );
   for (const [index, caption] of list.entries()) {
     const next = list[index + 1];
     if (next !== undefined) {

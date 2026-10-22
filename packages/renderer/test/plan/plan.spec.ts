@@ -1,4 +1,5 @@
 import {
+  type Annotation,
   deriveRunStatus,
   type MaskedElement,
   type RunResult,
@@ -76,14 +77,16 @@ function plan(
   options: RenderPlanOptions & {
     failed?: Parameters<typeof result>[0];
     maskedElements?: MaskedElement[];
+    annotations?: Annotation[];
   } = {},
 ): RenderPlan {
-  const { failed, maskedElements, ...rest } = options;
+  const { failed, maskedElements, annotations, ...rest } = options;
   return planRender(
     {
       timeline: {
         ...timeline(events),
         ...(maskedElements === undefined ? {} : { maskedElements }),
+        ...(annotations === undefined ? {} : { annotations }),
       },
       result: result(failed),
       source: {
@@ -993,6 +996,104 @@ describe('captions', () => {
       { startMs: 0, endMs: 801, text: 'Slow report' },
       { startMs: 3000, endMs: 4800, text: 'Open it' },
     ]);
+  });
+
+  describe('from the page (#201)', () => {
+    const wait = event({ action: 'wait', startMs: 4000, endMs: 9000 });
+    const shortWait = event({ action: 'wait', startMs: 4000, endMs: 6000 });
+    const pageCaption = (atMs: number, title: string): Annotation => ({
+      atMs,
+      kind: 'caption',
+      title,
+    });
+
+    it('shows a page caption for 3 000 ms from the call', () => {
+      const rendered = plan([wait], [], {
+        annotations: [pageCaption(4200, 'Paying with a card')],
+      });
+      expect(rendered.captions).toEqual([
+        { startMs: 4200, endMs: 7200, text: 'Paying with a card' },
+      ]);
+    });
+
+    it('cuts it at the next page caption', () => {
+      const rendered = plan([wait], [], {
+        annotations: [pageCaption(4000, 'One'), pageCaption(5000, 'Two')],
+      });
+      expect(rendered.captions).toEqual([
+        { startMs: 4000, endMs: 5000, text: 'One' },
+        { startMs: 5000, endMs: 8000, text: 'Two' },
+      ]);
+    });
+
+    it('is cut by a following step caption', () => {
+      const rendered = plan(
+        [
+          wait,
+          { ...click(6000, 7000, { x: 300, y: 200 }), caption: 'Open it' },
+        ],
+        [],
+        { annotations: [pageCaption(5000, 'From the page')] },
+      );
+      expect(rendered.captions).toEqual([
+        { startMs: 5000, endMs: 6000, text: 'From the page' },
+        { startMs: 6000, endMs: 7800, text: 'Open it' },
+      ]);
+    });
+
+    it('cuts an earlier step caption', () => {
+      const rendered = plan(
+        [
+          { ...click(1000, 2000, { x: 300, y: 200 }), caption: 'Open it' },
+          wait,
+        ],
+        [],
+        { annotations: [pageCaption(1500, 'From the page')] },
+      );
+      expect(rendered.captions).toEqual([
+        { startMs: 1000, endMs: 1500, text: 'Open it' },
+        { startMs: 1500, endMs: 4500, text: 'From the page' },
+      ]);
+    });
+
+    it('lists captions from both sources sorted by start', () => {
+      const rendered = plan(
+        [
+          { ...click(1000, 1100, { x: 300, y: 200 }), caption: 'Step one' },
+          { ...click(3000, 3100, { x: 300, y: 200 }), caption: 'Step two' },
+          wait,
+        ],
+        [],
+        {
+          annotations: [pageCaption(2000, 'Page one'), pageCaption(5000, 'P')],
+        },
+      );
+      expect(rendered.captions.map((caption) => caption.text)).toEqual([
+        'Step one',
+        'Page one',
+        'Step two',
+        'P',
+      ]);
+      const starts = rendered.captions.map((caption) => caption.startMs);
+      expect(starts).toEqual([...starts].sort((a, b) => a - b));
+    });
+
+    it('is clamped to the end of the video', () => {
+      const rendered = plan([shortWait], [], {
+        annotations: [pageCaption(5900, 'Last words')],
+      });
+      const last = rendered.captions.at(-1);
+      expect(last?.text).toBe('Last words');
+      expect(last?.endMs).toBe(rendered.durationMs);
+      expect(last?.endMs).toBeLessThan(5900 + 3000);
+    });
+
+    it('draws no scene card for a caption and ignores scenes', () => {
+      const rendered = plan([wait], [], {
+        annotations: [{ atMs: 4500, kind: 'scene', title: 'Not a caption' }],
+      });
+      expect(rendered.captions).toEqual([]);
+    });
   });
 });
 
