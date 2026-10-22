@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "name": "Masked elements",
+  "description": "The page marks its secrets with data-demoflow-mask; the scenario says nothing about them.",
+  "viewport": { "width": 1280, "height": 720 },
+  "steps": [
+    { "action": "navigate", "path": "/masked" },
+    { "action": "wait", "ms": 400 },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Show balance" }
+    },
+    { "action": "wait", "ms": 1000 },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Hide balance" }
+    },
+    { "action": "wait", "ms": 600 }
+  ]
+}
