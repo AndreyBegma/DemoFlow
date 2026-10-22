@@ -14,6 +14,7 @@ import {
 import { acquireLock, releaseLock } from './lock.ts';
 import { fileLogger, type Logger } from './log.ts';
 import { runnerPaths } from './paths.ts';
+import { nodeRelayFs, VideoRelay } from './relay/index.ts';
 import { type ConnectionState, writeState } from './state.ts';
 
 /** How often the daemon looks for `runner.stop`. */
@@ -108,6 +109,12 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
       current = retryAt === undefined ? { state } : { state, retryAt };
       saveState();
     },
+    relay: new VideoRelay({
+      indexFile: paths.reportedRuns,
+      fs: nodeRelayFs,
+      logger,
+      platform: deps.host.platform,
+    }),
   });
 
   const stop = (why: string) => {

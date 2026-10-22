@@ -1,5 +1,6 @@
 import { apiBase } from '../auth/server.ts';
 import type { Logger } from './log.ts';
+import type { RelaySender, VideoRelayPort } from './relay/index.ts';
 import type { ConnectionState } from './state.ts';
 
 /** Decision 6: each side pings every 25 s and gives up after 60 s of silence. */
@@ -26,6 +27,8 @@ export interface SocketHandlers {
 /** The part of a WebSocket the client uses; tests replace it. */
 export interface RunnerSocket {
   send(text: string): void;
+  /** A video chunk (spec 191, "Binary chunk"). */
+  sendBinary(data: Uint8Array): void;
   close(code: number, reason: string): void;
 }
 
@@ -62,6 +65,8 @@ export interface ConnectionDeps {
   /** After a refused upgrade: is the token revoked (`GET /runner/self` is 401)? */
   isRevoked(token: string): Promise<boolean>;
   onState(state: ConnectionState, retryAt?: number): void;
+  /** Answers `video.*` (spec 192); without it they are logged as unknown. */
+  relay?: VideoRelayPort;
 }
 
 export type ConnectionOutcome = 'stopped' | 'revoked';
@@ -202,12 +207,37 @@ export class RunnerConnection {
           `the server is closing (${typeof fields.reason === 'string' ? fields.reason : 'no reason'})`,
         );
         return;
-      default:
-        this.deps.logger.log(
-          'warn',
-          `ignored a message of type ${JSON.stringify(fields.type)?.slice(0, 64)}`,
-        );
+      case 'video.open':
+      case 'video.ack':
+      case 'video.cancel':
+        if (this.deps.relay !== undefined) {
+          this.deps.relay.handle(fields, this.relaySender());
+          return;
+        }
+        break;
     }
+    this.deps.logger.log(
+      'warn',
+      `ignored a message of type ${JSON.stringify(fields.type)?.slice(0, 64)}`,
+    );
+  }
+
+  /** Frames for the socket that is current now, and for no later one. */
+  private relaySender(): RelaySender {
+    const socket = this.socket;
+    return {
+      send: (message) => {
+        if (this.socket === socket) this.send(message);
+      },
+      sendBinary: (data) => {
+        if (socket === null || this.socket !== socket) return;
+        try {
+          socket.sendBinary(data);
+        } catch {
+          // The socket is closing; its close ends the stream.
+        }
+      },
+    };
   }
 
   private onHello(runnerId: unknown): void {
@@ -248,6 +278,8 @@ export class RunnerConnection {
   private onClose(code: number, reason: string): void {
     const wasOpen = this.opened;
     this.socket = null;
+    // Decision 7: no file handle outlives the socket it streamed to.
+    this.deps.relay?.closeAll();
     this.opened = false;
     this.clearTimers();
     this.deps.logger.log(
@@ -359,6 +391,7 @@ export class RunnerConnection {
     if (this.finished) return;
     this.finished = true;
     this.clearTimers();
+    this.deps.relay?.closeAll();
     this.cancelRetry?.();
     this.resolve(outcome);
   }
@@ -377,6 +410,7 @@ export const nodeSocket: SocketFactory = (url, token, handlers) => {
   );
   return {
     send: (text) => socket.send(text),
+    sendBinary: (data) => socket.send(data),
     close: (code, reason) => socket.close(code, reason),
   };
 };

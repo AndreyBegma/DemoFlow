@@ -93,6 +93,7 @@ describe('runner.lock', () => {
       [paths.log, 'runner.log'],
       [paths.state, 'runner.state.json'],
       [paths.stop, 'runner.stop'],
+      [paths.reportedRuns, 'reported-runs.jsonl'],
     ]) {
       expect(p.dirname(file)).toBe(dir);
       expect(p.basename(file)).toBe(name);
