@@ -101,6 +101,47 @@ describe('runners (integration)', () => {
         .expect(404);
     });
 
+    it('keeps its projects and unbinds them, leaving their runs (spec #178)', async () => {
+      const paired = await pair(http, alice);
+      const project = await t.prisma.project.create({
+        data: {
+          userId: alice.user.id,
+          name: 'Shop',
+          runnerId: paired.runnerId,
+          rootPath: '/home/alice/shop',
+          runs: {
+            create: {
+              runnerId: paired.runnerId,
+              scenarioName: 'checkout',
+              scenarioPath: 'checkout.yaml',
+              status: 'passed',
+              startedAt: t.clock.now(),
+              durationMs: 1000,
+              formats: ['mp4'],
+              cliVersion: MACHINE.cliVersion,
+            },
+          },
+        },
+      });
+
+      await request(http)
+        .delete(`/runners/${paired.runnerId}`)
+        .set('Cookie', alice.cookie)
+        .expect(204);
+
+      expect(
+        await t.prisma.project.findUniqueOrThrow({ where: { id: project.id } }),
+      ).toEqual(
+        expect.objectContaining({
+          runnerId: null,
+          rootPath: '/home/alice/shop',
+        }),
+      );
+      expect(
+        await t.prisma.run.findMany({ where: { projectId: project.id } }),
+      ).toEqual([expect.objectContaining({ runnerId: paired.runnerId })]);
+    });
+
     it('requires a session', async () => {
       await request(http).get('/runners').expect(401);
     });
