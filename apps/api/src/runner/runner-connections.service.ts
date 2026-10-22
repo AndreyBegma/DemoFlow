@@ -21,6 +21,8 @@ import {
   PING_INTERVAL_MS,
   parseClientMessage,
   type ServerMessage,
+  type VideoChunk,
+  type VideoMessage,
 } from './runner-socket';
 import type { RunnerContext } from './runner-token';
 
@@ -35,6 +37,19 @@ interface Connection {
   lastPingAt: number;
   /** Epoch ms of the `lastSeenAt` the database holds. */
   lastSeenWrittenAt: number;
+  /** A chunk for a stream that is not open was logged on this socket. */
+  warnedStrayChunk: boolean;
+}
+
+/**
+ * Where the video relay (spec #191) hears from the sockets. `chunk` answers
+ * false for a stream it does not hold.
+ */
+export interface VideoSink {
+  message(runnerId: string, message: VideoMessage): void;
+  chunk(runnerId: string, chunk: VideoChunk): boolean;
+  /** The machine's socket is gone: closed, replaced, revoked or shut down. */
+  closed(runnerId: string): void;
 }
 
 /**
@@ -51,6 +66,7 @@ export class RunnerConnections
   private readonly open = new Map<string, Connection>();
   private timer: NodeJS.Timeout | undefined;
   private shuttingDown = false;
+  private videoSink: VideoSink | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -71,8 +87,12 @@ export class RunnerConnections
   async onModuleDestroy(): Promise<void> {
     this.shuttingDown = true;
     clearInterval(this.timer);
-    const sockets = [...this.open.values()].map(({ socket }) => socket);
+    const connections = [...this.open.values()];
     this.open.clear();
+    for (const { runnerId } of connections) {
+      this.videoSink?.closed(runnerId);
+    }
+    const sockets = connections.map(({ socket }) => socket);
     const closed = sockets.map(
       (socket) =>
         new Promise<void>((resolve) => {
@@ -95,6 +115,21 @@ export class RunnerConnections
     return this.open.has(runnerId);
   }
 
+  /** To the machine's current socket; false when it is not online. */
+  sendTo(runnerId: string, message: ServerMessage): boolean {
+    const connection = this.open.get(runnerId);
+    if (!connection || connection.socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    connection.socket.send(JSON.stringify(message));
+    return true;
+  }
+
+  /** The video relay's hook (spec #191, Decision 8). One sink per instance. */
+  setVideoSink(sink: VideoSink): void {
+    this.videoSink = sink;
+  }
+
   /** An authenticated socket, straight after the upgrade. */
   async accept(
     socket: WebSocket,
@@ -108,6 +143,7 @@ export class RunnerConnections
       lastMessageAt: now.getTime(),
       lastPingAt: now.getTime(),
       lastSeenWrittenAt: now.getTime(),
+      warnedStrayChunk: false,
     };
     // Listeners first: a frame that arrives during the writes below counts.
     socket.on('message', (data, isBinary) =>
@@ -121,6 +157,8 @@ export class RunnerConnections
       this.logger.log(
         `Runner ${runner.id} reconnected; closing the older socket`,
       );
+      // The older socket's streams cannot continue on this one.
+      this.videoSink?.closed(runner.id);
       previous.socket.close(CLOSE_REPLACED, 'replaced');
     }
 
@@ -154,6 +192,7 @@ export class RunnerConnections
       return;
     }
     this.open.delete(runnerId);
+    this.videoSink?.closed(runnerId);
     connection.socket.close(code, reason);
   }
 
@@ -204,7 +243,27 @@ export class RunnerConnections
       );
       return;
     }
+    if ('chunk' in parsed) {
+      this.relayChunk(connection, parsed.chunk);
+      return;
+    }
     this.handle(connection, parsed.message);
+  }
+
+  /**
+   * A chunk of a stream that is not open — a late one after a cancel, or a
+   * skewed daemon — is dropped, logged once per socket, and the socket stays.
+   */
+  private relayChunk(connection: Connection, chunk: VideoChunk): void {
+    if (this.videoSink?.chunk(connection.runnerId, chunk)) {
+      return;
+    }
+    if (!connection.warnedStrayChunk) {
+      connection.warnedStrayChunk = true;
+      this.logger.warn(
+        `Dropped a video chunk from runner ${connection.runnerId} for a stream that is not open`,
+      );
+    }
   }
 
   private handle(connection: Connection, message: ClientMessage): void {
@@ -229,6 +288,11 @@ export class RunnerConnections
       case 'bye':
         this.disconnect(connection.runnerId, CLOSE_NORMAL, 'bye');
         return;
+      case 'video.head':
+      case 'video.end':
+      case 'video.error':
+        this.videoSink?.message(connection.runnerId, message);
+        return;
     }
   }
 
@@ -243,6 +307,7 @@ export class RunnerConnections
   private closed(connection: Connection): void {
     if (this.open.get(connection.runnerId) === connection) {
       this.open.delete(connection.runnerId);
+      this.videoSink?.closed(connection.runnerId);
     }
     if (
       !this.shuttingDown &&

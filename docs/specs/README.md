@@ -105,3 +105,12 @@ renderer.
 | [#191](https://github.com/AndreyBegma/DemoFlow/issues/191) | [Video relay (API) and its protocol](191-video-relay-api.md) | — |
 | [#192](https://github.com/AndreyBegma/DemoFlow/issues/192) | [The runner daemon streams a reported run's video](192-runner-serves-video.md) | #191 (merge order) |
 | [#193](https://github.com/AndreyBegma/DemoFlow/issues/193) | [Run page and the `VideoPlayer` adapter](193-run-video-page.md) | #191 |
+
+## Phase 7 — Optional SDK
+
+The page-side contract is [ADR-0013](../adr/0013-page-side-contract.md).
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#197](https://github.com/AndreyBegma/DemoFlow/issues/197) | [`data-demoflow-mask` masks a marked element](197-mask-attribute.md) | — |
+| [#198](https://github.com/AndreyBegma/DemoFlow/issues/198) | [`window.demoflow.ready(name)` and `waitForReady`](198-ready-signal.md) | #197 (merge order) |
