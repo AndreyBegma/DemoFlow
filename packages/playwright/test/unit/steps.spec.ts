@@ -8,6 +8,7 @@ import {
   scrollStep,
   selectStep,
   waitForStep,
+  wheelStep,
 } from '../../src/steps.ts';
 
 const target = { label: 'Plan' };
@@ -161,6 +162,68 @@ describe('scrollStep', () => {
   it('has no form between the two, or sideways', () => {
     expect(scrollStep(at(0), at(400))).toHaveProperty('reason');
     expect(scrollStep(at(0), at(0, 50))).toHaveProperty('reason');
+  });
+});
+
+describe('wheelStep', () => {
+  const page = (y = 0) => ({ x: 0, y, maxY: 1000 });
+  const log = { testId: 'log' };
+  const from = (top: number, within: typeof log | null = log) => ({
+    page: page(),
+    container: { top, maxTop: 500, within },
+  });
+  const to = (top: number, y = 0) => ({
+    page: page(y),
+    container: { top, maxTop: 500 },
+  });
+
+  it('records the container at its top or bottom, within its locator', () => {
+    expect(wheelStep(from(0), to(500))).toEqual({
+      step: { action: 'scroll', to: 'bottom', within: log },
+    });
+    expect(wheelStep(from(500), to(0))).toEqual({
+      step: { action: 'scroll', to: 'top', within: log },
+    });
+  });
+
+  it('takes within a pixel of the maximum as the bottom', () => {
+    expect(wheelStep(from(0), to(499.2))).toEqual({
+      step: { action: 'scroll', to: 'bottom', within: log },
+    });
+  });
+
+  it('reports a scroll that ends mid-container', () => {
+    expect(wheelStep(from(0), to(200))).toEqual({
+      reason: 'the scroll ends mid-container',
+    });
+  });
+
+  it('reports a container with no locator', () => {
+    expect(wheelStep(from(0, null), to(500))).toEqual({
+      reason: 'the scroll container has no data-testid or id',
+    });
+  });
+
+  it("applies the page's rule when the page moved", () => {
+    expect(wheelStep(from(0), to(0, 1000))).toEqual({
+      step: { action: 'scroll', to: 'bottom' },
+    });
+    expect(
+      wheelStep(
+        { page: page(), container: null },
+        { page: page(1000), container: null },
+      ),
+    ).toEqual({ step: { action: 'scroll', to: 'bottom' } });
+  });
+
+  it('is nothing when neither moved, or there is no container', () => {
+    expect(wheelStep(from(500), to(500))).toBe(undefined);
+    expect(
+      wheelStep(
+        { page: page(), container: null },
+        { page: page(), container: null },
+      ),
+    ).toBe(undefined);
   });
 });
 

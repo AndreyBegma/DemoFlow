@@ -7,7 +7,7 @@ import {
   isLocatorFactory,
 } from './locator.ts';
 import { type Recorder, stackHere } from './recorder.ts';
-import { scrolling } from './scroll.ts';
+import { scrolling, wheeling } from './scroll.ts';
 import { envNameOf } from './secrets.ts';
 import {
   actionOptionsProblem,
@@ -325,6 +325,7 @@ const OPTIONS_ARGUMENT: Readonly<Record<string, number>> = {
   selectOption: 1,
   press: 1,
   waitFor: 0,
+  scrollIntoViewIfNeeded: 0,
 };
 
 /** The step of a recorded locator action other than `fill`. */
@@ -338,6 +339,8 @@ function actionStep(name: string, target: Locator, args: unknown[]): Mapped {
       return selectStep(target, args[0]);
     case 'press':
       return pressStep(target, args[0]);
+    case 'scrollIntoViewIfNeeded':
+      return { step: { action: 'scroll', target } };
     default:
       return waitForStep(target, args[0]);
   }
@@ -417,10 +420,14 @@ function wrapMouse(page: Page, recorder: Recorder): Page['mouse'] {
           );
       }
       if (property === 'wheel') {
-        return (...args: unknown[]) =>
-          scrolling(recorder, 'page.mouse.wheel', stackHere(), () =>
-            call(...args),
-          );
+        return (...args: unknown[]) => {
+          const stack = stackHere();
+          const run = () => call(...args);
+          // Only a vertical wheel can scroll a container to its top or bottom.
+          return typeof args[1] === 'number' && args[1] !== 0
+            ? wheeling(recorder, stack, run)
+            : scrolling(recorder, 'page.mouse.wheel', stack, run);
+        };
       }
       return call;
     },

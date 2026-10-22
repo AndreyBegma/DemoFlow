@@ -1,4 +1,4 @@
-import type { BaseExpect, BaseTest } from '../../src/fixture.ts';
+import type { BaseExpect, BaseTest, DemoflowTest } from '../../src/fixture.ts';
 
 // What the probes import in place of `demoflow/playwright`. By default it is
 // that entry itself (src/index.ts). The per-minor suite (spec 208, Decision
@@ -7,7 +7,7 @@ import type { BaseExpect, BaseTest } from '../../src/fixture.ts';
 
 const aliased = process.env.DEMOFLOW_PLAYWRIGHT_PACKAGE;
 
-async function load(): Promise<{ test: BaseTest; expect: BaseExpect }> {
+async function load(): Promise<{ test: DemoflowTest; expect: BaseExpect }> {
   if (aliased === undefined) return import('../../src/index.ts');
   const { createTest } = await import('../../src/fixture.ts');
   const playwright = (await import(aliased)) as {

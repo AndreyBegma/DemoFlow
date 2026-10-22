@@ -35,8 +35,13 @@ export interface FixtureServer {
   close(): Promise<void>;
 }
 
-/** Unknown paths fall back to `index.html`, as the app routes itself. */
-export async function startFixtureServer(): Promise<FixtureServer> {
+/**
+ * Unknown paths fall back to `index.html`, as the app routes itself. `pages`
+ * serves inline HTML at exact paths, ahead of the app.
+ */
+export async function startFixtureServer(
+  pages: Readonly<Record<string, string>> = {},
+): Promise<FixtureServer> {
   const index = path.join(FIXTURE_DIST, 'index.html');
   if (!(await isFile(index))) {
     throw new Error(
@@ -47,6 +52,12 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     const pathname = decodeURIComponent(
       new URL(request.url ?? '/', 'http://fixture').pathname,
     );
+    const inline = Object.hasOwn(pages, pathname) ? pages[pathname] : undefined;
+    if (inline !== undefined) {
+      response.writeHead(200, { 'content-type': CONTENT_TYPES['.html'] });
+      response.end(inline);
+      return;
+    }
     const file = path.join(FIXTURE_DIST, path.normalize(pathname));
     const inside = file.startsWith(FIXTURE_DIST + path.sep);
     void (async () => {

@@ -1,8 +1,9 @@
 import { test } from './demoflow.ts';
 
 // tour.demo.json. Playwright has no "scroll to bottom" action, so the test
-// does it the way tests do: through `evaluate` and `mouse.wheel`.
-test('tour', async ({ page }) => {
+// does it the way tests do: through `evaluate` and `mouse.wheel`. The caption
+// is the `demoflow` fixture's: `test.step` can only mean a scene.
+test('tour', async ({ page, demoflow }) => {
   await page.goto('/hover');
   await test.step('Hover', async () => {
     await page.getByTestId('hover-card').hover();
@@ -23,6 +24,7 @@ test('tour', async ({ page }) => {
   });
 
   await page.goto('/slow');
+  demoflow.caption('Slow report');
   await test.step('Slow report', async () => {
     await page.getByRole('button', { name: 'Load report' }).click();
     await page.getByText('Report ready').waitFor({ timeout: 10_000 });
