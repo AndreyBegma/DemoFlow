@@ -12,6 +12,8 @@ export interface RunnerPaths {
   state: string;
   /** Written by `stop`; the daemon leaves when it sees it. */
   stop: string;
+  /** Server run id → run directory, one JSON line per reported run (spec 192). */
+  reportedRuns: string;
 }
 
 export function runnerPaths(host: HostEnvironment): RunnerPaths {
@@ -23,5 +25,6 @@ export function runnerPaths(host: HostEnvironment): RunnerPaths {
     log: p.join(dir, 'runner.log'),
     state: p.join(dir, 'runner.state.json'),
     stop: p.join(dir, 'runner.stop'),
+    reportedRuns: p.join(dir, 'reported-runs.jsonl'),
   };
 }

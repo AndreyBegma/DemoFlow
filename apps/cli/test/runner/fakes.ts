@@ -49,6 +49,7 @@ export interface FakeSocket {
   url: string;
   token: string;
   sent: Array<Record<string, unknown>>;
+  binary: Uint8Array[];
   closed: { code: number; reason: string } | null;
   handlers: SocketHandlers;
   open(): void;
@@ -67,6 +68,7 @@ export function fakeSockets(): {
       url,
       token,
       sent: [],
+      binary: [],
       closed: null,
       handlers,
       open: () => handlers.open(),
@@ -83,6 +85,9 @@ export function fakeSockets(): {
     const runnerSocket: RunnerSocket = {
       send: (text) => {
         socket.sent.push(JSON.parse(text) as Record<string, unknown>);
+      },
+      sendBinary: (data) => {
+        socket.binary.push(data);
       },
       close: (code, reason) => {
         socket.closed = { code, reason };

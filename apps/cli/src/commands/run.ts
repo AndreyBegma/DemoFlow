@@ -205,7 +205,10 @@ export async function runCommand(
         ? formatJson(result, runDir)
         : formatSummary(result, runDir),
     );
-    await reportRun({ root, result }, deps.report ?? defaultReportDeps(host));
+    await reportRun(
+      { root, runDir, result },
+      deps.report ?? defaultReportDeps(host),
+    );
     const code = exitCodeFor(result);
     // A render crash before the stage was recorded must not read as success.
     return code === 0 && renderError !== undefined ? EXIT_STAGE_FAILED : code;

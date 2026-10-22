@@ -1,10 +1,12 @@
 import { cookies } from 'next/headers';
 import {
+  getRun,
   listProjectRuns,
   listProjects,
   listRunners,
   type Project,
   type ProjectRunsPage,
+  type RunDetail,
   type Runner,
 } from '@/lib/api';
 
@@ -25,6 +27,15 @@ export async function getProjects(): Promise<Project[] | null> {
 export async function getMachines(): Promise<Runner[]> {
   const result = await listRunners(await target());
   return result.ok ? result.data.runners : [];
+}
+
+/** One run with its project and machine: the detail, `'not_found'` or `'error'`. */
+export async function getRunDetail(
+  id: string,
+): Promise<RunDetail | 'not_found' | 'error'> {
+  const result = await getRun(id, await target());
+  if (result.ok) return result.data;
+  return result.status === 404 ? 'not_found' : 'error';
 }
 
 /** The first page of a project's runs: the page, `'not_found'` or `'error'`. */

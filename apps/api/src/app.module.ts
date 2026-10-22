@@ -7,6 +7,7 @@ import { HealthController } from './health.controller';
 import { MailModule } from './mail/mail.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RunnerModule } from './runner/runner.module';
+import { VideosModule } from './videos/videos.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RunnerModule } from './runner/runner.module';
     AuthModule,
     RunnerModule,
     ProjectsModule,
+    VideosModule,
   ],
   controllers: [HealthController],
 })

@@ -108,9 +108,13 @@ renderer.
 
 ## Phase 7 — Optional SDK
 
-The page-side contract is [ADR-0013](../adr/0013-page-side-contract.md).
+The page-side contract is [ADR-0013](../adr/0013-page-side-contract.md),
+extended for annotations by [ADR-0014](../adr/0014-page-annotations.md).
 
 | Issue | Spec | Depends on |
 |---|---|---|
 | [#197](https://github.com/AndreyBegma/DemoFlow/issues/197) | [`data-demoflow-mask` masks a marked element](197-mask-attribute.md) | — |
 | [#198](https://github.com/AndreyBegma/DemoFlow/issues/198) | [`window.demoflow.ready(name)` and `waitForReady`](198-ready-signal.md) | #197 (merge order) |
+| [#201](https://github.com/AndreyBegma/DemoFlow/issues/201) | [Scenes and captions from the page](201-page-annotations.md) | #198 |
+| [#202](https://github.com/AndreyBegma/DemoFlow/issues/202) | [Spike: reuse Playwright tests as scenarios](202-playwright-reuse-spike.md) | — |
+| [#203](https://github.com/AndreyBegma/DemoFlow/issues/203) | [Docs: the Application SDK page](203-sdk-docs.md) | #197, #198, #201 |
