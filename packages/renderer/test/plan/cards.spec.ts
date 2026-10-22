@@ -1,4 +1,5 @@
 import {
+  type Annotation,
   type CardsConfig,
   deriveRunStatus,
   type RunResult,
@@ -67,9 +68,12 @@ const SCENES_ON = { scenes: { enabled: true, durationMs: 1500 } };
 
 function plan(
   events: Omit<TimelineEvent, 'stepIndex'>[],
-  options: RenderPlanOptions & { failedAt?: number } = {},
+  options: RenderPlanOptions & {
+    failedAt?: number;
+    annotations?: Annotation[];
+  } = {},
 ): RenderPlan {
-  const { failedAt, ...rest } = options;
+  const { failedAt, annotations, ...rest } = options;
   return planRender(
     {
       timeline: {
@@ -78,6 +82,7 @@ function plan(
         deviceScaleFactor: 2,
         videoFile: 'source.webm',
         events: events.map((event, stepIndex) => ({ ...event, stepIndex })),
+        ...(annotations === undefined ? {} : { annotations }),
       },
       result: result(failedAt),
       source: {
@@ -306,6 +311,75 @@ describe('cards (spec 108)', () => {
         { cards: cards(SCENES_ON), failedAt: 2 },
       );
       expect(rendered.cards.map((card) => card.title)).toEqual(['Before']);
+    });
+
+    describe('from the page (#201)', () => {
+      const PAGE_SCENE: Annotation = {
+        atMs: 3000,
+        kind: 'scene',
+        title: 'Invoices',
+      };
+
+      it('places the card a scene marker at the same time gives', () => {
+        const marker = plan(EVENTS, { cards: cards(SCENES_ON) });
+        const page = plan([EVENTS[0], EVENTS[2]], {
+          cards: cards(SCENES_ON),
+          annotations: [PAGE_SCENE],
+        });
+        expect(page.cards).toEqual(marker.cards);
+        expect(page.durationMs).toBe(marker.durationMs);
+      });
+
+      it('puts a marker before a page scene at an equal time', () => {
+        const rendered = plan(EVENTS, {
+          cards: cards(SCENES_ON),
+          annotations: [{ ...PAGE_SCENE, title: 'From the page' }],
+        });
+        expect(rendered.cards.map((card) => card.title)).toEqual([
+          'Invoices',
+          'From the page',
+        ]);
+      });
+
+      it('orders scenes from both sources by time', () => {
+        const rendered = plan(EVENTS, {
+          cards: cards(SCENES_ON),
+          annotations: [
+            { atMs: 2000, kind: 'scene', title: 'Early' },
+            { atMs: 4000, kind: 'scene', title: 'Late' },
+          ],
+        });
+        expect(rendered.cards.map((card) => card.title)).toEqual([
+          'Early',
+          'Invoices',
+          'Late',
+        ]);
+      });
+
+      it('places none with scene cards off', () => {
+        const rendered = plan(EVENTS, {
+          cards: cards(),
+          annotations: [PAGE_SCENE],
+        });
+        expect(rendered.cards).toEqual([]);
+      });
+
+      it('places none at or after the end of the page', () => {
+        const plain = plan(EVENTS, { cards: cards(SCENES_ON) });
+        const rendered = plan(EVENTS, {
+          cards: cards(SCENES_ON),
+          annotations: [{ atMs: 15_000, kind: 'scene', title: 'Too late' }],
+        });
+        expect(rendered.cards).toEqual(plain.cards);
+      });
+
+      it('does not draw a card for a caption', () => {
+        const rendered = plan(EVENTS, {
+          cards: cards(SCENES_ON),
+          annotations: [{ atMs: 2000, kind: 'caption', title: 'Hello' }],
+        });
+        expect(rendered.cards.map((card) => card.title)).toEqual(['Invoices']);
+      });
     });
 
     it('turned off, renders no card on a marker', () => {

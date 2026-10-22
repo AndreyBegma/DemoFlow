@@ -119,6 +119,33 @@ const NavigationsSchema = z
   });
 
 /**
+ * A scene or caption the application set from the page, through
+ * `window.demoflow` (ADR-0014): when the engine received it, and its text.
+ */
+const AnnotationSchema = z.strictObject({
+  atMs: msSchema,
+  kind: MarkerKindSchema,
+  title: z.string().trim().min(1).max(120),
+});
+export type Annotation = z.infer<typeof AnnotationSchema>;
+
+/** In non-decreasing `atMs`. */
+const AnnotationsSchema = z
+  .array(AnnotationSchema)
+  .superRefine((annotations, ctx) => {
+    for (const [index, annotation] of annotations.entries()) {
+      const previous = annotations[index - 1];
+      if (previous !== undefined && annotation.atMs < previous.atMs) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'expected annotations ordered by atMs',
+          path: [index, 'atMs'],
+        });
+      }
+    }
+  });
+
+/**
  * One executed step. Times are milliseconds from the video's first frame;
  * boxes and points are CSS pixels of the viewport (ADR-0004 §1).
  */
@@ -214,6 +241,8 @@ export const TimelineSchema = z
     navigations: NavigationsSchema.optional(),
     // One per marked element, in the order they first appeared; omitted when none was (#197).
     maskedElements: z.array(MaskedElementSchema).optional(),
+    // Scenes and captions the page set, by engine time; omitted when none was (#201).
+    annotations: AnnotationsSchema.optional(),
   })
   .refine(
     (timeline) => {

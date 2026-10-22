@@ -1,4 +1,4 @@
-import type { CardsConfig, TimelineEvent } from '@demoflow/core';
+import type { Annotation, CardsConfig, TimelineEvent } from '@demoflow/core';
 import { cameraStateAt, cursorAt, followAt, maskBoxAt } from './frame.ts';
 import { type CardSlot, shiftPastCards } from './time-map.ts';
 import type {
@@ -23,6 +23,8 @@ export type PlacedCard = CardSpec & CardSlot;
 export function placeCards(input: {
   config?: CardsConfig;
   events: readonly TimelineEvent[];
+  /** Scenes and captions the page set (#201); only the scenes place cards. */
+  annotations?: readonly Annotation[];
   out: (timelineMs: number) => number;
   pageEndMs: number;
   scenarioName: string;
@@ -30,6 +32,7 @@ export function placeCards(input: {
   failed: boolean;
 }): PlacedCard[] {
   const { config, events, out, pageEndMs } = input;
+  const annotations = input.annotations ?? [];
   if (config === undefined) return [];
   const cards: Omit<PlacedCard, 'startMs'>[] = [];
   if (config.intro.enabled) {
@@ -43,16 +46,29 @@ export function placeCards(input: {
     });
   }
   if (config.scenes.enabled) {
-    for (const event of events) {
-      if (event.marker?.kind !== 'scene') continue;
-      const atMs = out(event.startMs);
-      // After a failure the page has ended; the marker never showed.
+    // Scenario markers, then the page's own scenes (#201); stable, so at an
+    // equal time a marker comes first. Both give the same card.
+    const scenes = [
+      ...events.flatMap((event) =>
+        event.marker?.kind === 'scene'
+          ? [{ timelineMs: event.startMs, title: event.marker.title }]
+          : [],
+      ),
+      ...annotations.flatMap((annotation) =>
+        annotation.kind === 'scene'
+          ? [{ timelineMs: annotation.atMs, title: annotation.title }]
+          : [],
+      ),
+    ].sort((a, b) => a.timelineMs - b.timelineMs);
+    for (const scene of scenes) {
+      const atMs = out(scene.timelineMs);
+      // After a failure the page has ended; the scene never showed.
       if (atMs >= pageEndMs) continue;
       cards.push({
         kind: 'scene',
         atMs,
         durationMs: config.scenes.durationMs,
-        title: event.marker.title,
+        title: scene.title,
       });
     }
   }

@@ -1,4 +1,5 @@
 import {
+  type Annotation,
   CardsConfigSchema,
   type RunResult,
   type Stages,
@@ -45,8 +46,9 @@ const RESULT: RunResult = {
 
 function plan(
   events: Omit<TimelineEvent, 'stepIndex'>[],
-  options: RenderPlanOptions = {},
+  options: RenderPlanOptions & { annotations?: Annotation[] } = {},
 ): RenderPlan {
+  const { annotations, ...rest } = options;
   return planRender(
     {
       timeline: {
@@ -55,6 +57,7 @@ function plan(
         deviceScaleFactor: 1,
         videoFile: 'source.webm',
         events: events.map((event, stepIndex) => ({ ...event, stepIndex })),
+        ...(annotations === undefined ? {} : { annotations }),
       },
       result: RESULT,
       source: {
@@ -70,7 +73,7 @@ function plan(
       offsetMs: 0,
       frame: { enabled: false },
       formats: ['mp4', 'mp4-vertical'],
-      ...options,
+      ...rest,
     },
   );
 }
@@ -236,6 +239,22 @@ describe('the vertical output (spec 176)', () => {
     // The cursor on its target stays inside the crop.
     expect(tall.cursor?.x).toBeGreaterThan(0);
     expect(tall.cursor?.x).toBeLessThan(1080);
+  });
+
+  it('shows a caption the page set in the caption band, as a step caption', () => {
+    const rendered = plan([click(2000, 1000)], {
+      annotations: [
+        { atMs: 2200, kind: 'caption', title: 'Paying with a card' },
+      ],
+    });
+    const frame = Math.round((3000 * 30) / 1000);
+    const tall = frameAt(rendered, frame, 'vertical');
+    expect(tall.caption).toBe('Paying with a card');
+    expect(tall.caption).toBe(frameAt(rendered, frame).caption);
+    // Gone once its 3 s are up.
+    expect(
+      frameAt(rendered, Math.round((6000 * 30) / 1000), 'vertical').caption,
+    ).toBeUndefined();
   });
 
   it('draws cards in the vertical layout with the same content', () => {
