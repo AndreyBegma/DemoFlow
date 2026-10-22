@@ -1,6 +1,6 @@
 {
   "name": "@demoflow/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Turn a scenario into a demo video: a browser runs it, FFmpeg renders it. CLI and MCP server.",
   "keywords": [
