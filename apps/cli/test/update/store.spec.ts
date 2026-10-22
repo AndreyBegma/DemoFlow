@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -10,7 +10,12 @@ let host: HostEnvironment;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), 'demoflow-update-'));
-  host = { platform: 'linux', env: { XDG_CONFIG_HOME: dir }, homedir: dir };
+  // The real OS: these tests touch the disk, so its paths must be native.
+  host = {
+    platform: process.platform,
+    env: { XDG_CONFIG_HOME: dir, APPDATA: dir },
+    homedir: dir,
+  };
 });
 
 afterEach(async () => {
@@ -19,9 +24,20 @@ afterEach(async () => {
 
 describe('fileSkipStore', () => {
   it('lives beside the global config.json', () => {
-    expect(updateStorePath(host)).toBe(
-      path.join(dir, 'demoflow', 'update.json'),
-    );
+    expect(
+      updateStorePath({
+        platform: 'linux',
+        env: { XDG_CONFIG_HOME: '/home/ada/.config' },
+        homedir: '/home/ada',
+      }),
+    ).toBe('/home/ada/.config/demoflow/update.json');
+    expect(
+      updateStorePath({
+        platform: 'darwin',
+        env: {},
+        homedir: '/Users/ada',
+      }),
+    ).toBe('/Users/ada/Library/Application Support/demoflow/update.json');
     expect(
       updateStorePath({
         platform: 'win32',
@@ -50,7 +66,9 @@ describe('fileSkipStore', () => {
 
   it('does not throw when the file cannot be written', async () => {
     // The config directory is a file: mkdir fails.
-    await writeFile(path.join(dir, 'demoflow'), '');
+    const configDir = path.dirname(updateStorePath(host));
+    await mkdir(path.dirname(configDir), { recursive: true });
+    await writeFile(configDir, '');
     const store = fileSkipStore(host);
     expect(() => store.write('0.2.0')).not.toThrow();
     expect(store.read()).toBeUndefined();

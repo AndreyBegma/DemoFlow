@@ -30,7 +30,8 @@ export type Install =
 export function packageLocation(
   from: string = import.meta.url,
 ): PackageLocation | null {
-  let dir = realpathSync(path.dirname(fileURLToPath(from)));
+  // `.native` also expands Windows 8.3 names (`RUNNER~1`), which the JS one keeps.
+  let dir = realpathSync.native(path.dirname(fileURLToPath(from)));
   for (;;) {
     const file = path.join(dir, 'package.json');
     if (existsSync(file)) {
