@@ -17,6 +17,7 @@ import {
   type PanelState,
   panelState,
 } from './panel.ts';
+import { type RecordedData, wrapRepeat } from './repeat.ts';
 import {
   appendStep,
   moveStep,
@@ -37,13 +38,19 @@ export interface RecorderOptions {
   viewport: Viewport;
 }
 
+/** What a session recorded: the steps and the data lists their repeats run over. */
+export interface Recording {
+  steps: RecordedStep[];
+  data: RecordedData;
+}
+
 export interface RecordSession {
   /** The application's window. */
   app: Page;
   /** The step panel's window. */
   panel: Page;
-  /** Resolves with the steps once the session stops, however it stops. */
-  done: Promise<RecordedStep[]>;
+  /** Resolves with the recording once the session stops, however it stops. */
+  done: Promise<Recording>;
   stop(): void;
 }
 
@@ -62,6 +69,7 @@ export async function openRecorder(
   const panel = await panelContext.newPage();
 
   let steps: RecordedStep[] = [];
+  let data: RecordedData = {};
   let mode: CaptureMode = 'record';
   let secretEnv = DEFAULT_SECRET_ENV;
   let notice: string | undefined;
@@ -76,14 +84,14 @@ export async function openRecorder(
     });
   };
 
-  let finish: (steps: RecordedStep[]) => void = () => {};
-  const done = new Promise<RecordedStep[]>((resolve) => {
+  let finish: (recording: Recording) => void = () => {};
+  const done = new Promise<Recording>((resolve) => {
     finish = resolve;
   });
   const stop = (): void => {
     if (stopped) return;
     stopped = true;
-    void queue.then(() => finish(steps));
+    void queue.then(() => finish({ steps, data }));
   };
 
   function render(): void {
@@ -272,6 +280,18 @@ export async function openRecorder(
           notice = `"${command.name}" is not an environment variable name (A-Z, 0-9, _)`;
         render();
         return;
+      case 'repeat': {
+        const wrapped = wrapRepeat(steps, data, command);
+        if (wrapped.ok) {
+          steps = wrapped.steps;
+          data = wrapped.data;
+          notice = undefined;
+        } else {
+          notice = wrapped.message;
+        }
+        render();
+        return;
+      }
       case 'stop':
         stop();
         return;
