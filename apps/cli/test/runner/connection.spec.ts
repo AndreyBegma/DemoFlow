@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { ArtifactsPort } from '../../src/runner/artifacts/index.ts';
 import {
   BACKOFF_MAX_MS,
   backoffDelay,
@@ -34,7 +35,11 @@ let connection: RunnerConnection;
 let outcome: ConnectionOutcome | null;
 let order: string[];
 
-function start(random = 0.5, relay?: VideoRelayPort) {
+function start(
+  random = 0.5,
+  relay?: VideoRelayPort,
+  artifacts?: ArtifactsPort,
+) {
   const fake = fakeSockets();
   sockets = fake.sockets;
   connection = new RunnerConnection({
@@ -57,6 +62,7 @@ function start(random = 0.5, relay?: VideoRelayPort) {
       states.push(retryAt === undefined ? { state } : { state, retryAt });
     },
     ...(relay === undefined ? {} : { relay }),
+    ...(artifacts === undefined ? {} : { artifacts }),
   });
   void connection.run().then((value) => {
     outcome = value;
@@ -327,6 +333,7 @@ describe('RunnerConnection and the video relay', () => {
       closeAll() {
         relay.closed++;
       },
+      async closeRun() {},
     };
     return relay;
   }
@@ -383,6 +390,40 @@ describe('RunnerConnection and the video relay', () => {
     sender.sendBinary(new Uint8Array([1]));
     expect(last().sent.filter((m) => m.type === 'video.end')).toEqual([]);
     expect(last().binary).toEqual([]);
+  });
+
+  it('routes artifacts.delete to the deleter, which answers on that socket', () => {
+    const handled: Array<Record<string, unknown>> = [];
+    const artifacts: ArtifactsPort = {
+      handle(message, sender) {
+        handled.push(message);
+        sender.send({
+          type: 'artifacts.deleted',
+          requestId: message.requestId,
+        });
+      },
+    };
+    start(0.5, undefined, artifacts);
+    last().open();
+    last().receive({ type: 'artifacts.delete', requestId: 'q', runId: 'r' });
+    expect(handled).toEqual([
+      { type: 'artifacts.delete', requestId: 'q', runId: 'r' },
+    ]);
+    expect(last().sent).toContainEqual({
+      type: 'artifacts.deleted',
+      requestId: 'q',
+    });
+    expect(logger.text()).not.toMatch(/ignored/);
+  });
+
+  it('logs artifacts.delete as unknown without a deleter, as a daemon before #234 did', () => {
+    start();
+    last().open();
+    last().receive({ type: 'artifacts.delete', requestId: 'q', runId: 'r' });
+    expect(logger.text()).toMatch(
+      /ignored a message of type "artifacts.delete"/,
+    );
+    expect(last().sent).toEqual([]);
   });
 
   it('closes every stream when the daemon stops', async () => {

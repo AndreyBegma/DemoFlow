@@ -1,4 +1,5 @@
 import { apiBase } from '../auth/server.ts';
+import type { ArtifactsPort } from './artifacts/index.ts';
 import type { Logger } from './log.ts';
 import type { RelaySender, VideoRelayPort } from './relay/index.ts';
 import type { ConnectionState } from './state.ts';
@@ -67,6 +68,8 @@ export interface ConnectionDeps {
   onState(state: ConnectionState, retryAt?: number): void;
   /** Answers `video.*` (spec 192); without it they are logged as unknown. */
   relay?: VideoRelayPort;
+  /** Answers `artifacts.delete` (spec 234); without it, logged as unknown. */
+  artifacts?: ArtifactsPort;
 }
 
 export type ConnectionOutcome = 'stopped' | 'revoked';
@@ -212,6 +215,12 @@ export class RunnerConnection {
       case 'video.cancel':
         if (this.deps.relay !== undefined) {
           this.deps.relay.handle(fields, this.relaySender());
+          return;
+        }
+        break;
+      case 'artifacts.delete':
+        if (this.deps.artifacts !== undefined) {
+          this.deps.artifacts.handle(fields, this.relaySender());
           return;
         }
         break;

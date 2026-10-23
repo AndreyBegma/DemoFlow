@@ -25,7 +25,7 @@ const RESULT_FILE = 'result.json';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A server id: short, and safe to write into `runner.log` as it is. */
-const RUN_ID = /^[A-Za-z0-9_-]{1,128}$/;
+export const RUN_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 /** The filesystem the relay reads; tests count `open` and `close`. */
 export interface RelayFs {
@@ -53,6 +53,11 @@ export interface VideoRelayPort {
   handle(message: Record<string, unknown>, sender: RelaySender): void;
   /** The socket closed: every stream ends and releases its file. */
   closeAll(): void;
+  /**
+   * Spec 234, Decision 4: every stream of one server run ends with
+   * `video.error { code: 'io' }`; resolves once their files are released.
+   */
+  closeRun(runId: string): Promise<void>;
 }
 
 /**
@@ -112,6 +117,8 @@ export async function locateVideo(
 export class VideoRelay implements VideoRelayPort {
   private readonly deps: RelayDeps;
   private readonly streams = new Map<string, VideoStream>();
+  /** The server run id of each open stream, for `closeRun`. */
+  private readonly runIds = new Map<string, string>();
 
   constructor(deps: RelayDeps) {
     this.deps = deps;
@@ -164,6 +171,16 @@ export class VideoRelay implements VideoRelayPort {
     }
   }
 
+  async closeRun(runId: string): Promise<void> {
+    const closing: Array<Promise<void>> = [];
+    for (const [streamId, stream] of [...this.streams]) {
+      if (this.runIds.get(streamId) === runId) {
+        closing.push(stream.fail('io').then(() => stream.released()));
+      }
+    }
+    await Promise.all(closing);
+  }
+
   private open(message: Record<string, unknown>, sender: RelaySender): void {
     const { streamId, runId, format } = message;
     const range = parseRange(message.range);
@@ -192,10 +209,14 @@ export class VideoRelay implements VideoRelayPort {
       return;
     }
     const stream = new VideoStream(streamId, sender, (outcome, sent) => {
-      if (this.streams.get(streamId) === stream) this.streams.delete(streamId);
+      if (this.streams.get(streamId) === stream) {
+        this.streams.delete(streamId);
+        this.runIds.delete(streamId);
+      }
       this.logStream(runId, videoFormat, sent, outcome);
     });
     this.streams.set(streamId, stream);
+    this.runIds.set(streamId, runId);
     void stream.begin(async () => {
       const file = await locateVideo(runId, videoFormat, this.deps);
       return file === null ? null : this.deps.fs.open(file);
