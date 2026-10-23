@@ -27,6 +27,28 @@ export function videoUrl(runId: string, format: PlayableFormat): string {
   return `/api/runs/${encodeURIComponent(runId)}/video/${format}`;
 }
 
+export type DeleteFailureKey =
+  | 'runPage.delete.errors.offline'
+  | 'runPage.delete.errors.failed'
+  | 'runPage.delete.errors.missing'
+  | 'auth.errors.unknown';
+
+/** The message for a failed `DELETE /runs/:id/artifacts` (spec #235, Decision 4). */
+export function deleteFailureKey(code: string | undefined): DeleteFailureKey {
+  switch (code) {
+    case 'runner-offline':
+    case 'runner-removed':
+      return 'runPage.delete.errors.offline';
+    case 'runner-timeout':
+    case 'runner-error':
+      return 'runPage.delete.errors.failed';
+    case 'artifacts-missing':
+      return 'runPage.delete.errors.missing';
+    default:
+      return 'auth.errors.unknown';
+  }
+}
+
 /**
  * What the page shows for a run. A `<video>` exposes no HTTP status, so a
  * failure while the machine is online is told apart from an offline machine

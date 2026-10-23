@@ -6,7 +6,7 @@ export type ApiError = 'invalid' | 'rate_limited' | 'unknown';
 
 export type ApiResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: ApiError; status?: number };
+  | { ok: false; error: ApiError; status?: number; code?: string };
 
 /** A pending device code, as the signed-in user sees it (spec #135). */
 export interface DeviceRequest {
@@ -71,6 +71,19 @@ function errorFor(status: number): ApiError {
   return 'unknown';
 }
 
+/** The `{ error }` code of a failed response, when its body has one. */
+async function errorCode(response: Response): Promise<string | undefined> {
+  try {
+    const body: unknown = await response.json();
+    if (typeof body === 'object' && body !== null && 'error' in body) {
+      return typeof body.error === 'string' ? body.error : undefined;
+    }
+  } catch {
+    // No JSON body: the status alone has to do.
+  }
+  return undefined;
+}
+
 async function request<T>(
   path: string,
   init: { method: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown },
@@ -92,6 +105,7 @@ async function request<T>(
         ok: false,
         error: errorFor(response.status),
         status: response.status,
+        code: await errorCode(response),
       };
     }
     const text = await response.text();
@@ -214,6 +228,8 @@ export interface ProjectRun {
   formats: string[];
   failedStep: number | null;
   cliVersion: string;
+  /** When the machine deleted the run's files (spec #233); null while present. */
+  artifactsDeletedAt: string | null;
 }
 
 export interface Project {
@@ -281,6 +297,13 @@ export function getRun(id: string, target?: Target) {
     { method: 'GET' },
     target,
   );
+}
+
+/** Asks the run's machine to delete its files; 204 when they are gone (spec #233). */
+export function deleteRunArtifacts(id: string) {
+  return request<void>(`/runs/${encodeURIComponent(id)}/artifacts`, {
+    method: 'DELETE',
+  });
 }
 
 export function listProjectRuns(id: string, cursor?: string, target?: Target) {

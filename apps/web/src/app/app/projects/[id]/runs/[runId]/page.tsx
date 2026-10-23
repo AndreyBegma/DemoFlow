@@ -99,7 +99,12 @@ export default async function RunPage({
         </div>
       </Card>
       <Card pad="lg">
-        <RunPlayback runId={run.id} formats={run.formats} machine={machine} />
+        <RunPlayback
+          runId={run.id}
+          formats={run.formats}
+          machine={machine}
+          artifactsDeletedAt={run.artifactsDeletedAt}
+        />
       </Card>
     </main>
   );

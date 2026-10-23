@@ -1,5 +1,6 @@
 'use client';
 
+import { Badge } from '@andrewbehma/glass-ui/badge';
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button } from '@andrewbehma/glass-ui/button';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
@@ -108,6 +109,15 @@ export function RunsTable({
                     </span>
                   ) : (
                     <span>{run.formats.join(', ')}</span>
+                  )}
+                  {run.artifactsDeletedAt === null ? null : (
+                    <div className="mt-1">
+                      <Badge
+                        tone="neutral"
+                        size="md"
+                        label={t('projects.library.filesDeleted')}
+                      />
+                    </div>
                   )}
                 </td>
                 <td className="py-3 align-top">
