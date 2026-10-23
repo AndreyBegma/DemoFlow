@@ -1,0 +1,70 @@
+name: flake-221
+
+# TEMPORARY (#221): the masked-elements end-to-end test in a loop on macOS,
+# with diagnostics. Removed before the pull request is ready.
+
+on:
+  push:
+    branches: [fix/221-marked-mask-frame-leak]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flake-221-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  loop:
+    name: flake-221 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Install Chromium
+        run: bunx playwright install chromium
+
+      - name: Build the execution plane and the fixture
+        run: bun run build --filter=@demoflow/cli --filter=@demoflow/fixture
+
+      - name: Diagnostics
+        working-directory: packages/renderer
+        env:
+          DIAG_221: '1'
+          DIAG_221_RUNS: '15'
+          CI: 'true'
+        run: |
+          npx vitest run test/ffmpeg/diag-221.spec.ts 2>&1 | grep DIAG221 | sed 's/^.*DIAG221 //' \
+            | jq -c '{run, offsetMs, navs: [.navigations[] | [.startMs, .endMs]], key: (.elements[0].intervals | map([.startMs, .endMs])), gapMs: (.elements[0].intervals[0].startMs - .navigations[0].startMs), keySpans: [.spans[] | [.startMs, .endMs]], leaks: [.rows[] | select(startswith("LEAK"))]}' || true
+
+      - name: The test, 10 times in a row
+        working-directory: packages/renderer
+        env:
+          CI: 'true'
+        run: |
+          for i in $(seq 1 10); do
+            echo "::group::run $i"
+            npx vitest run test/ffmpeg/masked-elements.spec.ts || { echo "run $i failed"; exit 1; }
+            echo "::endgroup::"
+          done
+          echo "10 consecutive passes"
