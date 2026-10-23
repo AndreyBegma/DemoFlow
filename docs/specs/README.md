@@ -113,6 +113,9 @@ renderer.
 | [#233](https://github.com/AndreyBegma/DemoFlow/issues/233) | [Delete a run's artifacts on its machine (API) and its protocol](233-delete-run-artifacts-api.md) | — |
 | [#234](https://github.com/AndreyBegma/DemoFlow/issues/234) | [The runner daemon deletes a reported run's artifacts](234-runner-deletes-artifacts.md) | #233 (merge order) |
 | [#235](https://github.com/AndreyBegma/DemoFlow/issues/235) | [Delete a run's video files from the run page](235-run-page-delete-artifacts.md) | #233 |
+| [#247](https://github.com/AndreyBegma/DemoFlow/issues/247) | [Start and cancel a run from the website (API) and its protocol](247-start-run-api.md) | — |
+| [#248](https://github.com/AndreyBegma/DemoFlow/issues/248) | [The runner daemon starts and cancels a run the website asked for](248-runner-starts-runs.md) | #247 (merge order) |
+| [#249](https://github.com/AndreyBegma/DemoFlow/issues/249) | [Run a scenario from the project page](249-project-page-start-run.md) | #247 |
 
 ## Phase 7 — Optional SDK
 
@@ -133,3 +136,20 @@ from the [#202 spike report](../research/202-playwright-reuse-spike.md).
 | [#209](https://github.com/AndreyBegma/DemoFlow/issues/209) | [Fixture: container scrolls, `caption` and `scene` helpers](209-playwright-scrolls-captions.md) | #208 |
 | [#210](https://github.com/AndreyBegma/DemoFlow/issues/210) | [Docs: reuse Playwright tests](210-playwright-docs.md) | #208; after #209; not beside #203 |
 | [#224](https://github.com/AndreyBegma/DemoFlow/issues/224) | [A "Wait for ready" control in the record panel](224-record-wait-for-ready.md) — spec 198 follow-up | — |
+
+## Gaps against the sources (after Phase 7)
+
+Work traced to an ADR, the vision or spec 179 that no phase had picked up.
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#254](https://github.com/AndreyBegma/DemoFlow/issues/254) | [Docs: the vertical formats and `render.vertical`](254-docs-vertical-formats.md) — specs 176 and 236 left the docs out | — |
+| [#255](https://github.com/AndreyBegma/DemoFlow/issues/255) | [`demoflow render`: render an existing run again](255-render-command.md) — ADR-0004, vision §12 | — |
+| [#256](https://github.com/AndreyBegma/DemoFlow/issues/256) | [The `/app` overview: recent projects and machines](256-app-overview.md) — vision §6 | — |
+| [#257](https://github.com/AndreyBegma/DemoFlow/issues/257) | [Filter a project's run library by status](257-library-status-filter.md) — vision §6 | — |
+| [#263](https://github.com/AndreyBegma/DemoFlow/issues/263) | [Store and return a run's stage statuses, renders and failure message (API)](263-run-details-api.md) — vision §6, ADR-0008 §2 | — |
+| [#264](https://github.com/AndreyBegma/DemoFlow/issues/264) | [The run report sends stage statuses, renders and a redacted failure message](264-report-run-details.md) | #263 (merge order) |
+| [#265](https://github.com/AndreyBegma/DemoFlow/issues/265) | [Show a run's stages, files and failure message on the run page](265-run-page-details.md) | #263 |
+| [#266](https://github.com/AndreyBegma/DemoFlow/issues/266) | [`demoflow list` and `demoflow check`](266-list-and-check-commands.md) — vision §3.4 | — |
+| [#272](https://github.com/AndreyBegma/DemoFlow/issues/272) | [Docs: `demoflow list` and `check`, and what the run report sends](272-docs-list-check.md) — spec 266 follow-up | — |
+| [#273](https://github.com/AndreyBegma/DemoFlow/issues/273) | [`demoflow init`: write a config and a first scenario](273-init-command.md) — vision §3.4 | #272 (merge order) |

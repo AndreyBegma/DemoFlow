@@ -70,6 +70,38 @@ shorter than `deadZone` (a share of the crop width) is skipped, so the camera
 does not jitter. `captionBand` is the share of the frame height, at the
 bottom, that captions sit in.
 
+`demoflow render <runId>` renders a finished run again from
+`<home>/runs/<runId>/` with the current `render.*` config, without the app or
+the browser — to restyle it, add a format, or retry a render that crashed.
+It takes `--format`, `--out` and `--json` like `run`. Only `renders[]` and the
+`rendering` stage of `result.json` change: a failed run stays failed and
+keeps its failure card. Files of formats it does not write stay on disk but
+are no longer listed. The website is not told, so its runs list keeps the
+first render's formats. A run that is unfinished or has no recording is
+refused with exit 2; a render that fails exits 3.
+
+`demoflow init [--base-url <url>]` writes `demoflow.config.json` (default
+`baseUrl` `http://localhost:3000`) and `demoflow/first.demo.json`, a scenario
+that opens `/` and passes against any app at `baseUrl`, in the current folder.
+An existing file is never overwritten: it is reported as `kept`. An invalid
+`--base-url` exits 2 and writes nothing.
+
+`demoflow list` prints the recent runs of the current project, newest first:
+status, start time, duration, scenario name and run id, plus the run's page URL
+when it was reported to the website. `--limit <n>` takes 1–100 (default 20);
+anything else exits 2. `--json` prints the MCP's `list_demos` answer, one
+`{ "demos": [...] }` object.
+
+`demoflow check` prints the project root, whether the config is valid, the
+scenario files (listed, not validated — `demoflow validate` does that), FFmpeg
+(`system`, `bundled` or `missing`) and the browser (`installed` or `missing`,
+with a `demoflow setup` hint). It exits 0 when FFmpeg and the browser are
+available and 1 when either is missing, so CI can gate on it. `--json` prints
+the MCP's `check_project` answer.
+
+Both commands are read-only: no browser, no file written, no network request.
+Outside a project (no `demoflow.config.json` in the folder or above) they exit 2.
+
 `demoflow record` writes a scenario from what you do in the app. To post the
 same thing for several items, tick a run of steps in the recording panel and
 choose **Repeat over data**. Name the list, then give one line per item for each
@@ -79,9 +111,13 @@ typed value. Secret fills are left as recorded.
 
 | Command | What it does |
 |---|---|
+| `demoflow init` | write `demoflow.config.json` and a first scenario here |
 | `demoflow record [name]` | record a scenario by using the app |
 | `demoflow validate <scenario>` | check a scenario against the schema |
 | `demoflow run <scenario>` | run it in a browser and render the video |
+| `demoflow render <runId>` | render an existing run again with the current config |
+| `demoflow list` | list recent runs of the current project, newest first |
+| `demoflow check` | check that the project, FFmpeg and the browser are ready |
 | `demoflow setup` | install Chromium now instead of on the first run |
 | `demoflow mcp` | serve demo generation to MCP clients over stdio |
 | `demoflow login` | pair this machine with your DemoFlow account |
@@ -167,9 +203,20 @@ restart a crash; the next logon starts it again. Neither file holds the token.
 ## Runs on the website
 
 On a paired machine, `demoflow run` tells the website that the run happened, so
-it appears in your project's library. Only metadata is sent: the project folder
-and its name, the scenario's name and path, the verdict, the start time, the
-duration, the rendered formats, the failed step's number and the CLI version.
+it appears in your project's library. Only metadata is sent:
+
+- the project folder and its name, the scenario's name and path, the verdict,
+  the start time, the duration and the CLI version;
+- each stage's status (not its details);
+- for each rendered file, its format, resolution, size and render time;
+- for a failed run, the failed step's number, the failing stage and its error
+  message.
+
+The error message is redacted on your machine first: query strings and
+fragments of URLs are removed, the project path becomes `<project>`, the home
+directory becomes `~`, and the text is cut to 1,000 characters. It can still
+contain text from the page under test or other paths.
+
 Videos, frames and step values never leave the machine.
 
 The report waits at most two seconds and fails silently; the run's output and

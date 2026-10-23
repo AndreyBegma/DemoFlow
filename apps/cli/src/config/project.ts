@@ -46,6 +46,22 @@ export function projectRootAt(
   return dir;
 }
 
+/** The project holding `dir`, searched upwards as for a scenario file. */
+export function projectRootAbove(dir: string): string {
+  try {
+    // The walk starts at the directory of the path it is given.
+    return findProjectRoot(path.join(dir, PROJECT_CONFIG_FILE));
+  } catch (error) {
+    if (error instanceof CliError && error.code === 'no-project-config') {
+      throw new CliError(
+        'no-project-config',
+        `no ${PROJECT_CONFIG_FILE} found in ${dir} or any parent directory`,
+      );
+    }
+    throw error;
+  }
+}
+
 /**
  * The scenario's path relative to the project root, with `/` separators on
  * every OS. A file outside the root (an inline scenario staged by

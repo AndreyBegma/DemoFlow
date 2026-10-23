@@ -7,14 +7,46 @@ Run `demoflow` through `npx demoflow`, or install it globally. `demoflow
 
 | Command | What it does |
 |---|---|
+| `demoflow init` | Write `demoflow.config.json` and a first scenario here. |
 | `demoflow record [name]` | Record a scenario by using the app. |
 | `demoflow validate <scenario>` | Check a scenario against the schema. |
 | `demoflow run <scenario>` | Run it in a browser and render the video. |
+| `demoflow render <runId>` | Render an existing run again with the current config. |
+| `demoflow list` | List recent runs of the current project, newest first. |
+| `demoflow check` | Check that the project, FFmpeg and the browser are ready. |
 | `demoflow setup` | Install Chromium now instead of on the first run. |
 | `demoflow mcp` | Serve demo generation to MCP clients over stdio. |
 | `demoflow login` | Pair this machine with your DemoFlow account. |
 | `demoflow logout` | Revoke this machine and delete its credentials. |
 | `demoflow runner …` | Keep this machine connected in the background. |
+
+## init
+
+```sh
+npx demoflow init
+npx demoflow init --base-url http://localhost:5173
+```
+
+Writes `demoflow.config.json` and `demoflow/first.demo.json` in the current
+folder. The scenario opens `/` and waits a second, so it runs green against any
+app that answers at `baseUrl`. It makes no network request and starts no
+browser. A file that already exists is never overwritten: it is kept and
+reported as `kept`. A config in a parent folder is not looked for.
+
+| Flag | Meaning |
+|---|---|
+| `--base-url <url>` | The app's base URL, written to the config. Defaults to `http://localhost:3000`. |
+
+It prints one `created` or `kept` line per file, then the next steps:
+`demoflow check`, `demoflow run demoflow/first.demo.json` and `demoflow record`
+for a real scenario.
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | Both files exist now, created or kept. |
+| `2` | `--base-url` is not a valid URL. Nothing is written. |
 
 ## run
 
@@ -28,7 +60,7 @@ npx demoflow run demoflow/first.demo.json
 | `--out <dir>` | The artifacts home, which holds `runs/`. |
 | `--headed` | Show the browser window. |
 | `--json` | Print the result as one JSON object on stdout. |
-| `--format <format>` | A file to render: `mp4`, `gif` or `webm`. Repeat it for several. Replaces `render.formats`. |
+| `--format <format>` | A file to render: `mp4`, `gif`, `webm`, `mp4-vertical`, `gif-vertical` or `webm-vertical`. Repeat it for several. Replaces `render.formats`. |
 
 Exit codes:
 
@@ -38,6 +70,81 @@ Exit codes:
 | `1` | A step failed or an assertion did not hold. |
 | `2` | The input was invalid: the scenario, the config, or a missing secret. |
 | `3` | Recording, rendering or storage failed. |
+
+## render
+
+```sh
+npx demoflow render 20261023-101500-abcdef
+```
+
+Renders a finished run again from `<home>/runs/<runId>/`, without starting the
+app or the browser: a new background, a GIF after the fact, or a retry after a
+render crash. It uses the project's current `render.*` config, so a change to
+`demoflow.config.json` restyles the video. The run id is the run directory's
+name, the one `run` prints.
+
+| Flag | Meaning |
+|---|---|
+| `--out <dir>` | The artifacts home, which holds `runs/`. |
+| `--json` | Print the result as one JSON object on stdout. |
+| `--format <format>` | A file to render, as for `run`. Repeat it for several. Replaces `render.formats`. |
+
+Only the rendered files and the rendering stage change. The verdict never
+does: a failed run stays failed and keeps its failure card. The new files
+replace the run's earlier ones in `result.json`. A file of a format this
+render does not write stays on disk but is no longer listed.
+
+The website is not told: its runs list keeps the formats of the first render.
+
+It exits `2` without writing anything when the run id is not a plain name, the
+run directory or its `result.json` is missing or invalid, the run has not
+finished, or it has no recording. A render that fails exits `3`; otherwise the
+exit code is the run's, as for `run`.
+
+## list
+
+```sh
+npx demoflow list --limit 5
+```
+
+Prints the recent runs of the current project, newest first: status, start
+time, duration, scenario name and run id, and the run's page URL when it was
+reported to the website. It reads the runs under the artifacts home that `run`
+writes to. Nothing is started or written.
+
+| Flag | Meaning |
+|---|---|
+| `--limit <n>` | How many runs to list, 1 to 100. Defaults to 20. |
+| `--json` | Print the runs as one `{ "demos": [...] }` object on stdout, the same as the MCP's `list_demos`. |
+
+It exits `0` when it listed runs, or found none. It exits `2` when `--limit` is
+not an integer from 1 to 100, or when the folder is not in a project (no
+`demoflow.config.json` in it or above).
+
+## check
+
+```sh
+npx demoflow check
+```
+
+Checks that a demo can run here: the project root, whether the config is
+valid, the scenario files (listed, not validated; use `validate`), FFmpeg
+(`system`, `bundled` or `missing`) and the browser (`installed` or `missing`,
+with a hint to run `demoflow setup`). It starts no browser and writes nothing.
+
+| Flag | Meaning |
+|---|---|
+| `--json` | Print the check as one JSON object on stdout, the same as the MCP's `check_project`. |
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | FFmpeg and the browser are both available. |
+| `1` | FFmpeg or the browser is missing, so a demo cannot run yet. |
+| `2` | The folder is not in a project (no `demoflow.config.json` in it or above). |
+
+A CI step can run `demoflow check` to gate on the machine being ready.
 
 ## validate
 

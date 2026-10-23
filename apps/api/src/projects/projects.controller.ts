@@ -65,6 +65,6 @@ export class ProjectsController {
     @Param('id') id: string,
     @Query() query: RunsPageQueryDto,
   ): Promise<RunsPage> {
-    return this.projects.runs(user.id, id, query.cursor);
+    return this.projects.runs(user.id, id, query.cursor, query.status);
   }
 }

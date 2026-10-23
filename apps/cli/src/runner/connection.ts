@@ -1,5 +1,6 @@
 import { apiBase } from '../auth/server.ts';
 import type { ArtifactsPort } from './artifacts/index.ts';
+import type { LaunchPort, LaunchSender } from './launch/index.ts';
 import type { Logger } from './log.ts';
 import type { RelaySender, VideoRelayPort } from './relay/index.ts';
 import type { ConnectionState } from './state.ts';
@@ -70,6 +71,8 @@ export interface ConnectionDeps {
   relay?: VideoRelayPort;
   /** Answers `artifacts.delete` (spec 234); without it, logged as unknown. */
   artifacts?: ArtifactsPort;
+  /** Answers `scenarios.list` and `run.*` (spec 248); without it, logged as unknown. */
+  launches?: LaunchPort;
 }
 
 export type ConnectionOutcome = 'stopped' | 'revoked';
@@ -224,6 +227,18 @@ export class RunnerConnection {
           return;
         }
         break;
+      case 'scenarios.list':
+      case 'run.start':
+      case 'run.cancel':
+        if (this.deps.launches !== undefined) {
+          this.deps.launches.handle(
+            fields,
+            this.relaySender(),
+            this.currentSender(),
+          );
+          return;
+        }
+        break;
     }
     this.deps.logger.log(
       'warn',
@@ -245,6 +260,18 @@ export class RunnerConnection {
         } catch {
           // The socket is closing; its close ends the stream.
         }
+      },
+    };
+  }
+
+  /**
+   * Frames for whichever socket is open when they are sent (spec 248,
+   * Decision 10): a run outlives the socket that started it.
+   */
+  private currentSender(): LaunchSender {
+    return {
+      send: (message) => {
+        if (this.opened) this.send(message);
       },
     };
   }

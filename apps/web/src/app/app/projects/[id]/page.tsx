@@ -3,16 +3,25 @@ import { Card } from '@andrewbehma/glass-ui/card';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { RunsTable } from '@/components/projects/runs-table';
+import { StartRun } from '@/components/projects/start-run';
 import { t } from '@/i18n';
 import { getFirstRuns, getProjects } from '../_data';
 
 export default async function ProjectLibraryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ status?: string | string[] }>;
 }) {
   const { id } = await params;
-  const [projects, runs] = await Promise.all([getProjects(), getFirstRuns(id)]);
+  const { status: rawStatus } = await searchParams;
+  const status =
+    rawStatus === 'passed' || rawStatus === 'failed' ? rawStatus : undefined;
+  const [projects, runs] = await Promise.all([
+    getProjects(),
+    getFirstRuns(id, status),
+  ]);
   if (runs === 'not_found') notFound();
   const project = projects?.find((candidate) => candidate.id === id);
   if (projects && !project) notFound();
@@ -38,13 +47,25 @@ export default async function ProjectLibraryPage({
             </p>
           </div>
         ) : null}
-        <div className="mt-4">
-          {runs === 'error' ? (
-            <Banner tone="danger">{t('projects.library.pageFailed')}</Banner>
-          ) : (
-            <RunsTable projectId={id} first={runs} />
-          )}
-        </div>
+      </Card>
+      {project ? (
+        <StartRun
+          projectId={id}
+          rootPath={project.rootPath}
+          machine={project.runner}
+        />
+      ) : null}
+      <Card pad="lg">
+        {runs === 'error' ? (
+          <Banner tone="danger">{t('projects.library.pageFailed')}</Banner>
+        ) : (
+          <RunsTable
+            key={status ?? 'all'}
+            projectId={id}
+            first={runs}
+            status={status}
+          />
+        )}
       </Card>
     </main>
   );

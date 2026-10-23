@@ -31,6 +31,7 @@ import {
   findReportedRun,
   INDEX_KEEP_LINES,
   INDEX_MAX_BYTES,
+  knownRoots,
   type ReportedRun,
   readReportedRunsByDir,
   runPageUrl,
@@ -92,6 +93,23 @@ describe('buildReport', () => {
       durationMs: 12_500,
       formats: ['mp4'],
       cliVersion: '1.2.3',
+      stages: {
+        readiness: 'passed',
+        execution: 'passed',
+        verification: 'passed',
+        recording: 'passed',
+        rendering: 'passed',
+        storage: 'skipped',
+      },
+      renders: [
+        {
+          format: 'mp4',
+          width: 1280,
+          height: 720,
+          sizeBytes: 1,
+          durationMs: 1,
+        },
+      ],
     });
   });
 
@@ -129,6 +147,161 @@ describe('buildReport', () => {
     expect(report.status).toBe('passed');
     expect(report.formats).toEqual(['mp4', 'gif']);
     expect(report).not.toHaveProperty('failedStep');
+  });
+
+  it('sends one render per format, the first winning, and no failure on a pass', () => {
+    const base = result().renders[0];
+    if (base === undefined) throw new Error('fixture');
+    const report = buildReport({
+      root: ROOT,
+      result: result({
+        renders: [
+          { ...base, durationMs: 12_499.6 },
+          { ...base, format: 'gif', width: 640, height: 360, sizeBytes: 7 },
+          { ...base, format: 'gif', width: 320, height: 180, sizeBytes: 9 },
+          { ...base, sizeBytes: 99 },
+        ],
+      }),
+      cliVersion: 'x',
+    });
+    expect(report.renders).toEqual([
+      {
+        format: 'mp4',
+        width: 1280,
+        height: 720,
+        sizeBytes: 1,
+        durationMs: 12_500,
+      },
+      { format: 'gif', width: 640, height: 360, sizeBytes: 7, durationMs: 1 },
+    ]);
+    expect(Object.keys(report.stages)).toEqual([
+      'readiness',
+      'execution',
+      'verification',
+      'recording',
+      'rendering',
+      'storage',
+    ]);
+    expect(report).not.toHaveProperty('failure');
+    const body = JSON.stringify(report);
+    for (const key of ['file', 'renderer', 'fps']) {
+      expect(body).not.toContain(`"${key}"`);
+    }
+  });
+
+  it('sends a failed verification with its message and step', () => {
+    const failed = result({
+      status: 'failed',
+      stages: {
+        ...result().stages,
+        verification: {
+          status: 'failed',
+          startedAt: '2026-10-22T10:00:01.000Z',
+          error: { message: 'expected "Paid" to be visible', stepIndex: 3 },
+        },
+        recording: { status: 'skipped' },
+        rendering: { status: 'skipped' },
+      },
+      renders: [],
+    });
+    const report = buildReport({ root: ROOT, result: failed, cliVersion: 'x' });
+    expect(report.failure).toEqual({
+      stage: 'verification',
+      message: 'expected "Paid" to be visible',
+    });
+    expect(report.failedStep).toBe(3);
+    // A stage's times and error stay on the machine.
+    expect(report.stages.verification).toBe('failed');
+    expect(report.renders).toEqual([]);
+  });
+
+  it('sends a readiness failure without a step, and picks the first failed stage', () => {
+    const failed = result({
+      status: 'failed',
+      stages: {
+        readiness: {
+          status: 'failed',
+          error: { message: 'http://localhost:3000/?k=v never answered' },
+        },
+        execution: { status: 'failed', error: { message: 'later effect' } },
+        verification: { status: 'skipped' },
+        recording: { status: 'skipped' },
+        rendering: { status: 'skipped' },
+        storage: { status: 'skipped' },
+      },
+      renders: [],
+    });
+    const report = buildReport({ root: ROOT, result: failed, cliVersion: 'x' });
+    expect(report.failure).toEqual({
+      stage: 'readiness',
+      message: 'http://localhost:3000/ never answered',
+    });
+    expect(report).not.toHaveProperty('failedStep');
+  });
+
+  it('redacts the root and the home, Windows paths included', () => {
+    const failed = (message: string) =>
+      result({
+        status: 'failed',
+        stages: {
+          ...result().stages,
+          execution: { status: 'failed', error: { message } },
+        },
+      });
+    const posix = buildReport({
+      root: '/home/ann/shop',
+      home: '/home/ann',
+      pathApi: path.posix,
+      result: failed('no file /home/ann/shop/a.png or /home/ann/.cache/x'),
+      cliVersion: 'x',
+    });
+    expect(posix.failure?.message).toBe(
+      'no file <project>/a.png or ~/.cache/x',
+    );
+    const windows = buildReport({
+      root: 'C:\\Users\\Ann\\app',
+      home: 'C:\\Users\\Ann',
+      pathApi: path.win32,
+      result: failed('at c:/users/ann/app/x.ts and C:\\Users\\Ann\\AppData'),
+      cliVersion: 'x',
+    });
+    expect(windows.failure?.message).toBe('at <project>/x.ts and ~\\AppData');
+  });
+
+  it('leaves failure out when the message redacts to nothing, and cuts a long one', () => {
+    const failed = (message: string) =>
+      result({
+        status: 'failed',
+        stages: {
+          ...result().stages,
+          rendering: { status: 'failed', error: { message } },
+        },
+      });
+    const blank = buildReport({
+      root: ROOT,
+      result: failed(' \n\t '),
+      cliVersion: 'x',
+    });
+    expect(blank).not.toHaveProperty('failure');
+    const long = buildReport({
+      root: ROOT,
+      result: failed('x'.repeat(5_000)),
+      cliVersion: 'x',
+    });
+    expect(long.failure?.message).toHaveLength(1_000);
+    expect(long.failure?.message.endsWith('…')).toBe(true);
+  });
+
+  it('sends no failure for a failed stage without a message', () => {
+    const report = buildReport({
+      root: ROOT,
+      result: result({
+        status: 'failed',
+        stages: { ...result().stages, storage: { status: 'failed' } },
+      }),
+      cliVersion: 'x',
+    });
+    expect(report).not.toHaveProperty('failure');
   });
 });
 
@@ -296,8 +469,22 @@ describe('reportRun', () => {
       at: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
       projectId: 'proj-1',
       server: 'https://demo.example',
+      root: path.resolve(ROOT),
     });
     expect(path.dirname(index())).toBe(path.dirname(credentialsPath(host)));
+  });
+
+  it('records the canonical root it sent, which registers the project', async () => {
+    pair();
+    const real = path.join(home, 'real');
+    const link = path.join(home, 'link');
+    mkdirSync(real);
+    symlinkSync(real, link, 'junction');
+    await reportRun({ ...input(), root: link }, deps(ok));
+    const sent = JSON.parse(String(calls[0]?.init.body)).rootPath;
+    expect(sent).toBe(realpathSync.native(real));
+    expect(indexLines()[0]).toMatchObject({ root: sent });
+    await expect(knownRoots(index())).resolves.toEqual(new Set([sent]));
   });
 
   it('writes the line without projectId when the answer has none', async () => {
@@ -409,6 +596,30 @@ describe('reported-runs.jsonl', () => {
     const found = await findReportedRun(file, 'old');
     expect(found).toEqual({ id: 'old', runDir: '/r/old', at: 'x' });
     expect(runPageUrl(found as ReportedRun)).toBeUndefined();
+  });
+
+  it('knows the roots of lines that carry one, and skips older lines', async () => {
+    await expect(knownRoots(file)).resolves.toEqual(new Set());
+    writeFileSync(
+      file,
+      [
+        JSON.stringify({ id: 'old', runDir: '/r/old', at: 'x' }),
+        JSON.stringify({ ...entry('a'), root: '/p/a' }),
+        JSON.stringify({ ...entry('b'), root: '' }),
+        JSON.stringify({ ...entry('c'), root: 42 }),
+        '{nope',
+        JSON.stringify({ ...entry('d'), root: '/p/a' }),
+        JSON.stringify({ ...entry('e'), root: '/p/e' }),
+        '',
+      ].join('\n'),
+    );
+    await expect(knownRoots(file)).resolves.toEqual(new Set(['/p/a', '/p/e']));
+    await expect(findReportedRun(file, 'a')).resolves.toMatchObject({
+      root: '/p/a',
+    });
+    await expect(findReportedRun(file, 'old')).resolves.not.toHaveProperty(
+      'root',
+    );
   });
 
   it('builds the page URL only from an entry with both fields', () => {

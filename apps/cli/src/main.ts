@@ -8,14 +8,22 @@ import {
   InvalidArgumentError,
   Option,
 } from 'commander';
+import { type CheckFlags, checkCommand } from './commands/check.ts';
 import {
   describeError,
   EXIT_STAGE_FAILED,
   isInputError,
 } from './commands/errors.ts';
+import {
+  DEFAULT_BASE_URL,
+  type InitFlags,
+  initCommand,
+} from './commands/init.ts';
 import { type Io, processIo } from './commands/io.ts';
+import { type ListFlags, listCommand } from './commands/list.ts';
 import { type LoginFlags, loginCommand } from './commands/login.ts';
 import { logoutCommand } from './commands/logout.ts';
+import { type RenderFlags, renderCommand } from './commands/render.ts';
 import { runCommand } from './commands/run.ts';
 import { setupCommand } from './commands/setup.ts';
 import { validateCommand } from './commands/validate.ts';
@@ -88,6 +96,53 @@ export async function main(
         exitCode = await runCommand(scenario, flags, io);
       },
     );
+
+  program
+    .command('render')
+    .description('Render an existing run again with the current render config')
+    .argument('<runId>', 'the run directory under <home>/runs/')
+    .option('--out <dir>', 'artifacts directory (the home of runs/)')
+    .option('--json', 'print the result as one JSON object on stdout')
+    .addOption(
+      new Option(
+        '--format <format>',
+        `a file to render, repeatable; replaces render.formats (${RENDER_FORMATS.join(', ')})`,
+      ).argParser(collectFormat),
+    )
+    .addOption(new Option('--project <dir>', 'the project root').hideHelp())
+    .action(async (runId: string, flags: RenderFlags) => {
+      exitCode = await renderCommand(runId, flags, io);
+    });
+
+  program
+    .command('list')
+    .description('List recent runs of the current project, newest first')
+    .option('--limit <n>', 'how many runs to list, 1-100 (default 20)')
+    .option('--json', 'print the runs as one JSON object on stdout')
+    .addOption(new Option('--project <dir>', 'the project root').hideHelp())
+    .action(async (flags: ListFlags) => {
+      exitCode = await listCommand(flags, io);
+    });
+
+  program
+    .command('check')
+    .description('Check that the project, FFmpeg and the browser are ready')
+    .option('--json', 'print the check as one JSON object on stdout')
+    .addOption(new Option('--project <dir>', 'the project root').hideHelp())
+    .action(async (flags: CheckFlags) => {
+      exitCode = await checkCommand(flags, io);
+    });
+
+  program
+    .command('init')
+    .description('Write demoflow.config.json and a first scenario here')
+    .option(
+      '--base-url <url>',
+      `the app's base URL (default ${DEFAULT_BASE_URL})`,
+    )
+    .action(async (flags: InitFlags) => {
+      exitCode = await initCommand(flags, io);
+    });
 
   program
     .command('record')

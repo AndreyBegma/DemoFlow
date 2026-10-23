@@ -284,8 +284,38 @@ export function deleteProject(id: string) {
 // The run page (spec #193, API contract from spec #191 Decision 9).
 
 /** One run with its project and the machine that recorded it. */
+export type RunStageName =
+  | 'readiness'
+  | 'execution'
+  | 'verification'
+  | 'recording'
+  | 'rendering'
+  | 'storage';
+
+export type RunStageStatus =
+  | 'pending'
+  | 'running'
+  | 'passed'
+  | 'failed'
+  | 'skipped';
+
+export interface RunRender {
+  format: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  durationMs: number;
+}
+
+/** The run's stage statuses, files and failure; null when the CLI did not report them (spec #263). */
+export interface RunDetailView extends ProjectRun {
+  stages: Record<RunStageName, RunStageStatus> | null;
+  renders: RunRender[] | null;
+  failure: { stage: RunStageName; message: string } | null;
+}
+
 export interface RunDetail {
-  run: ProjectRun;
+  run: RunDetailView;
   project: { id: string; name: string };
   /** Null when the machine was removed. */
   machine: { id: string; name: string; online: boolean } | null;
@@ -306,8 +336,84 @@ export function deleteRunArtifacts(id: string) {
   });
 }
 
-export function listProjectRuns(id: string, cursor?: string, target?: Target) {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+// Starting a run from the website (spec #249, contract from spec #247).
+
+/** A scenario file on the project's machine. */
+export interface ScenarioEntry {
+  id: string;
+  name: string;
+}
+
+export interface ScenarioList {
+  scenarios: ScenarioEntry[];
+  /** More valid scenarios exist than were sent. */
+  truncated: boolean;
+  /** `*.demo.json` files that could not be read as scenarios. */
+  skipped: number;
+}
+
+export type LaunchState =
+  | 'starting'
+  | 'running'
+  | 'cancelling'
+  | 'passed'
+  | 'failed'
+  | 'cancelled'
+  | 'timed-out'
+  | 'lost';
+
+/** The project's latest website-started run, held in memory by the API. */
+export interface LaunchView {
+  id: string;
+  scenarioId: string;
+  scenarioName: string | null;
+  state: LaunchState;
+  startedAt: string;
+  finishedAt: string | null;
+  runId: string | null;
+}
+
+export function listScenarios(projectId: string) {
+  return request<ScenarioList>(
+    `/projects/${encodeURIComponent(projectId)}/scenarios`,
+    { method: 'GET' },
+  );
+}
+
+/** Sends the scenario id only; the machine owns everything else. */
+export function startLaunch(projectId: string, scenarioId: string) {
+  return request<{ launch: LaunchView }>(
+    `/projects/${encodeURIComponent(projectId)}/launch`,
+    { method: 'POST', body: { scenarioId } },
+  );
+}
+
+export function getLaunch(projectId: string) {
+  return request<{ launch: LaunchView | null }>(
+    `/projects/${encodeURIComponent(projectId)}/launch`,
+    { method: 'GET' },
+  );
+}
+
+export function cancelLaunch(projectId: string) {
+  return request<{ launch: LaunchView }>(
+    `/projects/${encodeURIComponent(projectId)}/launch`,
+    { method: 'DELETE' },
+  );
+}
+
+export type RunStatusFilter = ProjectRun['status'];
+
+export function listProjectRuns(
+  id: string,
+  cursor?: string,
+  target?: Target,
+  status?: RunStatusFilter,
+) {
+  const params = new URLSearchParams();
+  if (cursor) params.set('cursor', cursor);
+  if (status) params.set('status', status);
+  const query = params.size > 0 ? `?${params}` : '';
   return request<ProjectRunsPage>(
     `/projects/${encodeURIComponent(id)}/runs${query}`,
     { method: 'GET' },

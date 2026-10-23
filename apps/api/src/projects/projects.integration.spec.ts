@@ -401,6 +401,95 @@ describe('projects (integration)', () => {
     });
   });
 
+  describe('filtering runs by status', () => {
+    function seed(projectId: string, status: 'passed' | 'failed', n: number) {
+      return t.prisma.run.createMany({
+        data: Array.from({ length: n }, (_, i) => ({
+          projectId,
+          runnerId: laptop.runnerId,
+          scenarioName: `${status}${i}`,
+          scenarioPath: `${status}${i}.yaml`,
+          status,
+          startedAt: new Date(t.clock.now().getTime() + (i + 1) * 1000),
+          durationMs: 1,
+          formats: ['mp4'],
+          cliVersion: '0.4.0',
+        })),
+      });
+    }
+
+    function filtered(cookie: string, id: string, query: object) {
+      return request(http)
+        .get(`/projects/${id}/runs`)
+        .query(query)
+        .set('Cookie', cookie);
+    }
+
+    it('returns only the requested status, newest first', async () => {
+      const { body } = await report(laptop.token).expect(201);
+      await seed(body.projectId, 'failed', 3);
+      await seed(body.projectId, 'passed', 2);
+
+      const failed = await filtered(alice.cookie, body.projectId, {
+        status: 'failed',
+      }).expect(200);
+      expect(
+        failed.body.runs.map((r: { scenarioName: string }) => r.scenarioName),
+      ).toEqual(['failed2', 'failed1', 'failed0']);
+
+      const passed = await filtered(alice.cookie, body.projectId, {
+        status: 'passed',
+      }).expect(200);
+      expect(passed.body.runs).toHaveLength(3);
+      expect(
+        passed.body.runs.every(
+          (r: { status: string }) => r.status === 'passed',
+        ),
+      ).toBe(true);
+
+      const all = await runs(alice.cookie, body.projectId).expect(200);
+      expect(all.body.runs).toHaveLength(6);
+    });
+
+    it('pages within a status', async () => {
+      const { body } = await report(laptop.token).expect(201);
+      await seed(body.projectId, 'failed', RUNS_PAGE_SIZE + 1);
+
+      const first = await filtered(alice.cookie, body.projectId, {
+        status: 'failed',
+      }).expect(200);
+      expect(first.body.runs).toHaveLength(RUNS_PAGE_SIZE);
+      expect(first.body.nextCursor).not.toBeNull();
+
+      const second = await filtered(alice.cookie, body.projectId, {
+        status: 'failed',
+        cursor: first.body.nextCursor,
+      }).expect(200);
+      expect(second.body.runs).toHaveLength(1);
+      expect(second.body.nextCursor).toBeNull();
+    });
+
+    it('rejects a cursor from another status', async () => {
+      const { body } = await report(laptop.token).expect(201);
+      const res = await filtered(alice.cookie, body.projectId, {
+        status: 'failed',
+        cursor: body.runId,
+      }).expect(400);
+      expect(res.body.message).toBe('Unknown cursor');
+    });
+
+    it('rejects an unknown or empty status, and 404s another account', async () => {
+      const { body } = await report(laptop.token).expect(201);
+      await filtered(alice.cookie, body.projectId, {
+        status: 'running',
+      }).expect(400);
+      await filtered(alice.cookie, body.projectId, { status: '' }).expect(400);
+      await filtered(bob.cookie, body.projectId, { status: 'failed' }).expect(
+        404,
+      );
+    });
+  });
+
   describe('authorization across accounts', () => {
     it("404s every call on another account's project", async () => {
       const { body } = await report(laptop.token).expect(201);

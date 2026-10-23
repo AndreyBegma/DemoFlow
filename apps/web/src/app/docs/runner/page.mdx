@@ -69,6 +69,23 @@ A crash is restarted by systemd and launchd. A runner stopped on purpose, or
 revoked on the website, stays down. Windows does not restart a crash; the next
 logon starts it again. Neither unit holds the token.
 
+## Runs started from the website
+
+On a project's page, **Run a scenario** starts a scenario on the machine the
+project is bound to, and **Cancel run** stops it.
+
+- Only a project this machine has reported a run from can be run from the
+  site. Run `demoflow run` in the folder once to register it.
+- The site sends only the scenario id. The app starts with the project's own
+  `demoflow.config.json`.
+- A machine runs one website-started run at a time, and stops it after 15
+  minutes.
+- Cancel stops the browser and the dev server. The partial files stay in the
+  run directory.
+- `valueFrom.env` secrets come from the runner's environment, which an
+  autostart unit may not share with your shell.
+- With `CI` or `DEMOFLOW_NO_REPORT=1` set, the runner refuses these runs.
+
 ## Status on the site
 
 Signed in, open **Machines** in the app. Each paired machine is listed with its

@@ -4,9 +4,7 @@ export const en = {
   app: {
     tagline: 'Verified, polished demo videos of the features you ship.',
     shell: {
-      title: 'Your projects',
       signedInAs: 'Signed in as {email}',
-      empty: 'Projects will appear here.',
       signOut: 'Sign out',
       signingOut: 'Signing out…',
       verifyTitle: 'Verify your email',
@@ -85,6 +83,29 @@ export const en = {
       deniedTitle: 'Request denied',
       deniedBody: 'The machine was not paired.',
       machines: 'Go to machines',
+    },
+  },
+  dashboard: {
+    title: 'Overview',
+    projects: {
+      title: 'Recent projects',
+      all: 'All projects',
+      loadFailed: 'Projects could not be loaded.',
+      empty: {
+        title: 'No projects yet',
+        body: 'Run a scenario on a paired machine and its project appears here.',
+        docs: 'Read how to make your first run',
+      },
+    },
+    machines: {
+      title: 'Machines',
+      manage: 'Manage machines',
+      loadFailed: 'Machines could not be loaded.',
+      empty: {
+        title: 'No machines paired yet',
+        body: 'Pair a machine to see its runs here.',
+        docs: 'Read how to pair a machine',
+      },
     },
   },
   machines: {
@@ -218,6 +239,16 @@ export const en = {
         title: 'No runs yet',
         body: 'Runs show up here after demoflow run on a paired machine in this folder.',
       },
+      filter: {
+        label: 'Filter by status',
+        all: 'All',
+        passed: 'Passed',
+        failed: 'Failed',
+      },
+      emptyFiltered: {
+        passed: 'No passed runs.',
+        failed: 'No failed runs.',
+      },
       columns: {
         scenario: 'Scenario',
         status: 'Status',
@@ -234,6 +265,61 @@ export const en = {
       loadingMore: 'Loading…',
       loadFailed: 'We could not load more runs. Try again.',
       pageFailed: 'We could not load the runs. Try again in a moment.',
+    },
+    launch: {
+      title: 'Run a scenario',
+      unbound:
+        'Bind this project to a folder on a machine to run its scenarios from here.',
+      removed: 'The machine of this project was removed.',
+      loading: 'Loading scenarios',
+      scenario: 'Scenario',
+      refresh: 'Refresh',
+      run: 'Run',
+      empty: 'No scenarios in demoflow/',
+      skipped: '{count} files could not be read as scenarios.',
+      truncated: 'Showing the first 100 scenarios.',
+      confirm: {
+        title: 'Run {name} on {machine}?',
+        body: "The machine starts the app with the project's devCommand, records the demo and reports the run here.",
+        verb: 'Run',
+        cancel: 'Not now',
+      },
+      elapsed: 'Elapsed {time}',
+      cancelRun: 'Cancel run',
+      cancelling: 'Cancelling…',
+      openRun: 'Open the run',
+      noReport: 'The run finished, but its report did not reach the site.',
+      state: {
+        starting: 'Starting',
+        running: 'Running',
+        cancelling: 'Cancelling',
+        passed: 'Passed',
+        failed: 'Failed',
+        cancelled: 'Cancelled',
+        timedOut: 'Timed out (15 min)',
+        lostLabel: 'Lost contact',
+        lost: 'Lost contact. The run may still finish and appear in the library.',
+      },
+      errors: {
+        runnerOffline:
+          'The machine is offline. Start the runner on it (demoflow runner start) and try again.',
+        runnerRemoved: 'The machine of this project was removed.',
+        projectUnbound: 'Bind this project to a folder on a machine first.',
+        projectUnknown:
+          'This machine has not reported a run from this folder yet. Run demoflow run there once, then refresh.',
+        runnerBusy:
+          'The machine is already running a scenario started from the website.',
+        reportingOff:
+          'Reporting is off on the machine (CI or DEMOFLOW_NO_REPORT), so it takes no runs from the website.',
+        scenarioNotFound:
+          'This scenario is no longer in the project. Refresh the list.',
+        scenarioInvalid:
+          'The scenario file is not valid. Run demoflow validate on the machine.',
+        configInvalid: 'demoflow.config.json on the machine is not valid.',
+        runnerTimeout:
+          'The machine did not answer. Make sure it runs the latest demoflow, then try again.',
+        runnerError: 'The machine could not do it. Try again.',
+      },
     },
   },
   runPage: {
@@ -264,6 +350,32 @@ export const en = {
       'webm-vertical': 'Vertical WebM',
       gif: 'GIF',
       'gif-vertical': 'Vertical GIF',
+    },
+    failure: {
+      title: 'Failed at {stage}',
+    },
+    stages: {
+      title: 'Stages',
+      names: {
+        readiness: 'Readiness',
+        execution: 'Execution',
+        verification: 'Verification',
+        recording: 'Recording',
+        rendering: 'Rendering',
+        storage: 'Storage',
+      },
+      statuses: {
+        passed: 'Passed',
+        failed: 'Failed',
+        skipped: 'Skipped',
+        pending: 'Pending',
+        running: 'Running',
+      },
+    },
+    files: {
+      title: 'Files',
+      none: 'No files were rendered.',
+      resolution: '{width}×{height}',
     },
     gifAlt: 'Animated preview of the run',
     noFormats: 'This run rendered no video.',
@@ -370,6 +482,7 @@ export const en = {
       cli: 'CLI',
       record: 'Recording',
       sdk: 'Application SDK',
+      playwright: 'Reuse Playwright tests',
       runner: 'Runner',
       mcp: 'MCP tools',
       more: 'More guides',

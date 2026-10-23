@@ -10,6 +10,10 @@ import {
   socketUrl,
 } from '../../src/runner/connection.ts';
 import type {
+  LaunchPort,
+  LaunchSender,
+} from '../../src/runner/launch/index.ts';
+import type {
   RelaySender,
   VideoRelayPort,
 } from '../../src/runner/relay/index.ts';
@@ -39,6 +43,7 @@ function start(
   random = 0.5,
   relay?: VideoRelayPort,
   artifacts?: ArtifactsPort,
+  launches?: LaunchPort,
 ) {
   const fake = fakeSockets();
   sockets = fake.sockets;
@@ -63,6 +68,7 @@ function start(
     },
     ...(relay === undefined ? {} : { relay }),
     ...(artifacts === undefined ? {} : { artifacts }),
+    ...(launches === undefined ? {} : { launches }),
   });
   void connection.run().then((value) => {
     outcome = value;
@@ -424,6 +430,59 @@ describe('RunnerConnection and the video relay', () => {
       /ignored a message of type "artifacts.delete"/,
     );
     expect(last().sent).toEqual([]);
+  });
+
+  it('routes scenarios.list and run.* to the launcher; run.finished goes on the socket open then', async () => {
+    const handled: unknown[] = [];
+    let reply: LaunchSender | undefined;
+    let current: LaunchSender | undefined;
+    const launches: LaunchPort = {
+      handle(message, replySender, currentSender) {
+        handled.push(message.type);
+        reply = replySender;
+        current = currentSender;
+      },
+    };
+    start(0.5, undefined, undefined, launches);
+    last().open();
+    last().receive({ type: 'scenarios.list', requestId: 'q', rootPath: '/r' });
+    last().receive({ type: 'run.cancel', requestId: 'q' });
+    last().receive({
+      type: 'run.start',
+      requestId: 'q',
+      rootPath: '/r',
+      scenarioId: 'demoflow/a.demo.json',
+    });
+    expect(handled).toEqual(['scenarios.list', 'run.cancel', 'run.start']);
+    expect(logger.text()).not.toMatch(/ignored/);
+    const first = last();
+    first.serverClose(1006);
+    // While no socket is open, both senders drop the frame.
+    current?.send({ type: 'run.finished', requestId: 'q' });
+    reply?.send({ type: 'run.started', requestId: 'q' });
+    await clock.advance(BACKOFF_MAX_MS);
+    last().open();
+    current?.send({ type: 'run.finished', requestId: 'q' });
+    reply?.send({ type: 'run.error', requestId: 'q' });
+    expect(first.sent).not.toContainEqual(
+      expect.objectContaining({ type: 'run.finished' }),
+    );
+    expect(last()).not.toBe(first);
+    expect(last().sent).toContainEqual({
+      type: 'run.finished',
+      requestId: 'q',
+    });
+    // An answer to a request stays with the socket it came on.
+    expect(last().sent).not.toContainEqual(
+      expect.objectContaining({ type: 'run.error' }),
+    );
+  });
+
+  it('logs run.start as unknown without a launcher, as a daemon before #248 did', () => {
+    start();
+    last().open();
+    last().receive({ type: 'run.start', requestId: 'q' });
+    expect(logger.text()).toMatch(/ignored a message of type "run.start"/);
   });
 
   it('closes every stream when the daemon stops', async () => {

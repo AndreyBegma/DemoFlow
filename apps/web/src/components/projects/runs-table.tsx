@@ -4,6 +4,10 @@ import { Badge } from '@andrewbehma/glass-ui/badge';
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button } from '@andrewbehma/glass-ui/button';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from '@andrewbehma/glass-ui/segmented-control';
 import Link from 'next/link';
 import { useState } from 'react';
 import { t } from '@/i18n';
@@ -11,24 +15,33 @@ import {
   listProjectRuns,
   type ProjectRun,
   type ProjectRunsPage,
+  type RunStatusFilter,
 } from '@/lib/api';
 import { formatDate } from '@/lib/format-date';
 import { formatDuration } from '@/lib/format-duration';
 import { RunStatus } from './run-status';
 
+const FILTERS: { status: RunStatusFilter | undefined; label: string }[] = [
+  { status: undefined, label: 'projects.library.filter.all' },
+  { status: 'passed', label: 'projects.library.filter.passed' },
+  { status: 'failed', label: 'projects.library.filter.failed' },
+];
+
 export function RunsTable({
   projectId,
   first,
+  status,
 }: {
   projectId: string;
   first: ProjectRunsPage;
+  status?: RunStatusFilter;
 }) {
   const [runs, setRuns] = useState<ProjectRun[]>(first.runs);
   const [cursor, setCursor] = useState<string | null>(first.nextCursor);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  if (runs.length === 0) {
+  if (runs.length === 0 && status === undefined) {
     return (
       <EmptyState
         title={t('projects.library.empty.title')}
@@ -37,11 +50,41 @@ export function RunsTable({
     );
   }
 
+  const base = `/app/projects/${encodeURIComponent(projectId)}`;
+  const filter = (
+    <SegmentedControl aria-label={t('projects.library.filter.label')} size="sm">
+      {FILTERS.map((option) => (
+        <SegmentedControlItem
+          key={option.label}
+          active={option.status === status}
+          layoutId="runs-status-filter"
+        >
+          <Link
+            href={option.status ? `${base}?status=${option.status}` : base}
+            aria-current={option.status === status ? 'true' : undefined}
+            className="flex items-center justify-center px-3 text-sm"
+          >
+            {t(option.label as 'projects.library.filter.all')}
+          </Link>
+        </SegmentedControlItem>
+      ))}
+    </SegmentedControl>
+  );
+
+  if (runs.length === 0 && status !== undefined) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div>{filter}</div>
+        <EmptyState title={t(`projects.library.emptyFiltered.${status}`)} />
+      </div>
+    );
+  }
+
   async function loadMore() {
     if (cursor === null) return;
     setBusy(true);
     setFailed(false);
-    const result = await listProjectRuns(projectId, cursor);
+    const result = await listProjectRuns(projectId, cursor, undefined, status);
     setBusy(false);
     if (!result.ok) {
       setFailed(true);
@@ -53,6 +96,7 @@ export function RunsTable({
 
   return (
     <div className="flex flex-col gap-4">
+      <div>{filter}</div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[44rem] text-left text-sm">
           <thead className="text-ink-2">
