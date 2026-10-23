@@ -426,3 +426,57 @@ describe('maskedElements', () => {
     ).toBe(false);
   });
 });
+
+describe('annotations', () => {
+  const parse = (annotations: unknown) =>
+    TimelineSchema.safeParse({ ...timeline, annotations });
+
+  it('accepts scenes and captions in time order, equal times included', () => {
+    expect(
+      parse([
+        { atMs: 0, kind: 'scene', title: 'Checkout' },
+        { atMs: 500, kind: 'caption', title: 'Paying with a card' },
+        { atMs: 500, kind: 'scene', title: 'Done' },
+      ]).success,
+    ).toBe(true);
+  });
+
+  it('accepts an empty list and a timeline without the field', () => {
+    expect(parse([]).success).toBe(true);
+    expect(TimelineSchema.safeParse(timeline).success).toBe(true);
+  });
+
+  it('accepts a 120-character title', () => {
+    expect(
+      parse([{ atMs: 0, kind: 'caption', title: 'a'.repeat(120) }]).success,
+    ).toBe(true);
+  });
+
+  it('rejects an empty title', () => {
+    expect(
+      parse([{ atMs: 0, kind: 'scene', title: '' }]).error?.issues[0]?.path,
+    ).toEqual(['annotations', 0, 'title']);
+  });
+
+  it('rejects a 121-character title', () => {
+    expect(
+      parse([{ atMs: 0, kind: 'scene', title: 'a'.repeat(121) }]).error
+        ?.issues[0]?.path,
+    ).toEqual(['annotations', 0, 'title']);
+  });
+
+  it('rejects an unknown kind', () => {
+    expect(
+      parse([{ atMs: 0, kind: 'note', title: 'x' }]).error?.issues[0]?.path,
+    ).toEqual(['annotations', 0, 'kind']);
+  });
+
+  it('rejects entries out of atMs order', () => {
+    expect(
+      parse([
+        { atMs: 500, kind: 'scene', title: 'a' },
+        { atMs: 100, kind: 'caption', title: 'b' },
+      ]).error?.issues[0]?.path,
+    ).toEqual(['annotations', 1, 'atMs']);
+  });
+});

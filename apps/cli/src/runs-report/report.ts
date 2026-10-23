@@ -102,6 +102,15 @@ function runIdOf(body: unknown): string | null {
   return typeof runId === 'string' && runId !== '' ? runId : null;
 }
 
+/** The project id in a `POST /runner/runs` answer, or `undefined`. */
+function projectIdOf(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const { projectId } = body as Record<string, unknown>;
+  return typeof projectId === 'string' && projectId !== ''
+    ? projectId
+    : undefined;
+}
+
 /**
  * Decision 3: after a run on a paired machine, tell the server it happened.
  * Never throws, never prints, and is over within the timeout: the run's own
@@ -141,12 +150,17 @@ export async function reportRun(
       return;
     }
     // The 2 s signal above still bounds this read (spec 192, Decision 1).
-    const runId = runIdOf(await response.json());
+    const answer: unknown = await response.json();
+    const runId = runIdOf(answer);
     if (runId === null) return;
+    const projectId = projectIdOf(answer);
     appendReportedRun(runnerPaths(deps.host).reportedRuns, {
       id: runId,
       runDir: path.resolve(input.runDir),
       at: new Date().toISOString(),
+      // Spec 225: kept so the MCP tools can link the run's page.
+      ...(projectId === undefined ? {} : { projectId }),
+      server: credentials.server,
     });
   } catch {
     // Decision 3: every failure is silent.

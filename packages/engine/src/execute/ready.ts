@@ -1,6 +1,7 @@
 import { READY_NAME } from '@demoflow/core';
 import { type BrowserContext, errors, type Page } from 'playwright';
 import { StepFailure } from './actions.ts';
+import { ANNOTATION_BINDING, MAX_ANNOTATION_LENGTH } from './annotations.ts';
 
 /** The page global (a registered symbol, invisible to the page's own code) that holds the document's ready set. */
 const READY_KEY = 'demoflow.ready';
@@ -20,6 +21,8 @@ export async function installReadySignal(
   await context.addInitScript(readyScript, {
     key: READY_KEY,
     pattern: READY_NAME.source,
+    binding: ANNOTATION_BINDING,
+    maxLength: MAX_ANNOTATION_LENGTH,
   });
 }
 
@@ -56,13 +59,40 @@ function isReady(input: { key: string; name: string }): boolean {
 }
 
 /** Runs in the page, before the page's own scripts. */
-function readyScript(input: { key: string; pattern: string }): void {
+function readyScript(input: {
+  key: string;
+  pattern: string;
+  binding: string;
+  maxLength: number;
+}): void {
   if (window !== window.top) return;
   const names = new Set<string>();
   Object.defineProperty(window, Symbol.for(input.key), { value: names });
   const format = new RegExp(input.pattern);
+  // Grabbed before the page's scripts run, as the masks' script does: the
+  // page cannot swap it out from under the methods.
+  const send = (window as unknown as Record<string, unknown>)[input.binding];
+  // Checked here and again in the engine (#201, Decision 2). An invalid call
+  // is ignored, never reported, and the methods never throw.
+  const annotate = (kind: 'scene' | 'caption', text: unknown): void => {
+    try {
+      if (typeof text !== 'string' || typeof send !== 'function') return;
+      const trimmed = text.trim();
+      if (trimmed.length === 0 || trimmed.length > input.maxLength) return;
+      const sent: unknown = send(kind, trimmed);
+      if (sent instanceof Promise) sent.catch(() => undefined);
+    } catch {
+      // Neither method throws.
+    }
+  };
   const api = Object.freeze({
     version: 1,
+    scene(title: unknown): void {
+      annotate('scene', title);
+    },
+    caption(text: unknown): void {
+      annotate('caption', text);
+    },
     // An invalid call is ignored, never reported: nothing tells the page why.
     ready(name: unknown): void {
       try {

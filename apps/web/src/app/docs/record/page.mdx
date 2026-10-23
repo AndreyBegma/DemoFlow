@@ -34,6 +34,7 @@ Nothing is written if no steps were recorded.
 |---|---|
 | **Scene**, **Caption** | A `marker` step with the text in the title field. |
 | **Wait** | A `wait` step of the given milliseconds. |
+| **Wait for ready** | A `waitForReady` step for the name in the ready field: the run waits until your app calls `window.demoflow.ready('<name>')`. See [Application SDK](/docs/sdk). |
 | **Pick: visible**, **Pick: text** | An `assertVisible` or `assertText` on the next element you click. |
 | **Hover next** | A `hover` on the next element you point at. |
 | **Secret next** | The next typed value is recorded as `valueFrom.env` with the variable named in the panel, and the value is not saved. |

@@ -56,23 +56,30 @@ export function pageFrames(id: string): {
         if (page === undefined) return;
         try {
           const frames = await page.evaluate(settledFrames, FRAMES_KEY);
-          let minMs = Number.NEGATIVE_INFINITY;
-          let maxMs = Number.POSITIVE_INFINITY;
-          for (let i = 0; i < EXCHANGES; i++) {
-            const sentMs = performance.now();
-            // `window.`: this file's `performance` is Node's, which the page does not have.
-            const pageMs = await page.evaluate(() => window.performance.now());
-            const receivedMs = performance.now();
-            minMs = Math.max(minMs, sentMs - pageMs);
-            maxMs = Math.min(maxMs, receivedMs - pageMs);
-          }
-          reads.set(stepIndex, { frames, shift: { minMs, maxMs } });
+          reads.set(stepIndex, { frames, shift: await clockShift(page) });
         } catch {
           // A page between documents has nothing to read; a test that needs this step fails on the missing read.
         }
       },
     },
   };
+}
+
+/** The test process's clock minus the page's, bounded by `EXCHANGES` round trips. */
+export async function clockShift(
+  page: Page,
+): Promise<{ minMs: number; maxMs: number }> {
+  let minMs = Number.NEGATIVE_INFINITY;
+  let maxMs = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < EXCHANGES; i++) {
+    const sentMs = performance.now();
+    // `window.`: this file's `performance` is Node's, which the page does not have.
+    const pageMs = await page.evaluate(() => window.performance.now());
+    const receivedMs = performance.now();
+    minMs = Math.max(minMs, sentMs - pageMs);
+    maxMs = Math.min(maxMs, receivedMs - pageMs);
+  }
+  return { minMs, maxMs };
 }
 
 /**

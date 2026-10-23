@@ -348,6 +348,7 @@ export const en = {
       config: 'Project config',
       cli: 'CLI',
       record: 'Recording',
+      sdk: 'Application SDK',
       runner: 'Runner',
       mcp: 'MCP tools',
       more: 'More guides',
