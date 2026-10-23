@@ -554,6 +554,58 @@ describe('VideoRelay: flow and ends', () => {
     expect(logger.text().match(/disconnected/g)).toHaveLength(3);
   });
 
+  it('closes one run’s streams with io on closeRun, and lets other runs go on', async () => {
+    const otherDir = path.join(home, 'runs', 'other-run');
+    mkdirSync(path.join(otherDir, 'render'), { recursive: true });
+    writeFileSync(path.join(otherDir, 'render', 'ffmpeg.mp4'), video);
+    writeResult([{ format: 'mp4', file: 'render/ffmpeg.mp4' }], otherDir);
+    appendReportedRun(indexFile, {
+      id: 'srv-run-2',
+      runDir: otherDir,
+      at: 'x',
+    });
+    const sender = recordingSender();
+    const closing = [open(sender), open(sender)];
+    const other = open(sender, { runId: 'srv-run-2' });
+    await until(
+      () => [...closing, other].every((id) => sender.of(id).length > 0),
+      'every stream sending',
+    );
+    await relay.closeRun(RUN_ID);
+    // Both handles are released by the time closeRun resolves.
+    expect(counts).toEqual({ open: 3, close: 2 });
+    for (const streamId of closing) {
+      expect(errorOf(sender, streamId)).toEqual({
+        type: 'video.error',
+        streamId,
+        code: 'io',
+      });
+    }
+    expect(relay.size).toBe(1);
+    expect((await drain(sender, other)).equals(video)).toBe(true);
+    expect(counts).toEqual({ open: 3, close: 3 });
+  });
+
+  it('waits on closeRun for a file that was still being found', async () => {
+    const sender = recordingSender();
+    const streamId = open(sender);
+    await relay.closeRun(RUN_ID);
+    // The lookup opened the file after the close; it is closed already.
+    expect(counts.close).toBe(counts.open);
+    expect(errorOf(sender, streamId)).toMatchObject({ code: 'io' });
+    expect(sender.chunks).toEqual([]);
+  });
+
+  it('closes nothing on closeRun for a run with no streams', async () => {
+    const sender = recordingSender();
+    const streamId = open(sender);
+    await until(() => sender.of(streamId).length > 0, 'a chunk');
+    await relay.closeRun('srv-run-9');
+    expect(relay.size).toBe(1);
+    expect(errorOf(sender, streamId)).toBeUndefined();
+    relay.closeAll();
+  });
+
   it('answers a fifth concurrent stream with busy', async () => {
     const sender = recordingSender();
     const ids = Array.from({ length: MAX_STREAMS }, () => open(sender));

@@ -54,6 +54,8 @@ export class VideoStream {
   private readonly sender: RelaySender;
   private readonly onFinish: (outcome: StreamOutcome, sent: number) => void;
   private file: RelayFile | null = null;
+  /** Settles once `begin`'s `open` has returned and a late handle is closed. */
+  private opening: Promise<void> = Promise.resolve();
   private closed = false;
   private pumping = false;
   private position = 0;
@@ -77,6 +79,10 @@ export class VideoStream {
     open: () => Promise<RelayFile | null>,
     range: VideoRange | null,
   ): Promise<void> {
+    let opened = () => {};
+    this.opening = new Promise((resolve) => {
+      opened = resolve;
+    });
     let file: RelayFile | null;
     try {
       file = await open();
@@ -86,8 +92,10 @@ export class VideoStream {
     if (this.closed) {
       // Cancelled while the file was being found: it never becomes ours.
       await file?.close().catch(() => {});
+      opened();
       return;
     }
+    opened();
     if (file === null) {
       await this.fail('not-found');
       return;
@@ -149,7 +157,16 @@ export class VideoStream {
     this.onFinish(outcome, this.sent);
   }
 
-  private fail(
+  /**
+   * Resolves once this stream holds no handle: after `close`, and after a
+   * file still being opened when it closed has been released too.
+   */
+  async released(): Promise<void> {
+    await this.opening;
+  }
+
+  /** Ends the stream with `video.error { code }`, after releasing the file. */
+  fail(
     code: Exclude<StreamOutcome, 'sent' | 'cancelled' | 'disconnected'>,
     size?: number,
   ): Promise<void> {
