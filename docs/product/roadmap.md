@@ -29,7 +29,8 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
   [ADR-0008](../adr/0008-cloud-boundary.md) §1).
 - Specs: [68](../specs/68-mcp-generate-poll-cancel.md) (generate, poll, cancel),
   [69](../specs/69-mcp-read-only-tools.md) (validate, list, check).
-- The "DemoFlow page reference for a video" (vision §3.3) waits for Phase 5.
+- The "DemoFlow page reference for a video" (vision §3.3) waited for Phase 5;
+  with Phase 5 shipped it is [225](../specs/225-mcp-run-page-url.md).
 
 ## Before Phase 4 — visual baselines
 
@@ -133,7 +134,9 @@ All four, in this order:
   [209](../specs/209-playwright-scrolls-captions.md) (container scrolls, the
   `caption` and `scene` helpers),
   [210](../specs/210-playwright-docs.md) (the website's "Reuse Playwright
-  tests" page).
+  tests" page),
+  [224](../specs/224-record-wait-for-ready.md) (a "Wait for ready" control in
+  the `demoflow record` panel, spec 198's follow-up).
 
 ## Cross-cutting
 

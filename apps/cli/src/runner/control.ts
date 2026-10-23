@@ -253,20 +253,29 @@ export async function logsCommand(
     io.stderr(`No runner log yet (${file})\n`);
     return 0;
   }
-  let followed: { ino: number; offset: number } | null = null;
+  // `ino` as a bigint: on Windows it is the 64-bit NTFS file ID, and as a
+  // `number` it loses its low bits past 2^53, so a file and its successor can
+  // compare equal and a rotation goes unseen.
+  let followed: { ino: bigint; offset: number } | null = null;
   const drain = () => {
-    let current: { ino: number; size: number };
+    let current: { ino: bigint; size: number };
     try {
-      current = statSync(file);
+      const stats = statSync(file, { bigint: true });
+      current = { ino: stats.ino, size: Number(stats.size) };
     } catch {
       return;
     }
-    if (followed !== null && followed.ino !== current.ino) {
+    if (
+      followed !== null &&
+      (followed.ino !== current.ino || current.size < followed.offset)
+    ) {
       // Rotated: finish the file we were reading, now `.1`, then start over.
       try {
-        const previous = statSync(`${file}.1`);
+        const previous = statSync(`${file}.1`, { bigint: true });
         if (previous.ino === followed.ino) {
-          io.stdout(readFrom(`${file}.1`, followed.offset, previous.size));
+          io.stdout(
+            readFrom(`${file}.1`, followed.offset, Number(previous.size)),
+          );
         }
       } catch {
         // Rotated twice since the last look: those lines are in `.2`.

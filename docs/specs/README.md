@@ -47,6 +47,7 @@ decisions live in [../adr/](../adr/README.md).
 | [#91](https://github.com/AndreyBegma/DemoFlow/issues/91) | [A `press` step](91-press-step.md) | #85 |
 | [#103](https://github.com/AndreyBegma/DemoFlow/issues/103) | [`record`: no extra step on a slow runner](103-record-extra-step.md) | — |
 | [#105](https://github.com/AndreyBegma/DemoFlow/issues/105) | [`npx demoflow` inside the monorepo](105-workspace-package-name.md) | — |
+| [#225](https://github.com/AndreyBegma/DemoFlow/issues/225) | [MCP: the run's page URL in `get_task` and `list_demos`](225-mcp-run-page-url.md) — vision §3.3, deferred to after Phase 5 | — |
 
 ## Before Phase 4 (roadmap)
 
@@ -126,3 +127,4 @@ from the [#202 spike report](../research/202-playwright-reuse-spike.md).
 | [#208](https://github.com/AndreyBegma/DemoFlow/issues/208) | [`demoflow/playwright`: a fixture that records a scenario](208-playwright-fixture.md) | — |
 | [#209](https://github.com/AndreyBegma/DemoFlow/issues/209) | [Fixture: container scrolls, `caption` and `scene` helpers](209-playwright-scrolls-captions.md) | #208 |
 | [#210](https://github.com/AndreyBegma/DemoFlow/issues/210) | [Docs: reuse Playwright tests](210-playwright-docs.md) | #208; after #209; not beside #203 |
+| [#224](https://github.com/AndreyBegma/DemoFlow/issues/224) | [A "Wait for ready" control in the record panel](224-record-wait-for-ready.md) — spec 198 follow-up | — |
