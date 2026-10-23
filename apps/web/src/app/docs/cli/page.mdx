@@ -7,6 +7,7 @@ Run `demoflow` through `npx demoflow`, or install it globally. `demoflow
 
 | Command | What it does |
 |---|---|
+| `demoflow init` | Write `demoflow.config.json` and a first scenario here. |
 | `demoflow record [name]` | Record a scenario by using the app. |
 | `demoflow validate <scenario>` | Check a scenario against the schema. |
 | `demoflow run <scenario>` | Run it in a browser and render the video. |
@@ -18,6 +19,34 @@ Run `demoflow` through `npx demoflow`, or install it globally. `demoflow
 | `demoflow login` | Pair this machine with your DemoFlow account. |
 | `demoflow logout` | Revoke this machine and delete its credentials. |
 | `demoflow runner …` | Keep this machine connected in the background. |
+
+## init
+
+```sh
+npx demoflow init
+npx demoflow init --base-url http://localhost:5173
+```
+
+Writes `demoflow.config.json` and `demoflow/first.demo.json` in the current
+folder. The scenario opens `/` and waits a second, so it runs green against any
+app that answers at `baseUrl`. It makes no network request and starts no
+browser. A file that already exists is never overwritten: it is kept and
+reported as `kept`. A config in a parent folder is not looked for.
+
+| Flag | Meaning |
+|---|---|
+| `--base-url <url>` | The app's base URL, written to the config. Defaults to `http://localhost:3000`. |
+
+It prints one `created` or `kept` line per file, then the next steps:
+`demoflow check`, `demoflow run demoflow/first.demo.json` and `demoflow record`
+for a real scenario.
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | Both files exist now, created or kept. |
+| `2` | `--base-url` is not a valid URL. Nothing is written. |
 
 ## run
 

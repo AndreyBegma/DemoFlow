@@ -80,6 +80,12 @@ are no longer listed. The website is not told, so its runs list keeps the
 first render's formats. A run that is unfinished or has no recording is
 refused with exit 2; a render that fails exits 3.
 
+`demoflow init [--base-url <url>]` writes `demoflow.config.json` (default
+`baseUrl` `http://localhost:3000`) and `demoflow/first.demo.json`, a scenario
+that opens `/` and passes against any app at `baseUrl`, in the current folder.
+An existing file is never overwritten: it is reported as `kept`. An invalid
+`--base-url` exits 2 and writes nothing.
+
 `demoflow list` prints the recent runs of the current project, newest first:
 status, start time, duration, scenario name and run id, plus the run's page URL
 when it was reported to the website. `--limit <n>` takes 1–100 (default 20);
@@ -105,6 +111,7 @@ typed value. Secret fills are left as recorded.
 
 | Command | What it does |
 |---|---|
+| `demoflow init` | write `demoflow.config.json` and a first scenario here |
 | `demoflow record [name]` | record a scenario by using the app |
 | `demoflow validate <scenario>` | check a scenario against the schema |
 | `demoflow run <scenario>` | run it in a browser and render the video |
