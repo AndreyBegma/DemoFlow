@@ -24,6 +24,9 @@ const STAMP = 'window.signalledAt = performance.now();';
 /** The page global (a registered symbol) the poll probe records on. */
 const POLLS_KEY = 'demoflow.test.polls';
 
+/** The event the poll probe dispatches on the wait's first look at the watched name. */
+const FIRST_LOOK = 'demoflow-test-first-look';
+
 /** The engine's poll interval (`POLL_MS` in `src/execute/ready.ts`). */
 const POLL_MS = 50;
 
@@ -43,7 +46,8 @@ interface PollRecord {
  */
 const PAGES: Readonly<Record<string, string>> = {
   '/load': `<h1>Load</h1><script>${STAMP} window.demoflow?.ready('loaded')</script>`,
-  '/late': `<h1>Late</h1><script>setTimeout(() => { ${STAMP} window.demoflow.ready('late') }, 500)</script>`,
+  // 500 ms after the wait first looks, not after load: a slow navigate must not eat the wait's silence.
+  '/late': `<h1>Late</h1><script>addEventListener('${FIRST_LOOK}', () => setTimeout(() => { ${STAMP} window.demoflow.ready('late') }, 500), { once: true })</script>`,
   '/silent': '<h1>Silent</h1>',
   // A script in <head> runs before <body> exists.
   '/head': `<!doctype html><html><head><script>window.demoflow.ready('from-head'); window.bodyAtSignal = document.body === null</script></head><body><h1>Head</h1></body></html>`,
@@ -138,6 +142,7 @@ async function run(
           key: POLLS_KEY,
           name: watch,
           intervalMs: POLL_MS,
+          firstLook: FIRST_LOOK,
         });
       }
     },
@@ -185,13 +190,15 @@ async function run(
 /**
  * Runs in every document, after the engine's ready script: records each look
  * at a set for `name` — the engine's poll reads the ready set with `has` —
- * and runs a `setTimeout(intervalMs)` chain of its own, the reference for
- * how late this page fires a timer of the engine's interval.
+ * dispatches `FIRST_LOOK` on the first one, and runs a `setTimeout(intervalMs)`
+ * chain of its own, the reference for how late this page fires a timer of the
+ * engine's interval.
  */
 function pollProbe(input: {
   key: string;
   name: string;
   intervalMs: number;
+  firstLook: string;
 }): void {
   const record = {
     polls: [] as Array<[number, boolean]>,
@@ -203,6 +210,9 @@ function pollProbe(input: {
     const ready = has.call(this, value);
     if (value === input.name) {
       record.polls.push([window.performance.now(), ready]);
+      if (record.polls.length === 1) {
+        window.dispatchEvent(new Event(input.firstLook));
+      }
     }
     return ready;
   };
@@ -234,14 +244,24 @@ function event(outcome: RunOutcome, stepIndex: number) {
 }
 
 describe('waitForReady (#198)', () => {
+  // #218: "at once" is the first look, not a wall-clock margin — a loaded
+  // runner stretched the step itself to 930 ms.
   it('passes at once for a signal sent on load', async () => {
-    const { outcome } = await run([
-      { action: 'navigate', path: '/load' },
-      { action: 'waitForReady', name: 'loaded' },
-    ]);
+    const { outcome, seen } = await run(
+      [
+        { action: 'navigate', path: '/load' },
+        { action: 'waitForReady', name: 'loaded' },
+      ],
+      'loaded',
+    );
     expect(outcome.stages.execution.status).toBe('passed');
-    const step = event(outcome, 1);
-    expect(step.endMs - step.startMs).toBeLessThan(200);
+    const read = seen.get(1);
+    expect(read?.signalledAt).toBeDefined();
+    if (read?.signalledAt === undefined) return;
+    expect(read.record.polls).toHaveLength(1);
+    const [[seenAt, ready]] = read.record.polls;
+    expect(ready).toBe(true);
+    expect(seenAt).toBeGreaterThanOrEqual(read.signalledAt);
   });
 
   // #218: what the wait guarantees, on the page's clock — it ends after the
@@ -267,8 +287,10 @@ describe('waitForReady (#198)', () => {
     const { polls, ticks } = read.record;
     const misses = polls.filter(([, ready]) => !ready);
     const hits = polls.filter(([, ready]) => ready);
-    // It polled while the page was silent, and none of those looks came after the signal.
-    expect(misses.length).toBeGreaterThan(1);
+    // It looked while the page was silent — the first look sets the page's
+    // 500 ms off, so a stalled page may give it only that one — and none of
+    // those looks came after the signal.
+    expect(misses.length).toBeGreaterThanOrEqual(1);
     for (const [atMs] of misses) expect(atMs).toBeLessThanOrEqual(signalledAt);
     // The next look found the name, and the wait stopped there.
     expect(hits).toHaveLength(1);
