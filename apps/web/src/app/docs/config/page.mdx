@@ -59,6 +59,7 @@ Every `render` key is optional. These are the defaults:
 | `transitions` | on | Dissolves. |
 | `formats` | `["mp4"]` | The files to render. |
 | `gif` | 800 px, 12 fps | The GIF's own size and rate. |
+| `vertical` | see below | The 9:16 crop of the `*-vertical` formats. |
 
 ### Frame
 
@@ -122,7 +123,16 @@ default is 300, or half the shortest card when that is less.
 ### Output formats
 
 A run renders an MP4 by default. `formats` asks for more, all encoded in one
-pass: `mp4`, `gif` and `webm` (VP9), each at most once.
+pass, each at most once:
+
+| Format | File |
+|---|---|
+| `mp4` | `render/ffmpeg.mp4` |
+| `gif` | `render/ffmpeg.gif` |
+| `webm` (VP9) | `render/ffmpeg.webm` |
+| `mp4-vertical` | `render/ffmpeg.vertical.mp4` |
+| `gif-vertical` | `render/ffmpeg.vertical.gif` |
+| `webm-vertical` | `render/ffmpeg.vertical.webm` |
 
 ```json
 {
@@ -133,7 +143,33 @@ pass: `mp4`, `gif` and `webm` (VP9), each at most once.
 }
 ```
 
-The files are `render/ffmpeg.mp4`, `render/ffmpeg.gif` and
-`render/ffmpeg.webm`. The GIF's `width` may not exceed `render.width`, nor its
-`fps` `render.fps`; its height follows the video's aspect ratio.
+The GIF's `width` may not exceed `render.width`, nor its `fps` `render.fps`; its
+height follows the video's aspect ratio.
 `demoflow run --format gif --format mp4` replaces `formats` for one run.
+
+#### Vertical video
+
+The `*-vertical` formats are 9:16 videos for phones, rendered from the same run.
+`mp4-vertical` and `webm-vertical` are 1080×1920. `gif-vertical` is a GIF whose
+height is `render.gif.width` and whose width is `round(height × 9 / 16)`: 450×800
+by default. It uses `render.gif.fps`. Ask for any mix of them.
+
+The page is still recorded at its normal size. A 9:16 crop follows each step's
+target and stays on the page. Each step's `zoom` still applies inside it, and
+captions sit larger in a band at the bottom. `render.vertical` tunes it, all
+optional, and is used only when `formats` has a `*-vertical` format:
+
+```json
+{
+  "render": {
+    "formats": ["mp4", "mp4-vertical"],
+    "vertical": { "followMs": 400, "deadZone": 0.1, "captionBand": 0.22 }
+  }
+}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `followMs` | 400 | How long the crop takes to move to the next target, eased in and out. 0 to 2000. |
+| `deadZone` | 0.1 | A move shorter than this share of the crop width is skipped, so the camera does not jitter. 0 up to, not including, 0.5. |
+| `captionBand` | 0.22 | The share of the frame height, at the bottom, that captions sit in. Above 0, at most 0.5. |
