@@ -155,7 +155,14 @@ describe('projects (integration)', () => {
     });
 
     it('accepts every format the CLI renders, the vertical export too', async () => {
-      const formats = ['mp4', 'gif', 'webm', 'mp4-vertical'];
+      const formats = [
+        'mp4',
+        'gif',
+        'webm',
+        'mp4-vertical',
+        'gif-vertical',
+        'webm-vertical',
+      ];
       await report(laptop.token, runReport({ formats })).expect(201);
       const { projects } = (await list(alice.cookie).expect(200)).body;
       expect(projects[0].lastRun.formats).toEqual(formats);

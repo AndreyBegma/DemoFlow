@@ -77,6 +77,54 @@ describe.skipIf(!hasFfmpeg)('the vertical MP4 on a real run', () => {
     expect(stderr.trim()).toBe('');
   });
 
+  it('writes the vertical WebM and GIF from the same lane as the vertical MP4 (spec 236)', async () => {
+    const runDir = await freshRun('all-vertical');
+    const plan = await buildRenderPlan(runDir, {
+      formats: ['mp4-vertical', 'gif-vertical', 'webm-vertical'],
+    });
+    const outputs = await ffmpegRenderer.render(runDir, plan);
+
+    expect(outputs.map(({ format, file }) => ({ format, file }))).toEqual([
+      { format: 'mp4-vertical', file: 'render/ffmpeg.vertical.mp4' },
+      { format: 'gif-vertical', file: 'render/ffmpeg.vertical.gif' },
+      { format: 'webm-vertical', file: 'render/ffmpeg.vertical.webm' },
+    ]);
+    const result = RunResultSchema.parse(
+      JSON.parse(await readFile(path.join(runDir, 'result.json'), 'utf8')),
+    );
+    expect(result.renders).toEqual(outputs);
+
+    const mp4 = await probeVideo(renderPath(runDir, 'ffmpeg', 'mp4-vertical'));
+    const webm = await probeVideo(
+      renderPath(runDir, 'ffmpeg', 'webm-vertical'),
+    );
+    expect(webm).toMatchObject({ width: 1080, height: 1920, codec: 'vp9' });
+    const gif = await probeVideo(renderPath(runDir, 'ffmpeg', 'gif-vertical'));
+    expect(gif).toMatchObject({
+      width: 450,
+      height: 800,
+      fps: 12,
+      codec: 'gif',
+    });
+    for (const probed of [webm, gif]) {
+      expect(Math.abs(probed.durationMs - mp4.durationMs)).toBeLessThanOrEqual(
+        100,
+      );
+    }
+  });
+
+  it('writes only the vertical WebM when only it is asked for', async () => {
+    const runDir = await freshRun('webm-vertical');
+    const plan = await buildRenderPlan(runDir, { formats: ['webm-vertical'] });
+    const outputs = await ffmpegRenderer.render(runDir, plan);
+    expect(outputs.map((output) => output.file)).toEqual([
+      'render/ffmpeg.vertical.webm',
+    ]);
+    await expect(
+      readFile(renderPath(runDir, 'ffmpeg', 'mp4')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('writes only the vertical MP4 when only it is asked for', async () => {
     const runDir = await freshRun('vertical');
     const plan = await buildRenderPlan(runDir, { formats: ['mp4-vertical'] });

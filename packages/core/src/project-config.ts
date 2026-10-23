@@ -153,7 +153,7 @@ const DEFAULT_GIF = { width: 800, fps: 12 } as const;
 /**
  * The 9:16 output (spec 176): a crop of the page that follows each step's
  * target, with captions in a band at the bottom. Used only when `formats`
- * has `mp4-vertical`.
+ * has a `*-vertical` format.
  */
 export const VerticalConfigSchema = z
   .strictObject({

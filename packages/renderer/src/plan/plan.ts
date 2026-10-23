@@ -307,8 +307,8 @@ export function planRender(
       ? undefined
       : failureCard(failure, videoEndMs, TIMING.endCardMs);
   const files = outputFiles(output, options);
-  const vertical: VerticalSpec | undefined = files.some(
-    (file) => file.format === 'mp4-vertical',
+  const vertical: VerticalSpec | undefined = files.some((file) =>
+    file.format.endsWith('-vertical'),
   )
     ? {
         width: VERTICAL.width,
@@ -496,7 +496,18 @@ function outputFile(
         faststart: true,
       };
     case 'webm':
+    case 'webm-vertical':
       return { format, codec: 'vp9', pixelFormat: 'yuv420p', ...WEBM };
+    case 'gif-vertical': {
+      // The height is `gif.width`, so a frame has the landscape GIF's pixels (spec 236).
+      const height = options.gif?.width ?? Math.min(GIF.width, VERTICAL.height);
+      return {
+        format,
+        width: Math.max(2, Math.round((height * 9) / 16 / 2) * 2),
+        height,
+        fps: options.gif?.fps ?? Math.min(GIF.fps, output.fps),
+      };
+    }
     case 'gif': {
       const width = options.gif?.width ?? Math.min(GIF.width, output.width);
       return {

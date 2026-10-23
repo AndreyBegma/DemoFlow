@@ -141,18 +141,24 @@ describe('RunResultSchema', () => {
 
   it('keeps each render format, in order, and rejects an unknown one', () => {
     const [render] = result.renders;
-    const renders = (['gif', 'webm', 'mp4', 'mp4-vertical'] as const).map(
-      (format) => ({
-        ...render,
-        format,
-        file: `render/ffmpeg.${format}`,
-      }),
-    );
+    const formats = [
+      'gif',
+      'webm',
+      'mp4',
+      'mp4-vertical',
+      'gif-vertical',
+      'webm-vertical',
+    ] as const;
+    const renders = formats.map((format) => ({
+      ...render,
+      format,
+      file: `render/ffmpeg.${format}`,
+    }));
     expect(
       RunResultSchema.parse({ ...result, renders }).renders.map(
         (entry) => entry.format,
       ),
-    ).toEqual(['gif', 'webm', 'mp4', 'mp4-vertical']);
+    ).toEqual(formats);
     expect(
       RunResultSchema.safeParse({
         ...result,

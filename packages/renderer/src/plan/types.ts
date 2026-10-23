@@ -126,7 +126,8 @@ export interface Mp4Spec {
 
 /** VP9 at constant quality, BT.709. */
 export interface WebmSpec {
-  format: 'webm';
+  /** `webm-vertical` is drawn at `RenderPlan.vertical`'s size (spec 236). */
+  format: 'webm' | 'webm-vertical';
   codec: 'vp9';
   pixelFormat: 'yuv420p';
   /** `-crf`, with `-b:v 0`: 0 (best) to 63. */
@@ -137,9 +138,9 @@ export interface WebmSpec {
 
 /** A looping GIF with a palette per frame, scaled down and slowed. */
 export interface GifSpec {
-  format: 'gif';
+  format: 'gif' | 'gif-vertical';
   width: number;
-  /** Follows the output's aspect ratio, rounded to an even number. */
+  /** Follows the output's aspect ratio, rounded to an even number; for `gif-vertical`, `gif.width` (spec 236). */
   height: number;
   fps: number;
 }

@@ -129,6 +129,40 @@ describe('the vertical output (spec 176)', () => {
     );
   });
 
+  it('plans the vertical WebM and GIF too, from the same vertical output (spec 236)', () => {
+    const rendered = plan([], { formats: ['gif-vertical', 'webm-vertical'] });
+    expect(rendered.output.files).toEqual([
+      { format: 'gif-vertical', width: 450, height: 800, fps: 12 },
+      {
+        format: 'webm-vertical',
+        codec: 'vp9',
+        pixelFormat: 'yuv420p',
+        crf: 32,
+        cpuUsed: 4,
+      },
+    ]);
+    expect(rendered.vertical).toMatchObject({ width: 1080, height: 1920 });
+  });
+
+  it('sizes the vertical GIF by gif.width as its height', () => {
+    const rendered = plan([], {
+      formats: ['gif-vertical'],
+      gif: { width: 640 },
+    });
+    expect(rendered.output.files).toEqual([
+      { format: 'gif-vertical', width: 360, height: 640, fps: 12 },
+    ]);
+  });
+
+  it('names the files <renderer>.vertical.webm and .vertical.gif', () => {
+    expect(renderPath('run', 'ffmpeg', 'webm-vertical')).toMatch(
+      /render[/\\]ffmpeg\.vertical\.webm$/,
+    );
+    expect(renderPath('run', 'ffmpeg', 'gif-vertical')).toMatch(
+      /render[/\\]ffmpeg\.vertical\.gif$/,
+    );
+  });
+
   it('crops the full page height at 9:16, starting on the page centre', () => {
     expect(view(plan([]), 0)).toEqual({
       x: 640 - CROP.width / 2,
@@ -270,6 +304,6 @@ describe('the vertical output (spec 176)', () => {
   it('refuses a vertical frame of a plan without the vertical output', () => {
     expect(() =>
       frameAt(plan([], { formats: ['mp4'] }), 0, 'vertical'),
-    ).toThrow(/mp4-vertical/);
+    ).toThrow(/vertical format/);
   });
 });

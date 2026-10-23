@@ -132,7 +132,7 @@ function openLane(
 ): Lane | undefined {
   const { output } = plan;
   const chosen = output.files.flatMap((file, i) =>
-    (file.format === 'mp4-vertical') === (layout === 'vertical')
+    file.format.endsWith('-vertical') === (layout === 'vertical')
       ? [{ file, path: out[i] }]
       : [],
   );
@@ -410,10 +410,12 @@ function branch(file: OutputFile, i: number): string {
     case 'mp4':
     case 'mp4-vertical':
     case 'webm':
+    case 'webm-vertical':
       // BT.709, limited range, tagged in the stream: FFmpeg's
       // default RGB → YUV conversion is BT.601 and leaves the file untagged.
       return `scale=in_range=pc:out_range=tv:out_color_matrix=bt709,format=${file.pixelFormat}[v${i}]`;
     case 'gif':
+    case 'gif-vertical':
       // A palette per frame (spec 133, Decision 3). One palette for the
       // whole video comes only at the end, and until then FFmpeg queues the
       // full-size frames of this branch: 13 GB for a 60 s render beside
@@ -455,10 +457,11 @@ function fileArgs(file: OutputFile): string[] {
         ...(file.faststart ? ['-movflags', '+faststart'] : []),
       ];
     case 'webm':
+    case 'webm-vertical':
       return [
         ...BT709_TAGS,
         '-c:v',
-        ENCODERS.webm,
+        ENCODERS[file.format],
         '-crf',
         String(file.crf),
         '-b:v',
@@ -473,6 +476,7 @@ function fileArgs(file: OutputFile): string[] {
         file.pixelFormat,
       ];
     case 'gif':
+    case 'gif-vertical':
       return ['-c:v', ENCODERS.gif, '-loop', '0'];
   }
 }
