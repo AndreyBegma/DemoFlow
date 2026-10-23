@@ -6,6 +6,7 @@ type DocsNavLabel =
   | 'docs.nav.cli'
   | 'docs.nav.record'
   | 'docs.nav.sdk'
+  | 'docs.nav.playwright'
   | 'docs.nav.runner'
   | 'docs.nav.mcp'
   | 'docs.nav.more';
@@ -24,6 +25,7 @@ export const DOCS_NAV: readonly DocsNavEntry[] = [
   { href: '/docs/cli', label: 'docs.nav.cli' },
   { href: '/docs/record', label: 'docs.nav.record' },
   { href: '/docs/sdk', label: 'docs.nav.sdk' },
+  { href: '/docs/playwright', label: 'docs.nav.playwright' },
   { href: '/docs/runner', label: 'docs.nav.runner' },
   { href: '/docs/mcp', label: 'docs.nav.mcp' },
   { href: '/docs/more', label: 'docs.nav.more' },

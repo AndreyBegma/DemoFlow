@@ -370,6 +370,7 @@ export const en = {
       cli: 'CLI',
       record: 'Recording',
       sdk: 'Application SDK',
+      playwright: 'Reuse Playwright tests',
       runner: 'Runner',
       mcp: 'MCP tools',
       more: 'More guides',
