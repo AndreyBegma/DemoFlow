@@ -284,8 +284,38 @@ export function deleteProject(id: string) {
 // The run page (spec #193, API contract from spec #191 Decision 9).
 
 /** One run with its project and the machine that recorded it. */
+export type RunStageName =
+  | 'readiness'
+  | 'execution'
+  | 'verification'
+  | 'recording'
+  | 'rendering'
+  | 'storage';
+
+export type RunStageStatus =
+  | 'pending'
+  | 'running'
+  | 'passed'
+  | 'failed'
+  | 'skipped';
+
+export interface RunRender {
+  format: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  durationMs: number;
+}
+
+/** The run's stage statuses, files and failure; null when the CLI did not report them (spec #263). */
+export interface RunDetailView extends ProjectRun {
+  stages: Record<RunStageName, RunStageStatus> | null;
+  renders: RunRender[] | null;
+  failure: { stage: RunStageName; message: string } | null;
+}
+
 export interface RunDetail {
-  run: ProjectRun;
+  run: RunDetailView;
   project: { id: string; name: string };
   /** Null when the machine was removed. */
   machine: { id: string; name: string; online: boolean } | null;

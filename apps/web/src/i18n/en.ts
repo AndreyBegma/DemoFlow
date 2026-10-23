@@ -351,6 +351,32 @@ export const en = {
       gif: 'GIF',
       'gif-vertical': 'Vertical GIF',
     },
+    failure: {
+      title: 'Failed at {stage}',
+    },
+    stages: {
+      title: 'Stages',
+      names: {
+        readiness: 'Readiness',
+        execution: 'Execution',
+        verification: 'Verification',
+        recording: 'Recording',
+        rendering: 'Rendering',
+        storage: 'Storage',
+      },
+      statuses: {
+        passed: 'Passed',
+        failed: 'Failed',
+        skipped: 'Skipped',
+        pending: 'Pending',
+        running: 'Running',
+      },
+    },
+    files: {
+      title: 'Files',
+      none: 'No files were rendered.',
+      resolution: '{width}×{height}',
+    },
     gifAlt: 'Animated preview of the run',
     noFormats: 'This run rendered no video.',
     removed:
