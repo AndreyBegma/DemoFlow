@@ -147,3 +147,7 @@ Work traced to an ADR, the vision or spec 179 that no phase had picked up.
 | [#255](https://github.com/AndreyBegma/DemoFlow/issues/255) | [`demoflow render`: render an existing run again](255-render-command.md) — ADR-0004, vision §12 | — |
 | [#256](https://github.com/AndreyBegma/DemoFlow/issues/256) | [The `/app` overview: recent projects and machines](256-app-overview.md) — vision §6 | — |
 | [#257](https://github.com/AndreyBegma/DemoFlow/issues/257) | [Filter a project's run library by status](257-library-status-filter.md) — vision §6 | — |
+| [#263](https://github.com/AndreyBegma/DemoFlow/issues/263) | [Store and return a run's stage statuses, renders and failure message (API)](263-run-details-api.md) — vision §6, ADR-0008 §2 | — |
+| [#264](https://github.com/AndreyBegma/DemoFlow/issues/264) | [The run report sends stage statuses, renders and a redacted failure message](264-report-run-details.md) | #263 (merge order) |
+| [#265](https://github.com/AndreyBegma/DemoFlow/issues/265) | [Show a run's stages, files and failure message on the run page](265-run-page-details.md) | #263 |
+| [#266](https://github.com/AndreyBegma/DemoFlow/issues/266) | [`demoflow list` and `demoflow check`](266-list-and-check-commands.md) — vision §3.4 | — |
