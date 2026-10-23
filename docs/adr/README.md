@@ -12,7 +12,7 @@ it is accepted: a later record supersedes it and says so.
 | [0005](0005-renderer-chosen-by-spike.md) | Renderer: the FFmpeg compositor, chosen by a spike | accepted |
 | [0006](0006-accounts-github-oauth-and-email-password.md) | Multi-user accounts: GitHub OAuth and email/password | accepted |
 | [0007](0007-runner-pairing-and-connection.md) | Runner pairing (device code), WebSocket connection, device token | accepted |
-| [0008](0008-cloud-boundary.md) | What crosses to the cloud, and what the website may make a runner do | accepted |
+| [0008](0008-cloud-boundary.md) | What crosses to the cloud, and what the website may make a runner do | accepted; §3 extended by 0016 |
 | [0009](0009-playback-relay-and-luna-player-adapter.md) | Playback through an API relay; Luna Player behind an adapter | accepted |
 | [0010](0010-source-video-at-viewport-size.md) | The source video is recorded at the viewport size (1×) | accepted |
 | [0011](0011-no-docker-socket-or-host-cache-on-pull-requests.md) | No Docker socket and no host cache on a pull request | accepted |
@@ -20,3 +20,4 @@ it is accepted: a later record supersedes it and says so.
 | [0013](0013-page-side-contract.md) | The page-side contract: `data-demoflow-mask` and `window.demoflow` (`ready`, `waitForReady`) | accepted; extended by 0014 |
 | [0014](0014-page-annotations.md) | Scenes and captions from the page: `window.demoflow.scene` and `caption` | accepted |
 | [0015](0015-playwright-tests-become-scenarios.md) | Playwright tests become scenarios: a `demoflow/playwright` fixture records a `.demo.json`, the engine replays it; new module `packages/playwright`, optional peer `@playwright/test` | accepted |
+| [0016](0016-website-started-runs.md) | Runs started from the website: scenario listing (ids and names), a registered project is a root the machine reported a run from | accepted |

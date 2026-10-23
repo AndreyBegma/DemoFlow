@@ -109,6 +109,12 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
   §16's criterion 15, is [233](../specs/233-delete-run-artifacts-api.md)
   (API and protocol), [234](../specs/234-runner-deletes-artifacts.md) (the
   daemon) and [235](../specs/235-run-page-delete-artifacts.md) (the run page).
+- Starting and cancelling a run from the website, ADR-0008 §3's last two
+  actions, are [ADR-0016](../adr/0016-website-started-runs.md) (scenario
+  listing, and what a registered project is on the machine),
+  [247](../specs/247-start-run-api.md) (API and protocol),
+  [248](../specs/248-runner-starts-runs.md) (the daemon) and
+  [249](../specs/249-project-page-start-run.md) (the project page).
 
 ## Phase 7 — Optional SDK
 

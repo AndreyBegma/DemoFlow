@@ -113,6 +113,9 @@ renderer.
 | [#233](https://github.com/AndreyBegma/DemoFlow/issues/233) | [Delete a run's artifacts on its machine (API) and its protocol](233-delete-run-artifacts-api.md) | — |
 | [#234](https://github.com/AndreyBegma/DemoFlow/issues/234) | [The runner daemon deletes a reported run's artifacts](234-runner-deletes-artifacts.md) | #233 (merge order) |
 | [#235](https://github.com/AndreyBegma/DemoFlow/issues/235) | [Delete a run's video files from the run page](235-run-page-delete-artifacts.md) | #233 |
+| [#247](https://github.com/AndreyBegma/DemoFlow/issues/247) | [Start and cancel a run from the website (API) and its protocol](247-start-run-api.md) | — |
+| [#248](https://github.com/AndreyBegma/DemoFlow/issues/248) | [The runner daemon starts and cancels a run the website asked for](248-runner-starts-runs.md) | #247 (merge order) |
+| [#249](https://github.com/AndreyBegma/DemoFlow/issues/249) | [Run a scenario from the project page](249-project-page-start-run.md) | #247 |
 
 ## Phase 7 — Optional SDK
 
