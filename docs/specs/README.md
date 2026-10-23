@@ -90,6 +90,7 @@ renderer.
 | [#173](https://github.com/AndreyBegma/DemoFlow/issues/173) | [Mask timing test flakes on macOS](173-mask-timing-flake.md) | — |
 | [#218](https://github.com/AndreyBegma/DemoFlow/issues/218) | [waitForReady timing test flakes on macOS](218-ready-timing-flake.md) | — |
 | [#219](https://github.com/AndreyBegma/DemoFlow/issues/219) | [Runner log rotation test flakes on Windows](219-log-rotation-flake.md) | — |
+| [#242](https://github.com/AndreyBegma/DemoFlow/issues/242) | [Woodpecker `test-pr` runs out of memory when every package is affected](242-woodpecker-test-oom.md) — blocks #241 | — |
 
 ## Phase 4–5 remainder
 
