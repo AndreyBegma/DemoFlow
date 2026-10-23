@@ -151,3 +151,5 @@ Work traced to an ADR, the vision or spec 179 that no phase had picked up.
 | [#264](https://github.com/AndreyBegma/DemoFlow/issues/264) | [The run report sends stage statuses, renders and a redacted failure message](264-report-run-details.md) | #263 (merge order) |
 | [#265](https://github.com/AndreyBegma/DemoFlow/issues/265) | [Show a run's stages, files and failure message on the run page](265-run-page-details.md) | #263 |
 | [#266](https://github.com/AndreyBegma/DemoFlow/issues/266) | [`demoflow list` and `demoflow check`](266-list-and-check-commands.md) — vision §3.4 | — |
+| [#272](https://github.com/AndreyBegma/DemoFlow/issues/272) | [Docs: `demoflow list` and `check`, and what the run report sends](272-docs-list-check.md) — spec 266 follow-up | — |
+| [#273](https://github.com/AndreyBegma/DemoFlow/issues/273) | [`demoflow init`: write a config and a first scenario](273-init-command.md) — vision §3.4 | #272 (merge order) |
