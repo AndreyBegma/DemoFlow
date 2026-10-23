@@ -1,4 +1,4 @@
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -6,6 +6,7 @@ import {
   IsIn,
   IsInt,
   IsISO8601,
+  IsObject,
   IsOptional,
   IsString,
   Length,
@@ -13,6 +14,7 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 
 const trim = ({ value }: { value: unknown }): unknown =>
@@ -32,6 +34,88 @@ export const RUN_FORMATS = [
 ] as const;
 export type RunFormat = (typeof RUN_FORMATS)[number];
 export const RUN_STATUSES = ['passed', 'failed'] as const;
+
+/** `STAGE_NAMES` of `@demoflow/core`. */
+export const RUN_STAGES = [
+  'readiness',
+  'execution',
+  'verification',
+  'recording',
+  'rendering',
+  'storage',
+] as const;
+export type RunStage = (typeof RUN_STAGES)[number];
+
+/** `StageStatusSchema` of `@demoflow/core`. */
+export const RUN_STAGE_STATUSES = [
+  'pending',
+  'running',
+  'passed',
+  'failed',
+  'skipped',
+] as const;
+export type RunStageStatus = (typeof RUN_STAGE_STATUSES)[number];
+
+export const RENDER_SIDE_MAX = 16_384;
+export const FAILURE_MESSAGE_MAX = 1000;
+
+/** Every stage's status; a missing or extra stage is rejected (spec #263, Decision 2). */
+export class RunStagesDto implements Record<RunStage, RunStageStatus> {
+  @IsIn(RUN_STAGE_STATUSES)
+  readiness!: RunStageStatus;
+
+  @IsIn(RUN_STAGE_STATUSES)
+  execution!: RunStageStatus;
+
+  @IsIn(RUN_STAGE_STATUSES)
+  verification!: RunStageStatus;
+
+  @IsIn(RUN_STAGE_STATUSES)
+  recording!: RunStageStatus;
+
+  @IsIn(RUN_STAGE_STATUSES)
+  rendering!: RunStageStatus;
+
+  @IsIn(RUN_STAGE_STATUSES)
+  storage!: RunStageStatus;
+}
+
+/** One rendered file. */
+export class RunRenderDto {
+  @IsIn(RUN_FORMATS)
+  format!: RunFormat;
+
+  @IsInt()
+  @Min(1)
+  @Max(RENDER_SIDE_MAX)
+  width!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(RENDER_SIDE_MAX)
+  height!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  sizeBytes!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(2_147_483_647)
+  durationMs!: number;
+}
+
+/** The failed stage and its error message. */
+export class RunFailureDto {
+  @IsIn(RUN_STAGES)
+  stage!: RunStage;
+
+  @Transform(trim)
+  @IsString()
+  @Length(1, FAILURE_MESSAGE_MAX)
+  message!: string;
+}
 
 /** What `demoflow run` sends after a run on a paired machine (spec #178, Decision 3). */
 export class RunReportDto {
@@ -85,6 +169,27 @@ export class RunReportDto {
   @IsString()
   @Length(1, 64)
   cliVersion!: string;
+
+  /** Optional: an older CLI does not send them (spec #263). */
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => RunStagesDto)
+  stages?: RunStagesDto;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(RUN_FORMATS.length)
+  @ArrayUnique((render: RunRenderDto | null) => render?.format)
+  @ValidateNested({ each: true })
+  @Type(() => RunRenderDto)
+  renders?: RunRenderDto[];
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => RunFailureDto)
+  failure?: RunFailureDto;
 }
 
 export class CreateProjectDto {

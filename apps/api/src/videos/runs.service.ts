@@ -1,7 +1,10 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
-import { type RunView, toRunView } from '../projects/projects.service';
+import {
+  type RunDetailView,
+  toRunDetailView,
+} from '../projects/projects.service';
 import { RunnerConnections } from '../runner/runner-connections.service';
 
 const RUN_INCLUDE = {
@@ -13,7 +16,7 @@ export type OwnedRun = Prisma.RunGetPayload<{ include: typeof RUN_INCLUDE }>;
 
 /** What the run page shows (spec #191, Decision 9). */
 export interface RunPage {
-  run: RunView;
+  run: RunDetailView;
   project: { id: string; name: string };
   /** Null when the machine was removed: deleted or revoked. */
   machine: { id: string; name: string; online: boolean } | null;
@@ -47,7 +50,7 @@ export class RunsService {
     const run = await this.find(userId, id);
     const machine = liveMachine(run);
     return {
-      run: toRunView(run),
+      run: toRunDetailView(run),
       project: run.project,
       machine: machine && {
         id: machine.id,
