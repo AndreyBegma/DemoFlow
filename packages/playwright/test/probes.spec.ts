@@ -11,6 +11,7 @@ import {
   type FixtureServer,
   startFixtureServer,
 } from './harness/fixture-server.ts';
+import { INLINE_PAGES } from './harness/inline-pages.ts';
 import {
   lineOf,
   OUTPUT,
@@ -32,7 +33,7 @@ const PROBES = [
     title: 'create a customer',
     matched: 11,
   },
-  { name: 'tour', file: 'tour.pw.ts', title: 'tour', matched: 12 },
+  { name: 'tour', file: 'tour.pw.ts', title: 'tour', matched: 14 },
 ] as const;
 const FAILING = ['literal.pw.ts', 'row-first.pw.ts', 'keyboard.pw.ts'];
 
@@ -55,7 +56,7 @@ function result(run: PlaywrightRun, file: string): ProbeResult {
 }
 
 beforeAll(async () => {
-  fixture = await startFixtureServer();
+  fixture = await startFixtureServer(INLINE_PAGES);
   await rm(OUTPUT, { recursive: true, force: true });
   const files = [...PROBES.map((probe) => probe.file), ...FAILING];
   const run = (record: string | undefined) =>
@@ -120,7 +121,7 @@ describe('recording (DEMOFLOW_RECORD=1)', () => {
     expect(second).toEqual(first);
   });
 
-  it('covers the hand-written scenarios: 5/5, 11/11, 12/14', async () => {
+  it('covers the hand-written scenarios: 5/5, 11/11, 14/14', async () => {
     for (const probe of PROBES) {
       const { parsed } = await recordedScenario(probe);
       if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
@@ -169,15 +170,28 @@ describe('recording (DEMOFLOW_RECORD=1)', () => {
     }
   });
 
-  it("reports tour's container scroll as an annotation", async () => {
-    const line = await lineOf('tour.pw.ts', 'page.mouse.wheel');
+  it("records tour's container scroll and caption (spec 209)", async () => {
     const descriptions = result(recorded, 'tour.pw.ts').annotations.map(
       (annotation) => annotation.description ?? '',
     );
-    expect(descriptions).toContainEqual(
-      expect.stringContaining(
-        `not recorded: page.mouse.wheel at test/playwright/tour.pw.ts:${line}`,
-      ),
+    expect(descriptions.join('\n')).not.toContain(
+      'not recorded: page.mouse.wheel',
+    );
+    const { parsed } = await recordedScenario(PROBES[2]);
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
+    expect(parsed.value.steps).toContainEqual(
+      expect.objectContaining({
+        action: 'scroll',
+        to: 'bottom',
+        within: { testId: 'log-panel' },
+      }),
+    );
+    expect(parsed.value.steps).toContainEqual(
+      expect.objectContaining({
+        action: 'marker',
+        title: 'Slow report',
+        kind: 'caption',
+      }),
     );
   });
 
@@ -203,6 +217,172 @@ describe('recording (DEMOFLOW_RECORD=1)', () => {
   });
 });
 
+// Spec 209: container scrolls, `scrollIntoViewIfNeeded` and the `demoflow`
+// fixture, on the inline pages of test/harness/inline-pages.ts.
+const SCROLLS = 'scrolls.pw.ts';
+const HELPERS = 'helpers.pw.ts';
+const HELPERS_FAILING = ['caption-empty.pw.ts', 'caption-long.pw.ts'];
+const SCROLL_FIRST = 'scroll-first.pw.ts';
+
+describe('spec 209 (DEMOFLOW_RECORD=1)', () => {
+  let run: PlaywrightRun;
+  let tree: Map<string, string>;
+
+  beforeAll(async () => {
+    await rm(OUTPUT, { recursive: true, force: true });
+    run = await runPlaywright({
+      files: [SCROLLS, HELPERS, SCROLL_FIRST, ...HELPERS_FAILING],
+      record: '1',
+      baseURL: fixture.origin,
+      password,
+    });
+    tree = await readTree(OUTPUT);
+  });
+
+  function testResult(file: string, title: string): ProbeResult {
+    const found = run.results.find(
+      (each) => each.file.endsWith(file) && each.title === title,
+    );
+    if (found === undefined) {
+      throw new Error(`${file} › ${title} did not run:\n${run.output}`);
+    }
+    return found;
+  }
+
+  /** The steps `<file> › <title>` recorded; it must have passed. */
+  function stepsOf(file: string, title: string): unknown[] {
+    expect(testResult(file, title).status, title).toBe('passed');
+    const at = written(file, title.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+    const text = tree.get(at);
+    if (text === undefined) {
+      throw new Error(`${at} not written; written: ${[...tree.keys()]}`);
+    }
+    return (JSON.parse(text) as { steps: unknown[] }).steps;
+  }
+
+  /**
+   * The `not recorded:` reports of a test, once each: the JSON report can
+   * carry an annotation on both the test and its result.
+   */
+  function reported(file: string, title: string): string[] {
+    const descriptions = testResult(file, title)
+      .annotations.map((annotation) => annotation.description ?? '')
+      .filter((description) => description.startsWith('not recorded:'));
+    return [...new Set(descriptions)];
+  }
+
+  it('records an id-only container as within {css: "#<id>"}', () => {
+    expect(stepsOf(SCROLLS, 'id-only container')).toContainEqual({
+      action: 'scroll',
+      to: 'bottom',
+      within: { css: '#by-id' },
+    });
+  });
+
+  it('reports a container with neither data-testid nor id', async () => {
+    const title = 'container without testid or id';
+    expect(
+      stepsOf(SCROLLS, title).some(
+        (step) => (step as { action: string }).action === 'scroll',
+      ),
+    ).toBe(false);
+    // The wheel is on the line after the hover that aims it.
+    const line = (await lineOf(SCROLLS, "locator('.anonymous')")) + 1;
+    expect(reported(SCROLLS, title)).toEqual([
+      `not recorded: page.mouse.wheel at test/playwright/scrolls.pw.ts:${line}: the scroll container has no data-testid or id`,
+    ]);
+  });
+
+  it('reports a wheel that ends mid-container', async () => {
+    const title = 'mid-container';
+    const line = await lineOf(SCROLLS, 'page.mouse.wheel(0, 100)');
+    expect(
+      stepsOf(SCROLLS, title).some(
+        (step) => (step as { action: string }).action === 'scroll',
+      ),
+    ).toBe(false);
+    expect(reported(SCROLLS, title)).toEqual([
+      `not recorded: page.mouse.wheel at test/playwright/scrolls.pw.ts:${line}: the scroll ends mid-container`,
+    ]);
+  });
+
+  it('records a wheel back up as to: "top"', () => {
+    const scrolls = stepsOf(SCROLLS, 'back to the top').filter(
+      (step) => (step as { action: string }).action === 'scroll',
+    );
+    expect(scrolls).toEqual([
+      { action: 'scroll', to: 'bottom', within: { css: '#by-id' } },
+      { action: 'scroll', to: 'top', within: { css: '#by-id' } },
+    ]);
+  });
+
+  it('records a wheel over a non-scrollable box as a page scroll', () => {
+    expect(stepsOf(SCROLLS, 'page scroll')).toContainEqual({
+      action: 'scroll',
+      to: 'bottom',
+    });
+    expect(reported(SCROLLS, 'page scroll')).toEqual([]);
+  });
+
+  it('records scrollIntoViewIfNeeded as scroll {target}', () => {
+    expect(stepsOf(SCROLLS, 'scroll into view')).toEqual([
+      { action: 'navigate', path: '/inline/scrolls' },
+      { action: 'scroll', target: { testId: 'x' } },
+    ]);
+  });
+
+  it('fails scrollIntoViewIfNeeded on .first() with its line', async () => {
+    const line = await lineOf(SCROLL_FIRST, '.first()');
+    const message = result(run, SCROLL_FIRST).errors.join('\n');
+    expect(result(run, SCROLL_FIRST).status).toBe('failed');
+    expect(message).toContain(
+      `cannot record locator.scrollIntoViewIfNeeded at test/playwright/${SCROLL_FIRST}:${line}`,
+    );
+  });
+
+  it('records demoflow.scene in call order', () => {
+    expect(stepsOf(HELPERS, 'scene')).toEqual([
+      { action: 'navigate', path: '/inline/buttons' },
+      {
+        action: 'click',
+        target: { role: 'button', name: 'Add to cart' },
+      },
+      { action: 'marker', title: 'Checkout', kind: 'scene' },
+      { action: 'click', target: { role: 'button', name: 'Checkout' } },
+    ]);
+  });
+
+  it('fails an empty or a 121-character caption with its line, caught or not', async () => {
+    for (const file of HELPERS_FAILING) {
+      const line = await lineOf(file, 'demoflow.caption(');
+      expect(result(run, file).status, file).toBe('failed');
+      expect(result(run, file).errors.join('\n'), file).toContain(
+        `demoflow.caption: expected 1–120 characters at test/playwright/${file}:${line}`,
+      );
+    }
+  });
+
+  it('writes no scenario for the failing tests', () => {
+    const failing = [SCROLL_FIRST, ...HELPERS_FAILING].map(
+      (file) =>
+        `playwright/${file.replace(/\.ts$/, '').replace(/[^a-z0-9]+/g, '-')}/`,
+    );
+    for (const file of tree.keys()) {
+      expect(
+        failing.some((dir) => file.startsWith(dir)),
+        file,
+      ).toBe(false);
+    }
+  });
+});
+
+const PASSING_THROUGH = [
+  ...PROBES.map((probe) => probe.file),
+  'passthrough.pw.ts',
+  HELPERS,
+  ...HELPERS_FAILING,
+];
+
 describe.each([
   ['unset', undefined],
   ['0', '0'],
@@ -212,16 +392,16 @@ describe.each([
   beforeAll(async () => {
     await rm(OUTPUT, { recursive: true, force: true });
     run = await runPlaywright({
-      files: [...PROBES.map((probe) => probe.file), 'passthrough.pw.ts'],
+      files: PASSING_THROUGH,
       record,
       baseURL: fixture.origin,
       password,
     });
   });
 
-  it('passes the probes, with the real page and expect', () => {
+  it('passes the probes and the helper calls, with the real page and expect', () => {
     expect(run.code, run.output).toBe(0);
-    for (const file of [...PROBES.map((p) => p.file), 'passthrough.pw.ts']) {
+    for (const file of PASSING_THROUGH) {
       expect(result(run, file).status, file).toBe('passed');
     }
   });
