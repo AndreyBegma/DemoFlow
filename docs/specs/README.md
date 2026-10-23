@@ -97,6 +97,7 @@ renderer.
 |---|---|---|
 | [#150](https://github.com/AndreyBegma/DemoFlow/issues/150) | [Real-run hold test flake](150-real-run-hold-flake.md) | — |
 | [#176](https://github.com/AndreyBegma/DemoFlow/issues/176) | [Vertical 9:16 export](176-vertical-export.md) | — |
+| [#236](https://github.com/AndreyBegma/DemoFlow/issues/236) | [Vertical GIF and WebM export](236-vertical-gif-webm.md) — spec 176 follow-up | — |
 | [#177](https://github.com/AndreyBegma/DemoFlow/issues/177) | [Delete my account](177-account-deletion.md) | — |
 | [#178](https://github.com/AndreyBegma/DemoFlow/issues/178) | [Projects and the demo library](178-projects-and-library.md) | — |
 | [#179](https://github.com/AndreyBegma/DemoFlow/issues/179) | [Documentation section](179-docs-section.md) | — |
@@ -108,6 +109,9 @@ renderer.
 | [#191](https://github.com/AndreyBegma/DemoFlow/issues/191) | [Video relay (API) and its protocol](191-video-relay-api.md) | — |
 | [#192](https://github.com/AndreyBegma/DemoFlow/issues/192) | [The runner daemon streams a reported run's video](192-runner-serves-video.md) | #191 (merge order) |
 | [#193](https://github.com/AndreyBegma/DemoFlow/issues/193) | [Run page and the `VideoPlayer` adapter](193-run-video-page.md) | #191 |
+| [#233](https://github.com/AndreyBegma/DemoFlow/issues/233) | [Delete a run's artifacts on its machine (API) and its protocol](233-delete-run-artifacts-api.md) | — |
+| [#234](https://github.com/AndreyBegma/DemoFlow/issues/234) | [The runner daemon deletes a reported run's artifacts](234-runner-deletes-artifacts.md) | #233 (merge order) |
+| [#235](https://github.com/AndreyBegma/DemoFlow/issues/235) | [Delete a run's video files from the run page](235-run-page-delete-artifacts.md) | #233 |
 
 ## Phase 7 — Optional SDK
 
