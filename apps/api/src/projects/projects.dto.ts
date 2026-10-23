@@ -118,4 +118,8 @@ export class RunsPageQueryDto {
   @IsString()
   @MaxLength(64)
   cursor?: string;
+
+  @IsOptional()
+  @IsIn(RUN_STATUSES)
+  status?: (typeof RUN_STATUSES)[number];
 }

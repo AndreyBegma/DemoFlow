@@ -239,6 +239,16 @@ export const en = {
         title: 'No runs yet',
         body: 'Runs show up here after demoflow run on a paired machine in this folder.',
       },
+      filter: {
+        label: 'Filter by status',
+        all: 'All',
+        passed: 'Passed',
+        failed: 'Failed',
+      },
+      emptyFiltered: {
+        passed: 'No passed runs.',
+        failed: 'No failed runs.',
+      },
       columns: {
         scenario: 'Scenario',
         status: 'Status',

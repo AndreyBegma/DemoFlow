@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type Run, type Runner } from '@prisma/client';
+import { Prisma, type Run, type Runner, type RunStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import type {
   CreateProjectDto,
@@ -243,8 +243,16 @@ export class ProjectsService {
     }
   }
 
-  /** Newest first, `RUNS_PAGE_SIZE` per page; `cursor` is the last run seen. */
-  async runs(userId: string, id: string, cursor?: string): Promise<RunsPage> {
+  /**
+   * Newest first, `RUNS_PAGE_SIZE` per page; `cursor` is the last run seen,
+   * and must have the same `status` when one is given.
+   */
+  async runs(
+    userId: string,
+    id: string,
+    cursor?: string,
+    status?: RunStatus,
+  ): Promise<RunsPage> {
     const project = await this.prisma.project.findFirst({
       where: { id, userId },
       select: { id: true },
@@ -254,14 +262,14 @@ export class ProjectsService {
     }
     if (cursor !== undefined) {
       const seen = await this.prisma.run.count({
-        where: { id: cursor, projectId: id },
+        where: { id: cursor, projectId: id, ...(status && { status }) },
       });
       if (seen !== 1) {
         throw new BadRequestException('Unknown cursor');
       }
     }
     const runs = await this.prisma.run.findMany({
-      where: { projectId: id },
+      where: { projectId: id, ...(status && { status }) },
       orderBy: NEWEST_FIRST,
       take: RUNS_PAGE_SIZE + 1,
       ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 }),

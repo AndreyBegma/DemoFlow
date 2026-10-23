@@ -372,8 +372,18 @@ export function cancelLaunch(projectId: string) {
   );
 }
 
-export function listProjectRuns(id: string, cursor?: string, target?: Target) {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+export type RunStatusFilter = ProjectRun['status'];
+
+export function listProjectRuns(
+  id: string,
+  cursor?: string,
+  target?: Target,
+  status?: RunStatusFilter,
+) {
+  const params = new URLSearchParams();
+  if (cursor) params.set('cursor', cursor);
+  if (status) params.set('status', status);
+  const query = params.size > 0 ? `?${params}` : '';
   return request<ProjectRunsPage>(
     `/projects/${encodeURIComponent(id)}/runs${query}`,
     { method: 'GET' },
