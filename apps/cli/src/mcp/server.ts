@@ -25,6 +25,11 @@ import {
   osDataDir,
   runDir as runDirFor,
 } from '../config/index.ts';
+import { runnerPaths } from '../runner/paths.ts';
+import {
+  pageUrlFor,
+  readReportedRunsByDir,
+} from '../runs-report/reported-runs.ts';
 import { packageVersion } from '../version.ts';
 import { ToolError } from './errors.ts';
 import {
@@ -39,7 +44,7 @@ import {
   MAX_LIST_LIMIT,
   validateScenario,
 } from './readonly.ts';
-import type { TaskQueue, TaskStatus } from './tasks.ts';
+import { isTerminal, type TaskQueue, type TaskStatus } from './tasks.ts';
 import { type TaskView, taskView } from './view.ts';
 
 const DEFAULT_TIMEOUT_MINUTES = 15;
@@ -299,11 +304,22 @@ export function createMcpServer(deps: McpServerDeps): Server {
       taskId: input.taskId,
       status: task.status,
       runDir: task.spec.runDir,
+      pageUrl: isTerminal(task.status)
+        ? await pageUrlOf(task.spec.runDir)
+        : undefined,
       result: task.result,
       message: task.message,
       position:
         task.status === 'queued' ? queue.position(input.taskId) : undefined,
     });
+  }
+
+  /** Spec 225: read per call, never cached; a run reports in its last 2 s. */
+  async function pageUrlOf(runDir: string): Promise<string | undefined> {
+    return pageUrlFor(
+      await readReportedRunsByDir(runnerPaths(host).reportedRuns),
+      runDir,
+    );
   }
 
   async function cancelTask(
@@ -332,6 +348,7 @@ export function createMcpServer(deps: McpServerDeps): Server {
           status: finished ? 'completed' : 'failed',
           runDir,
           result,
+          pageUrl: await pageUrlOf(runDir),
           message:
             result.status === 'running'
               ? 'the run never finished: the server that ran it stopped'
@@ -342,6 +359,7 @@ export function createMcpServer(deps: McpServerDeps): Server {
           taskId,
           status: 'failed',
           runDir,
+          pageUrl: await pageUrlOf(runDir),
           message: 'the run directory has no readable result.json',
         });
       }

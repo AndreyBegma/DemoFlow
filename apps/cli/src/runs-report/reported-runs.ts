@@ -18,6 +18,48 @@ export interface ReportedRun {
   id: string;
   runDir: string;
   at: string;
+  /** Spec 225: the server's project id; absent on older lines. */
+  projectId?: string;
+  /** Spec 225: the server origin at report time; absent on older lines. */
+  server?: string;
+}
+
+/** Spec 225, Decision 2: the run's page on the website, when the entry has what it takes. */
+export function runPageUrl(entry: ReportedRun): string | undefined {
+  if (entry.server === undefined || entry.projectId === undefined) {
+    return undefined;
+  }
+  return `${entry.server}/app/projects/${encodeURIComponent(entry.projectId)}/runs/${encodeURIComponent(entry.id)}`;
+}
+
+/**
+ * Spec 225, Decision 3: one read of the index, keyed by `path.resolve(runDir)`;
+ * the last line for a directory wins. Never throws: a missing or unreadable
+ * file gives an empty map, and malformed lines are skipped.
+ */
+export async function readReportedRunsByDir(
+  file: string,
+): Promise<Map<string, ReportedRun>> {
+  const byDir = new Map<string, ReportedRun>();
+  try {
+    const text = await readFile(file, 'utf8');
+    for (const line of text.split('\n')) {
+      const entry = parseLine(line);
+      if (entry !== null) byDir.set(path.resolve(entry.runDir), entry);
+    }
+  } catch {
+    // An unreadable index is an empty one.
+  }
+  return byDir;
+}
+
+/** The page URL of a run directory, from a map read once. */
+export function pageUrlFor(
+  index: ReadonlyMap<string, ReportedRun>,
+  runDir: string,
+): string | undefined {
+  const entry = index.get(path.resolve(runDir));
+  return entry === undefined ? undefined : runPageUrl(entry);
 }
 
 /**
@@ -80,8 +122,20 @@ function parseLine(line: string): ReportedRun | null {
     return null;
   }
   if (typeof value !== 'object' || value === null) return null;
-  const { id, runDir, at } = value as Record<string, unknown>;
+  const { id, runDir, at, projectId, server } = value as Record<
+    string,
+    unknown
+  >;
   if (typeof id !== 'string' || id === '') return null;
   if (typeof runDir !== 'string' || runDir === '') return null;
-  return { id, runDir, at: typeof at === 'string' ? at : '' };
+  const entry: ReportedRun = {
+    id,
+    runDir,
+    at: typeof at === 'string' ? at : '',
+  };
+  if (typeof projectId === 'string' && projectId !== '') {
+    entry.projectId = projectId;
+  }
+  if (typeof server === 'string' && server !== '') entry.server = server;
+  return entry;
 }

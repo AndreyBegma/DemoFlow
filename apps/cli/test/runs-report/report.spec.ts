@@ -31,6 +31,9 @@ import {
   findReportedRun,
   INDEX_KEEP_LINES,
   INDEX_MAX_BYTES,
+  type ReportedRun,
+  readReportedRunsByDir,
+  runPageUrl,
 } from '../../src/runs-report/reported-runs.ts';
 
 const TOKEN = 'dfr_secret-token-value';
@@ -158,7 +161,10 @@ describe('reportRun', () => {
   });
   const ok: ReportDeps['fetch'] = async (url, init) => {
     calls.push({ url: String(url), init: init ?? {} });
-    return Response.json({ runId: 'srv-1' }, { status: 201 });
+    return Response.json(
+      { runId: 'srv-1', projectId: 'proj-1' },
+      { status: 201 },
+    );
   };
   const input = () => ({ root: ROOT, runDir: RUN_DIR, result: result() });
   const index = () => runnerPaths(host).reportedRuns;
@@ -288,8 +294,20 @@ describe('reportRun', () => {
       id: 'srv-1',
       runDir: RUN_DIR,
       at: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
+      projectId: 'proj-1',
+      server: 'https://demo.example',
     });
     expect(path.dirname(index())).toBe(path.dirname(credentialsPath(host)));
+  });
+
+  it('writes the line without projectId when the answer has none', async () => {
+    pair();
+    const noProject: ReportDeps['fetch'] = async () =>
+      Response.json({ runId: 'srv-1' }, { status: 201 });
+    await reportRun(input(), deps(noProject));
+    const [line] = indexLines();
+    expect(line).not.toHaveProperty('projectId');
+    expect(line).toMatchObject({ id: 'srv-1', runDir: RUN_DIR });
   });
 
   const answers: Array<[string, ReportDeps['fetch']]> = [
@@ -381,6 +399,49 @@ describe('reported-runs.jsonl', () => {
       runDir: 'second',
     });
     await expect(findReportedRun(file, 'c')).resolves.toBeNull();
+  });
+
+  it('still parses lines written before projectId and server existed', async () => {
+    writeFileSync(
+      file,
+      `${JSON.stringify({ id: 'old', runDir: '/r/old', at: 'x' })}\n`,
+    );
+    const found = await findReportedRun(file, 'old');
+    expect(found).toEqual({ id: 'old', runDir: '/r/old', at: 'x' });
+    expect(runPageUrl(found as ReportedRun)).toBeUndefined();
+  });
+
+  it('builds the page URL only from an entry with both fields', () => {
+    const base = { id: 'r 1', runDir: '/r', at: '' };
+    expect(
+      runPageUrl({ ...base, projectId: 'p/1', server: 'https://s.example' }),
+    ).toBe('https://s.example/app/projects/p%2F1/runs/r%201');
+    expect(runPageUrl({ ...base, projectId: 'p' })).toBeUndefined();
+    expect(
+      runPageUrl({ ...base, server: 'https://s.example' }),
+    ).toBeUndefined();
+  });
+
+  it('maps a run directory to its last entry', async () => {
+    const dirA = path.join(dir, 'a');
+    appendReportedRun(file, { ...entry('first', dirA), projectId: 'p1' });
+    appendReportedRun(file, entry('other'));
+    appendReportedRun(file, {
+      ...entry('second', `${dirA}${path.sep}.`),
+      projectId: 'p2',
+    });
+    const byDir = await readReportedRunsByDir(file);
+    expect(byDir.size).toBe(2);
+    expect(byDir.get(path.resolve(dirA))).toMatchObject({
+      id: 'second',
+      projectId: 'p2',
+    });
+  });
+
+  it('gives an empty map for a missing or garbage index', async () => {
+    expect((await readReportedRunsByDir(file)).size).toBe(0);
+    writeFileSync(file, '{nope\n[]\nnull\n\u0000\u0001\n');
+    expect((await readReportedRunsByDir(file)).size).toBe(0);
   });
 
   it('skips malformed lines', async () => {

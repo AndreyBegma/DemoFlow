@@ -4,6 +4,11 @@ import path from 'node:path';
 import { resolveFfmpeg } from '@demoflow/renderer';
 import { readResult } from '../commands/settle.ts';
 import { type HostEnvironment, runDir as runDirFor } from '../config/index.ts';
+import { runnerPaths } from '../runner/paths.ts';
+import {
+  pageUrlFor,
+  readReportedRunsByDir,
+} from '../runs-report/reported-runs.ts';
 import { ToolError } from './errors.ts';
 import {
   checkInlineScenario,
@@ -59,6 +64,8 @@ export interface DemoSummary {
   video?: string;
   /** Every rendered file on disk, in order (spec 133). */
   videos?: RenderedVideo[];
+  /** The run's page on the DemoFlow website, when it was reported (spec 225). */
+  pageUrl?: string;
 }
 
 /** Recent runs of the project's home, newest first; unreadable ones are skipped. */
@@ -77,6 +84,7 @@ export async function listDemos(
     return { demos: [] };
   }
 
+  const reported = await readReportedRunsByDir(runnerPaths(host).reportedRuns);
   const demos: DemoSummary[] = [];
   for (const name of names) {
     const runDir = runDirFor(project.home, name, host.platform);
@@ -95,6 +103,8 @@ export async function listDemos(
         demo.video = videos[0].path;
         demo.videos = videos;
       }
+      const pageUrl = pageUrlFor(reported, runDir);
+      if (pageUrl !== undefined) demo.pageUrl = pageUrl;
       demos.push(demo);
     } catch {
       // No result.json, or one that is not a run result: not a demo.
