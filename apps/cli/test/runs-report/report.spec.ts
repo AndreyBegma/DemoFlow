@@ -31,6 +31,7 @@ import {
   findReportedRun,
   INDEX_KEEP_LINES,
   INDEX_MAX_BYTES,
+  knownRoots,
   type ReportedRun,
   readReportedRunsByDir,
   runPageUrl,
@@ -296,8 +297,22 @@ describe('reportRun', () => {
       at: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
       projectId: 'proj-1',
       server: 'https://demo.example',
+      root: path.resolve(ROOT),
     });
     expect(path.dirname(index())).toBe(path.dirname(credentialsPath(host)));
+  });
+
+  it('records the canonical root it sent, which registers the project', async () => {
+    pair();
+    const real = path.join(home, 'real');
+    const link = path.join(home, 'link');
+    mkdirSync(real);
+    symlinkSync(real, link, 'junction');
+    await reportRun({ ...input(), root: link }, deps(ok));
+    const sent = JSON.parse(String(calls[0]?.init.body)).rootPath;
+    expect(sent).toBe(realpathSync.native(real));
+    expect(indexLines()[0]).toMatchObject({ root: sent });
+    await expect(knownRoots(index())).resolves.toEqual(new Set([sent]));
   });
 
   it('writes the line without projectId when the answer has none', async () => {
@@ -409,6 +424,30 @@ describe('reported-runs.jsonl', () => {
     const found = await findReportedRun(file, 'old');
     expect(found).toEqual({ id: 'old', runDir: '/r/old', at: 'x' });
     expect(runPageUrl(found as ReportedRun)).toBeUndefined();
+  });
+
+  it('knows the roots of lines that carry one, and skips older lines', async () => {
+    await expect(knownRoots(file)).resolves.toEqual(new Set());
+    writeFileSync(
+      file,
+      [
+        JSON.stringify({ id: 'old', runDir: '/r/old', at: 'x' }),
+        JSON.stringify({ ...entry('a'), root: '/p/a' }),
+        JSON.stringify({ ...entry('b'), root: '' }),
+        JSON.stringify({ ...entry('c'), root: 42 }),
+        '{nope',
+        JSON.stringify({ ...entry('d'), root: '/p/a' }),
+        JSON.stringify({ ...entry('e'), root: '/p/e' }),
+        '',
+      ].join('\n'),
+    );
+    await expect(knownRoots(file)).resolves.toEqual(new Set(['/p/a', '/p/e']));
+    await expect(findReportedRun(file, 'a')).resolves.toMatchObject({
+      root: '/p/a',
+    });
+    await expect(findReportedRun(file, 'old')).resolves.not.toHaveProperty(
+      'root',
+    );
   });
 
   it('builds the page URL only from an entry with both fields', () => {
