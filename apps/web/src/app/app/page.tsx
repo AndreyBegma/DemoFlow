@@ -1,15 +1,18 @@
 import { Banner } from '@andrewbehma/glass-ui/banner';
-import { Card } from '@andrewbehma/glass-ui/card';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ResendButton } from '@/components/auth/resend-button';
 import { SignOutButton } from '@/components/auth/sign-out-button';
+import { MachinesSummary } from '@/components/dashboard/machines-summary';
+import { RecentProjects } from '@/components/dashboard/recent-projects';
 import { t } from '@/i18n';
-import { getSessionUser } from '@/lib/session';
+import { getRunners, getSessionUser } from '@/lib/session';
+import { getProjects } from './projects/_data';
 
 export default async function AppPage() {
   const user = await getSessionUser();
   if (!user) redirect('/sign-in');
+  const [projects, runners] = await Promise.all([getProjects(), getRunners()]);
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-4 p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -42,10 +45,9 @@ export default async function AppPage() {
           </div>
         </Banner>
       )}
-      <Card pad="lg">
-        <h1 className="text-2xl font-semibold">{t('app.shell.title')}</h1>
-        <p className="mt-2 text-sm text-ink-2">{t('app.shell.empty')}</p>
-      </Card>
+      <h1 className="text-2xl font-semibold">{t('dashboard.title')}</h1>
+      <RecentProjects projects={projects} />
+      <MachinesSummary runners={runners} />
     </main>
   );
 }
