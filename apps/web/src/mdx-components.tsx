@@ -66,6 +66,12 @@ const components: MDXComponents = {
       {...props}
     />
   ),
+  blockquote: (props) => (
+    <blockquote
+      className="mt-6 rounded-surface border border-line-strong border-l-4 bg-raised px-4 py-1 text-ink"
+      {...props}
+    />
+  ),
   table: (props) => (
     <div className="mt-4 overflow-x-auto">
       <table

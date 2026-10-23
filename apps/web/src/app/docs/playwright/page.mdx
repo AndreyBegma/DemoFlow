@@ -1,0 +1,244 @@
+export const metadata = { title: 'Reuse Playwright tests' };
+
+# Reuse Playwright tests
+
+If you already have Playwright tests, change one import and DemoFlow records
+each passing test as a scenario. DemoFlow then records the demo from the
+scenario, at demo pace and with its masks. The test itself is not the video.
+
+## Set up
+
+Install DemoFlow beside `@playwright/test`. DemoFlow supports `@playwright/test`
+`>=1.62.0 <2.0.0`.
+
+```sh
+npm i -D demoflow @playwright/test
+```
+
+Import `test` **and** `expect` from `demoflow/playwright` in place of
+`@playwright/test`:
+
+```ts
+import { expect, test } from 'demoflow/playwright';
+```
+
+Both must come from `demoflow/playwright`. An assertion made with Playwright's
+own `expect` is not recorded.
+
+## Record and replay
+
+Set `DEMOFLOW_RECORD=1` and run your tests as usual:
+
+```sh
+DEMOFLOW_RECORD=1 npx playwright test
+```
+
+Each test that **passes** is written as a scenario. A test that fails writes
+nothing. Without the variable nothing is wrapped and nothing is written, so
+the same test file is still a plain Playwright test.
+
+A scenario is written to
+`demoflow/playwright/[<project>/]<file>/<title>.demo.json`, under the directory
+of your Playwright config:
+
+- `<project>` is the project's name, and is there only when the config has more
+  than one project.
+- `<file>` is the test file's path below the project's `testDir`, without the
+  extension. `tests/signup.spec.ts` becomes `signup-spec`.
+- `<title>` is the `describe` titles and the test title, joined with `-`.
+- Every segment is lower-cased, each run of characters outside `a-z` and `0-9`
+  becomes `-`, and it is cut to 80 characters. A segment with nothing left is
+  `test`.
+
+If two tests would write the same file, the second one fails with
+`demoflow: <path> is already written by "<title>"`.
+
+Replay a scenario with the CLI, from the directory of your
+`demoflow.config.json`:
+
+```sh
+npx demoflow run demoflow/playwright/signup-spec/sign-up.demo.json
+```
+
+Commit the scenario and edit it: add captions, zoom, or a `wait`. The
+[scenario format](/docs/scenarios) is the same one `demoflow record` writes.
+Recording a test twice gives the same bytes. A scenario has no `baseUrl`, so
+the project's [`demoflow.config.json`](/docs/config) decides where the replay
+runs.
+
+A test like this:
+
+```ts
+import { expect, test } from 'demoflow/playwright';
+
+test('sign up', async ({ page, demoflow }) => {
+  await page.goto('/signup');
+
+  await test.step('Create the account', async () => {
+    await page.getByLabel('Email').fill('ada@example.com');
+    await page.getByLabel('Password').fill(process.env.DEMO_PASSWORD!);
+    demoflow.caption('Accounts are ready in seconds');
+    await page.getByRole('button', { name: 'Sign up' }).click();
+  });
+
+  await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible();
+});
+```
+
+is written, with `DEMO_PASSWORD` set and `baseURL` set in the Playwright
+config, as `demoflow/playwright/signup-spec/sign-up.demo.json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "sign up",
+  "description": "Recorded from tests/signup.spec.ts by demoflow/playwright.",
+  "viewport": { "width": 1280, "height": 720 },
+  "steps": [
+    { "action": "navigate", "path": "/signup" },
+    { "action": "marker", "title": "Create the account", "kind": "scene" },
+    { "action": "fill", "target": { "label": "Email" }, "value": "ada@example.com" },
+    {
+      "action": "fill",
+      "target": { "label": "Password" },
+      "valueFrom": { "env": "DEMO_PASSWORD" }
+    },
+    { "action": "marker", "title": "Accounts are ready in seconds", "kind": "caption" },
+    { "action": "click", "target": { "role": "button", "name": "Sign up" } },
+    { "action": "assertVisible", "target": { "role": "heading", "name": "Welcome" } }
+  ]
+}
+```
+
+The `viewport` is the page's viewport size at the end of the test, and is left
+out when the page has none.
+
+## What is recorded
+
+A call is recorded once it has succeeded. A call that throws records nothing.
+
+| Playwright | Scenario step |
+|---|---|
+| `page.goto(url)` | `navigate`: a `path` when the URL is under the test's `baseURL`, otherwise the `url`. Only `http` and `https`. |
+| `locator.click()`, `locator.hover()` | `click`, `hover` |
+| `locator.fill(value)` | `fill` with a `value`, or a `valueFrom` (see [Secrets](#secrets)) |
+| `locator.selectOption(option)` | `select`: one option, as a string |
+| `locator.press(key)` | `press`, for a key a scenario can send |
+| `locator.waitFor()` | `waitFor` with `state` `visible` or `hidden`, and a `timeout` of 100–60000 ms as `timeoutMs` |
+| `locator.scrollIntoViewIfNeeded()` | `scroll` to the target |
+| `page.screenshot({ path })` | `screenshot`, named after the file without its extension |
+| A scroll that ends at the top or bottom of the page | `scroll` with `to: "top"` or `"bottom"` |
+| A scroll that ends at the top or bottom of a container | `scroll` with `to` and `within`, the container's `{ testId }` or `{ css: "#id" }` |
+| `expect(locator).toBeVisible()` | `assertVisible` |
+| `expect(locator).toHaveText("…")` | `assertText` with `match: "exact"` |
+| `expect(locator).toContainText("…")` | `assertText` with `match: "contains"` |
+| `test.step`, `demoflow.scene`, `demoflow.caption` | `marker` (see [Scenes and captions](#scenes-and-captions)) |
+
+A locator is recorded when it comes straight from `page.getByRole`,
+`getByLabel`, `getByText`, `getByPlaceholder`, `getByTestId` or `page.locator`
+with a plain CSS selector. The only options a locator may use are `name`
+(`getByRole`) and `exact`. A scroll is
+read from its effect, whatever caused it: `page.evaluate` or `page.mouse.wheel`.
+A container is found by the `data-testid` or `id` of the scrolling element
+under the pointer.
+
+### What is not
+
+DemoFlow does not guess. What it cannot express is one of two things.
+
+**An action fails the test.** A click, fill or other action that changes the
+page and has no scenario form throws, and the test fails with its line:
+
+```text
+demoflow: cannot record locator.click at tests/signup.spec.ts:12: a locator built with first() has no scenario form
+```
+
+A test that catches the error still fails, and writes nothing. This covers a
+locator built with `first()`, `nth()`, `filter()`, `locator()` on a locator,
+`getByAltText` or `getByTitle`, a regular expression as a name or text, a
+chained selector (`>>`), an action option such as `button` or `modifiers`,
+`check`, `dblclick`, `type`, `clear`, `setInputFiles`, `dragTo`, a reload or
+history navigation, and raw input from `page.mouse`, `page.keyboard` or
+`page.touchscreen`.
+
+**An assertion or a scroll is left out.** It does not change the page, so the
+test still passes, and the call is listed in the test's annotations with the
+type `demoflow`:
+
+```text
+not recorded: expect(…).toHaveText at tests/signup.spec.ts:20: a regular expression has no scenario form
+```
+
+You see the annotations in the Playwright report. This covers a negated
+assertion, `expect.poll`, an assertion on the page, a matcher other than
+`toBeVisible`, `toHaveText` and `toContainText`, and a scroll that ends between
+the top and the bottom.
+
+Control flow is recorded as it ran, once: a helper function, a loop or an `if`
+leaves the steps that actually happened, in order, not the code. Actions in
+`beforeEach` and `afterEach` are part of the scenario.
+
+## Scenes and captions
+
+`test.step` becomes a scene. Only the outermost step does: a step inside a step
+is not a scene.
+
+```ts
+await test.step('Create the account', async () => {
+  // …
+});
+```
+
+The `demoflow` fixture adds two helpers for what a step cannot say:
+
+```ts
+test('checkout', async ({ page, demoflow }) => {
+  demoflow.scene('Checkout');
+  demoflow.caption('Payment goes through');
+  // …
+});
+```
+
+- `demoflow.scene(title)` records a `scene` marker where there is no
+  `test.step` around it.
+- `demoflow.caption(text)` records a `caption` marker. The text is 1–120
+  characters after trimming, as for a [caption in a scenario](/docs/scenarios).
+  Anything else fails the test, with a message such as
+  `demoflow.caption: expected 1–120 characters at tests/checkout.spec.ts:5`.
+- Without `DEMOFLOW_RECORD=1`, both do nothing.
+
+Scene and caption text appears in the video as written and is never masked, so
+keep secrets out of it.
+
+## Secrets
+
+A secret never reaches a scenario in clear.
+
+- A value you fill from an environment variable is written as
+  `valueFrom: { env }`, whatever the field is. DemoFlow compares the value to
+  your environment when it records. It does this for values of 8 characters or
+  more only, because a short value such as `true` matches by accident. When
+  several variables hold the value, the first by name is used.
+- A fill into a password field with any other value fails the test, before the
+  value is typed, with a message such as
+  `demoflow: refusing to record a password at tests/login.spec.ts:9: fill it from an environment variable`.
+
+```ts
+await page.getByLabel('Password').fill(process.env.DEMO_PASSWORD!);
+```
+
+```json
+{
+  "action": "fill",
+  "target": { "label": "Password" },
+  "valueFrom": { "env": "DEMO_PASSWORD" }
+}
+```
+
+Set the variable when you record and when you run the scenario. See
+[Secrets and masking](/docs/scenarios#secrets-and-masking) for `valueFrom`.
+
+> **Warning:** a Playwright `trace.zip` holds filled values, passwords
+> included, in clear. This is Playwright's own trace (`trace: 'on'`), and it
+> stands whatever DemoFlow does: DemoFlow does not read traces, and it cannot
+> hide what they hold. Do not attach one to a public CI run or an issue.
