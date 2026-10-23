@@ -17,6 +17,12 @@
 # (https://demoflow-app.luna-realm.com). No registry, no ssh: the agents
 # run on the staging host, and the steps that need it get the Docker socket.
 #
+# `test` and `test-pr` run turbo with --concurrency=2, like `build`. Unbounded,
+# turbo ran up to 10 test tasks at once, each with its own jest or vitest
+# worker pool plus Chromium and Postgres, and the kernel SIGKILLed test
+# processes on the shared 61 GB agent host (#242). The bound is a guess, not a
+# measurement: raise it only after a forced full run passes at the higher value.
+#
 # The CI Postgres holds throwaway data. It runs on tmpfs, with fsync,
 # synchronous_commit and full_page_writes off.
 #
@@ -207,7 +213,7 @@ steps:
         else
           echo "test mode: full ($${CI_PIPELINE_EVENT} event)"
         fi
-        bun run test $${FILTER}
+        bun run test -- --concurrency=2 $${FILTER}
 
   - name: test-pr
     image: *ci_image
