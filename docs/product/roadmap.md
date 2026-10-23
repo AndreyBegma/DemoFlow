@@ -69,6 +69,8 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
      9:16 follow-camera waits for that answer;
   3. cards and transitions;
   4. export formats.
+- Vertical GIF and WebM, spec 176's follow-up, are
+  [236](../specs/236-vertical-gif-webm.md).
 
 ## Phase 5 — Website and Runner pairing
 
@@ -102,6 +104,11 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
   under a tag that can be pinned") has fired. No ADR change.
 - The work is the Luna implementation of the `VideoPlayer` adapter, pinned
   exactly, keeping the native `<video>` fallback.
+- Playback through the relay shipped in #191–#193. Deleting a run's
+  artifacts from the website, the fourth action ADR-0008 §3 allows and vision
+  §16's criterion 15, is [233](../specs/233-delete-run-artifacts-api.md)
+  (API and protocol), [234](../specs/234-runner-deletes-artifacts.md) (the
+  daemon) and [235](../specs/235-run-page-delete-artifacts.md) (the run page).
 
 ## Phase 7 — Optional SDK
 

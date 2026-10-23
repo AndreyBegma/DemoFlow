@@ -73,7 +73,8 @@ relay (ADR-0009 §1).
    - `{ suffix: n }`: the last `min(n, size)` bytes; `n = 0` is
      unsatisfiable;
    - `null`: the whole file;
-   - an empty file with a range is unsatisfiable;
+   - an empty file is unsatisfiable, with or without a range: it has no
+     inclusive span to put in `video.head` (the API's `spanOf`, #191, agrees);
    - unsatisfiable gives `video.error { code: 'bad-range', size }`.
 6. **Sending.**
    - The daemon sends `video.head { size, start, end }`, then reads the file
