@@ -222,7 +222,9 @@ describe('demoflow run on a paired machine', () => {
           });
         }
         response.statusCode = status;
-        response.end(JSON.stringify({ runId: 'srv-run' }));
+        response.end(
+          JSON.stringify({ runId: 'srv-run', projectId: 'srv-project' }),
+        );
       });
     });
     await new Promise<void>((resolve) => api.listen(0, '127.0.0.1', resolve));
@@ -264,6 +266,9 @@ describe('demoflow run on a paired machine', () => {
         id: 'srv-run',
         runDir: path.resolve(JSON.parse(result.stdout).runDir),
         at: expect.any(String),
+        // Spec 225: what the MCP tools build the run's page URL from.
+        projectId: 'srv-project',
+        server: apiUrl(),
       },
     ]);
   });
