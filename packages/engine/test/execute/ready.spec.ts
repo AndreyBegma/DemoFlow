@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { type StepInput, TimelineEventSchema } from '@demoflow/core';
 import type { Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -11,13 +12,33 @@ import {
   type RunOutcome,
   runScenario,
 } from '../../src/index.ts';
+import { clockShift } from './page-frames.ts';
 import { scenario } from './scenario.ts';
 
 let site: { origin: string; close(): Promise<void> };
 const runDirs: string[] = [];
 
-/** Records when the page signalled, in the page's `Date.now()`. */
-const STAMP = 'window.signalledAt = Date.now();';
+/** Records when the page signalled, in the page's `performance.now()`. */
+const STAMP = 'window.signalledAt = performance.now();';
+
+/** The page global (a registered symbol) the poll probe records on. */
+const POLLS_KEY = 'demoflow.test.polls';
+
+/** The event the poll probe dispatches on the wait's first look at the watched name. */
+const FIRST_LOOK = 'demoflow-test-first-look';
+
+/** The engine's poll interval (`POLL_MS` in `src/execute/ready.ts`). */
+const POLL_MS = 50;
+
+/** One look at the ready set for the watched name, in page time: when, and whether it was there. */
+type Poll = readonly [atMs: number, ready: boolean];
+
+/** What the poll probe recorded, in page time. */
+interface PollRecord {
+  polls: Poll[];
+  /** A `setTimeout(POLL_MS)` chain of the page's own: how late this page fires such a timer. */
+  ticks: number[];
+}
 
 /**
  * #198: inline pages. Each signals (or not) in its own way; the page reports
@@ -25,7 +46,8 @@ const STAMP = 'window.signalledAt = Date.now();';
  */
 const PAGES: Readonly<Record<string, string>> = {
   '/load': `<h1>Load</h1><script>${STAMP} window.demoflow?.ready('loaded')</script>`,
-  '/late': `<h1>Late</h1><script>setTimeout(() => { ${STAMP} window.demoflow.ready('late') }, 500)</script>`,
+  // 500 ms after the wait first looks, not after load: a slow navigate must not eat the wait's silence.
+  '/late': `<h1>Late</h1><script>addEventListener('${FIRST_LOOK}', () => setTimeout(() => { ${STAMP} window.demoflow.ready('late') }, 500), { once: true })</script>`,
   '/silent': '<h1>Silent</h1>',
   // A script in <head> runs before <body> exists.
   '/head': `<!doctype html><html><head><script>window.demoflow.ready('from-head'); window.bodyAtSignal = document.body === null</script></head><body><h1>Head</h1></body></html>`,
@@ -84,49 +106,75 @@ interface Seen {
   demoflow: { version: unknown; frozen: boolean } | undefined;
   bodyAtSignal: unknown;
   signalledAt: number | undefined;
+  /** The watched name's polls and the page's reference ticks so far; empty unless the run watches one. */
+  record: PollRecord;
+  /** The test process's clock minus the page's, when `watch` is set. */
+  shift: { minMs: number; maxMs: number } | undefined;
 }
 
-/** Runs the steps; reads the page after each step, and notes when each step began. */
-async function run(steps: StepInput[]): Promise<{
+/**
+ * Runs the steps; reads the page after each step. With `watch`, also records
+ * every poll of the ready set for that name and takes a clock exchange after
+ * each step, to place the engine's times in page time (as `page-frames.ts`
+ * does for #173).
+ */
+async function run(
+  steps: StepInput[],
+  watch?: string,
+): Promise<{
   outcome: RunOutcome;
   seen: Map<number, Seen>;
-  /** The test process's clock when each step began. */
-  began: Map<number, { nowMs: number; startMs: number }>;
+  /** The test process's clock at engine zero, at the latest. */
+  zeroMs: number;
 }> {
   const runDir = await mkdtemp(path.join(tmpdir(), 'demoflow-ready-'));
   runDirs.push(runDir);
   const seen = new Map<number, Seen>();
-  const began = new Map<number, { nowMs: number; startMs: number }>();
+  let zeroMs = Number.POSITIVE_INFINITY;
   let page: Page | undefined;
   const observer: EngineObserver = {
-    onPageCreated: (event) => {
+    onPageCreated: async (event) => {
+      // The engine's clock starts before the page is announced.
+      zeroMs = performance.now();
       page = event.page;
+      if (watch !== undefined) {
+        await page.addInitScript(pollProbe, {
+          key: POLLS_KEY,
+          name: watch,
+          intervalMs: POLL_MS,
+          firstLook: FIRST_LOOK,
+        });
+      }
     },
-    onStepStarted: ({ stepIndex, startMs }) => {
-      began.set(stepIndex, { nowMs: Date.now(), startMs });
+    onStepStarted: ({ startMs }) => {
+      zeroMs = Math.min(zeroMs, performance.now() - startMs);
     },
     onStepFinished: async ({ stepIndex }) => {
       if (page === undefined) return;
-      seen.set(
-        stepIndex,
-        await page.evaluate(() => {
-          const w = window as unknown as Record<string, unknown> & {
+      const read = await page.evaluate((key) => {
+        const w = window as unknown as Record<string, unknown> &
+          Record<symbol, PollRecord | undefined> & {
             demoflow?: { version: unknown };
           };
-          return {
-            title: document.title,
-            demoflow:
-              w.demoflow === undefined
-                ? undefined
-                : {
-                    version: w.demoflow.version,
-                    frozen: Object.isFrozen(w.demoflow),
-                  },
-            bodyAtSignal: w.bodyAtSignal,
-            signalledAt: w.signalledAt as number | undefined,
-          };
-        }),
-      );
+        return {
+          title: document.title,
+          demoflow:
+            w.demoflow === undefined
+              ? undefined
+              : {
+                  version: w.demoflow.version,
+                  frozen: Object.isFrozen(w.demoflow),
+                },
+          bodyAtSignal: w.bodyAtSignal,
+          signalledAt: w.signalledAt as number | undefined,
+          record: {
+            polls: [...(w[Symbol.for(key)]?.polls ?? [])],
+            ticks: [...(w[Symbol.for(key)]?.ticks ?? [])],
+          },
+        };
+      }, POLLS_KEY);
+      const shift = watch === undefined ? undefined : await clockShift(page);
+      seen.set(stepIndex, { ...read, shift });
     },
   };
   const outcome = await runScenario(scenario(steps), {
@@ -136,7 +184,57 @@ async function run(steps: StepInput[]): Promise<{
     env: {},
     observers: [observer],
   });
-  return { outcome, seen, began };
+  return { outcome, seen, zeroMs };
+}
+
+/**
+ * Runs in every document, after the engine's ready script: records each look
+ * at a set for `name` — the engine's poll reads the ready set with `has` —
+ * dispatches `FIRST_LOOK` on the first one, and runs a `setTimeout(intervalMs)`
+ * chain of its own, the reference for how late this page fires a timer of the
+ * engine's interval.
+ */
+function pollProbe(input: {
+  key: string;
+  name: string;
+  intervalMs: number;
+  firstLook: string;
+}): void {
+  const record = {
+    polls: [] as Array<[number, boolean]>,
+    ticks: [] as number[],
+  };
+  Object.defineProperty(window, Symbol.for(input.key), { value: record });
+  const has = Set.prototype.has;
+  Set.prototype.has = function (this: Set<unknown>, value: unknown): boolean {
+    const ready = has.call(this, value);
+    if (value === input.name) {
+      record.polls.push([window.performance.now(), ready]);
+      if (record.polls.length === 1) {
+        window.dispatchEvent(new Event(input.firstLook));
+      }
+    }
+    return ready;
+  };
+  const tick = (): void => {
+    record.ticks.push(window.performance.now());
+    setTimeout(tick, input.intervalMs);
+  };
+  tick();
+}
+
+/**
+ * The longest gap of the page's reference chain from `fromMs` through the
+ * first tick after `toMs`: the page's own interval, as late as it ran then.
+ */
+function referenceGapMs(ticks: number[], fromMs: number, toMs: number): number {
+  const after = ticks.findIndex((atMs) => atMs > toMs);
+  const last = after === -1 ? ticks.length - 1 : after;
+  let gapMs = 0;
+  for (let i = 1; i <= last; i++) {
+    if (ticks[i] >= fromMs) gapMs = Math.max(gapMs, ticks[i] - ticks[i - 1]);
+  }
+  return gapMs;
 }
 
 function event(outcome: RunOutcome, stepIndex: number) {
@@ -146,31 +244,69 @@ function event(outcome: RunOutcome, stepIndex: number) {
 }
 
 describe('waitForReady (#198)', () => {
+  // #218: "at once" is the first look, not a wall-clock margin — a loaded
+  // runner stretched the step itself to 930 ms.
   it('passes at once for a signal sent on load', async () => {
-    const { outcome } = await run([
-      { action: 'navigate', path: '/load' },
-      { action: 'waitForReady', name: 'loaded' },
-    ]);
+    const { outcome, seen } = await run(
+      [
+        { action: 'navigate', path: '/load' },
+        { action: 'waitForReady', name: 'loaded' },
+      ],
+      'loaded',
+    );
     expect(outcome.stages.execution.status).toBe('passed');
-    const step = event(outcome, 1);
-    expect(step.endMs - step.startMs).toBeLessThan(200);
+    const read = seen.get(1);
+    expect(read?.signalledAt).toBeDefined();
+    if (read?.signalledAt === undefined) return;
+    expect(read.record.polls).toHaveLength(1);
+    const [[seenAt, ready]] = read.record.polls;
+    expect(ready).toBe(true);
+    expect(seenAt).toBeGreaterThanOrEqual(read.signalledAt);
   });
 
-  it('passes within 100 ms of a signal sent 500 ms into the step', async () => {
-    const { outcome, seen, began } = await run([
-      { action: 'navigate', path: '/late' },
-      { action: 'waitForReady', name: 'late' },
-    ]);
+  // #218: what the wait guarantees, on the page's clock — it ends after the
+  // signal, passes on the first poll after it, and that poll comes within the
+  // page's own timer interval. A wall-clock margin after the signal measures
+  // how late a loaded runner fires the page's timers, not the engine: a macOS
+  // runner recording video stretched it to 164 ms.
+  it('passes on the first poll after a signal sent 500 ms into the step', async () => {
+    const { outcome, seen, zeroMs } = await run(
+      [
+        { action: 'navigate', path: '/late' },
+        { action: 'waitForReady', name: 'late' },
+      ],
+      'late',
+    );
     expect(outcome.stages.execution.status).toBe('passed');
     const step = event(outcome, 1);
-    const signalledAt = seen.get(1)?.signalledAt;
-    const start = began.get(1);
-    expect(signalledAt).toBeDefined();
-    if (signalledAt === undefined || start === undefined) return;
-    // The page's signal time, on the engine clock.
-    const signalMs = signalledAt - (start.nowMs - start.startMs);
-    expect(step.endMs).toBeGreaterThanOrEqual(signalMs - 5);
-    expect(step.endMs - signalMs).toBeLessThan(100);
+    const read = seen.get(1);
+    expect(read?.signalledAt).toBeDefined();
+    expect(read?.shift).toBeDefined();
+    if (read?.signalledAt === undefined || read.shift === undefined) return;
+    const signalledAt = read.signalledAt;
+    const { polls, ticks } = read.record;
+    const misses = polls.filter(([, ready]) => !ready);
+    const hits = polls.filter(([, ready]) => ready);
+    // It looked while the page was silent — the first look sets the page's
+    // 500 ms off, so a stalled page may give it only that one — and none of
+    // those looks came after the signal.
+    expect(misses.length).toBeGreaterThanOrEqual(1);
+    for (const [atMs] of misses) expect(atMs).toBeLessThanOrEqual(signalledAt);
+    // The next look found the name, and the wait stopped there.
+    expect(hits).toHaveLength(1);
+    const [seenAt] = hits[0];
+    expect(seenAt).toBeGreaterThanOrEqual(signalledAt);
+    // That look came within the poll interval as this page kept time then:
+    // two of its own reference gaps, so a poll slower than the engine's is caught.
+    const gapMs = referenceGapMs(ticks, misses[0][0], seenAt);
+    expect(gapMs).toBeGreaterThanOrEqual(POLL_MS - 1);
+    expect(seenAt - signalledAt).toBeLessThanOrEqual(2 * gapMs);
+    // The step's end, in page time: after the signal and the look that saw it,
+    // each widened by the clock exchange's uncertainty, the only tolerance.
+    const { minMs, maxMs } = read.shift;
+    const uncertaintyMs = maxMs - minMs;
+    const pageEndMs = step.endMs + zeroMs - maxMs;
+    expect(pageEndMs).toBeGreaterThanOrEqual(seenAt - uncertaintyMs);
   });
 
   it('fails with ready-timeout at timeoutMs when nothing signals', async () => {
