@@ -8,12 +8,14 @@ import {
   InvalidArgumentError,
   Option,
 } from 'commander';
+import { type CheckFlags, checkCommand } from './commands/check.ts';
 import {
   describeError,
   EXIT_STAGE_FAILED,
   isInputError,
 } from './commands/errors.ts';
 import { type Io, processIo } from './commands/io.ts';
+import { type ListFlags, listCommand } from './commands/list.ts';
 import { type LoginFlags, loginCommand } from './commands/login.ts';
 import { logoutCommand } from './commands/logout.ts';
 import { type RenderFlags, renderCommand } from './commands/render.ts';
@@ -105,6 +107,25 @@ export async function main(
     .addOption(new Option('--project <dir>', 'the project root').hideHelp())
     .action(async (runId: string, flags: RenderFlags) => {
       exitCode = await renderCommand(runId, flags, io);
+    });
+
+  program
+    .command('list')
+    .description('List recent runs of the current project, newest first')
+    .option('--limit <n>', 'how many runs to list, 1-100 (default 20)')
+    .option('--json', 'print the runs as one JSON object on stdout')
+    .addOption(new Option('--project <dir>', 'the project root').hideHelp())
+    .action(async (flags: ListFlags) => {
+      exitCode = await listCommand(flags, io);
+    });
+
+  program
+    .command('check')
+    .description('Check that the project, FFmpeg and the browser are ready')
+    .option('--json', 'print the check as one JSON object on stdout')
+    .addOption(new Option('--project <dir>', 'the project root').hideHelp())
+    .action(async (flags: CheckFlags) => {
+      exitCode = await checkCommand(flags, io);
     });
 
   program
