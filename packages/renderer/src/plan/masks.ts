@@ -36,7 +36,8 @@ const MASK_MARGIN_PX = 4;
  * An element the application marked `data-demoflow-mask` (#197) gets one span
  * per interval of `maskedElements`, timed the same way, with one static box:
  * the engine measured it in viewport space on every frame, and a move starts
- * a new interval, so a page scroll does not move it.
+ * a new interval, so a page scroll does not move it. A document navigation
+ * may lengthen its span, never shorten it (#221).
  */
 export function maskSpans(
   events: readonly TimelineEvent[],
@@ -144,9 +145,12 @@ export function maskSpans(
       spans.push({
         startMs,
         // A move overlaps the next box by one frame: both are masked as measured.
+        // A navigation only lengthens the span (#221): the engine ends an interval its
+        // document left itself, and a start that errs early can precede the very load that
+        // brought the element in, which would read as the one that took it away.
         endMs: overlapsSibling(interval, element.intervals)
           ? endMs
-          : documentEnd(interval.startMs, endMs),
+          : Math.max(endMs, documentEnd(interval.startMs, endMs)),
         keys: [{ atMs: startMs, box: grow(interval.box, MASK_MARGIN_PX) }],
       });
     }

@@ -1,6 +1,7 @@
 import {
   type CardsConfig,
   deriveRunStatus,
+  type MaskedElement,
   type Navigation,
   type RunResult,
   type Stages,
@@ -105,6 +106,7 @@ function plan(
     navigations?: Navigation[] | undefined;
     failedAt?: number;
     events?: Omit<TimelineEvent, 'stepIndex'>[];
+    maskedElements?: MaskedElement[];
     /** Measures the offset on this mark instead of the fixed `offsetMs: 0`. */
     sync?: { mark: NonNullable<Timeline['syncMark']>; clearMs: number };
   } = {},
@@ -113,6 +115,7 @@ function plan(
     navigations: given,
     failedAt,
     events = EVENTS,
+    maskedElements,
     sync,
     ...rest
   } = options;
@@ -128,6 +131,7 @@ function plan(
         events: events.map((event, stepIndex) => ({ ...event, stepIndex })),
         ...(navigations === undefined ? {} : { navigations }),
         ...(sync === undefined ? {} : { syncMark: sync.mark }),
+        ...(maskedElements === undefined ? {} : { maskedElements }),
       },
       result: result(failedAt),
       source: {
@@ -518,6 +522,91 @@ describe('a masked field across a document navigation (spec 146)', () => {
         plan({ ...options, events: stays, navigations: undefined }).masks,
       );
     }
+  });
+});
+
+describe('a marked element across a document navigation (#221)', () => {
+  const NO_CARDS = { cards: cards(false) };
+  const OFF = { ...NO_CARDS, transitions: { enabled: false, durationMs: 300 } };
+  const ON = { ...NO_CARDS, transitions: FADE };
+  const LEAD_TRAIL_MS = 200;
+  const [FIRST, LOGIN] = NAVIGATIONS;
+  /** The sign-in with no masked fill: only the marked element is masked. */
+  const UNFILLED: typeof EVENTS = EVENTS.map((event) =>
+    event === EVENTS[1]
+      ? { action: 'wait', startMs: event.startMs, endMs: event.endMs }
+      : event,
+  );
+  const marked = (startMs: number, endMs?: number): MaskedElement[] => [
+    {
+      intervals: [
+        endMs === undefined
+          ? { startMs, box: FIELD }
+          : { startMs, endMs, box: FIELD },
+      ],
+    },
+  ];
+
+  it('never ends a span on the load that brought its document in, when its start maps a few ms early', () => {
+    // The engine maps a start by the bound that errs early: here 10 ms before the load's request.
+    const cases: Array<{
+      navigations: Navigation[];
+      maskedElements: MaskedElement[];
+    }> = [
+      // The first load: not held, so the span ended at its load plus the trail.
+      {
+        navigations: [{ ...FIRST, startMs: 100 }, LOGIN],
+        maskedElements: marked(90),
+      },
+      // The sign-in's load: held with transitions on, so the span ended at its start.
+      { navigations: NAVIGATIONS, maskedElements: marked(LOGIN.startMs - 10) },
+      {
+        navigations: NAVIGATIONS,
+        maskedElements: marked(LOGIN.startMs - 10, 4000),
+      },
+    ];
+    for (const options of [ON, OFF]) {
+      for (const { navigations, maskedElements } of cases) {
+        const planned = plan({
+          ...options,
+          events: UNFILLED,
+          navigations,
+          maskedElements,
+        });
+        expect(planned.masks).toEqual(
+          plan({
+            ...options,
+            events: UNFILLED,
+            navigations: undefined,
+            maskedElements,
+          }).masks,
+        );
+      }
+    }
+  });
+
+  it('masks an element of the old page until the new one loads, transitions off', () => {
+    const planned = plan({
+      ...OFF,
+      events: UNFILLED,
+      maskedElements: marked(800, 2000),
+    });
+    expect(planned.masks.map((mask) => mask.endMs)).toEqual([
+      (LOGIN.endMs ?? 0) + LEAD_TRAIL_MS,
+    ]);
+  });
+
+  it('masks an element of the old page on the held frame, and never ends its span before its measured end', () => {
+    const planned = plan({
+      ...ON,
+      events: UNFILLED,
+      maskedElements: marked(800, 2000),
+    });
+    expect(planned.masks.map((mask) => mask.endMs)).toEqual([
+      2000 + LEAD_TRAIL_MS,
+    ]);
+    const [, hold] = planned.transitions?.holds ?? [];
+    expect(hold.masks).toEqual([MASKED]);
   });
 });
 
