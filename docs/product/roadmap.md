@@ -70,7 +70,13 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
   3. cards and transitions;
   4. export formats.
 - Vertical GIF and WebM, spec 176's follow-up, are
-  [236](../specs/236-vertical-gif-webm.md).
+  [236](../specs/236-vertical-gif-webm.md). The site's docs for the vertical
+  formats, which 176 and 236 left out, are
+  [254](../specs/254-docs-vertical-formats.md).
+- Rendering an existing run again, which
+  [ADR-0004](../adr/0004-recording-is-separate-from-rendering.md) promises
+  ("retried or restyled from `runs/<runId>/` alone"), is
+  [255](../specs/255-render-command.md) (`demoflow render`).
 
 ## Phase 5 — Website and Runner pairing
 
@@ -96,6 +102,10 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
 - **Account deletion** (all metadata deleted, every Runner token revoked) is in
   Phase 5; data export comes later — the videos are already on the user's
   machine.
+- Vision §6 screens the first slices left out: the `/app` overview (recent
+  projects and machines) is [256](../specs/256-app-overview.md), and a status
+  filter on a project's run library is
+  [257](../specs/257-library-status-filter.md).
 
 ## Phase 6 — Luna Player
 

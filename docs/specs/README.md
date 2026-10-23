@@ -136,3 +136,14 @@ from the [#202 spike report](../research/202-playwright-reuse-spike.md).
 | [#209](https://github.com/AndreyBegma/DemoFlow/issues/209) | [Fixture: container scrolls, `caption` and `scene` helpers](209-playwright-scrolls-captions.md) | #208 |
 | [#210](https://github.com/AndreyBegma/DemoFlow/issues/210) | [Docs: reuse Playwright tests](210-playwright-docs.md) | #208; after #209; not beside #203 |
 | [#224](https://github.com/AndreyBegma/DemoFlow/issues/224) | [A "Wait for ready" control in the record panel](224-record-wait-for-ready.md) — spec 198 follow-up | — |
+
+## Gaps against the sources (after Phase 7)
+
+Work traced to an ADR, the vision or spec 179 that no phase had picked up.
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#254](https://github.com/AndreyBegma/DemoFlow/issues/254) | [Docs: the vertical formats and `render.vertical`](254-docs-vertical-formats.md) — specs 176 and 236 left the docs out | — |
+| [#255](https://github.com/AndreyBegma/DemoFlow/issues/255) | [`demoflow render`: render an existing run again](255-render-command.md) — ADR-0004, vision §12 | — |
+| [#256](https://github.com/AndreyBegma/DemoFlow/issues/256) | [The `/app` overview: recent projects and machines](256-app-overview.md) — vision §6 | — |
+| [#257](https://github.com/AndreyBegma/DemoFlow/issues/257) | [Filter a project's run library by status](257-library-status-filter.md) — vision §6 | — |
