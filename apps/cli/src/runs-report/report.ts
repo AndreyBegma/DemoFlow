@@ -125,8 +125,9 @@ export async function reportRun(
     if (isReportOff(deps.host.env)) return;
     const credentials = readCredentials(deps.host);
     if (credentials === null) return;
+    const root = await canonicalRoot(input.root);
     const body = buildReport({
-      root: await canonicalRoot(input.root),
+      root,
       result: input.result,
       cliVersion: deps.version(),
       pathApi: pathFor(deps.host.platform),
@@ -161,6 +162,8 @@ export async function reportRun(
       // Spec 225: kept so the MCP tools can link the run's page.
       ...(projectId === undefined ? {} : { projectId }),
       server: credentials.server,
+      // Spec 248, Decision 1: the root the server knows is the registry key.
+      root,
     });
   } catch {
     // Decision 3: every failure is silent.

@@ -3,6 +3,7 @@ import { type Fetch, fetchSelf } from '../auth/client.ts';
 import { readCredentials, writeCredentials } from '../auth/credentials.ts';
 import type { Io } from '../commands/io.ts';
 import type { HostEnvironment } from '../config/platform.ts';
+import { type SpawnRun, spawnRun } from '../mcp/child.ts';
 import { ArtifactsDeleter, nodeArtifactsFs } from './artifacts/index.ts';
 import {
   type Clock,
@@ -12,6 +13,7 @@ import {
   type SocketFactory,
   systemClock,
 } from './connection.ts';
+import { defaultLauncherDeps, Launcher, nodeLaunchFs } from './launch/index.ts';
 import { acquireLock, releaseLock } from './lock.ts';
 import { fileLogger, type Logger } from './log.ts';
 import { runnerPaths } from './paths.ts';
@@ -37,6 +39,8 @@ export interface DaemonDeps {
   clock: Clock;
   random(): number;
   fetch: Fetch;
+  /** Starts the `demoflow run` child of a website-started run (spec 248). */
+  spawn: SpawnRun;
   /** Mirror log lines here as well, e.g. a terminal running `--foreground`. */
   echo?: (line: string) => void;
 }
@@ -48,6 +52,7 @@ export const defaultDaemonDeps = (host: HostEnvironment): DaemonDeps => ({
   clock: systemClock,
   random: Math.random,
   fetch: (input, init) => fetch(input, init),
+  spawn: spawnRun,
   ...(process.stderr.isTTY === true
     ? { echo: (line: string) => process.stderr.write(line) }
     : {}),
@@ -100,6 +105,15 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
     logger,
     platform: deps.host.platform,
   });
+  const launcher = new Launcher({
+    indexFile: paths.reportedRuns,
+    fs: nodeLaunchFs,
+    logger,
+    clock: deps.clock,
+    env: deps.host.env,
+    spawn: deps.spawn,
+    ...defaultLauncherDeps(deps.host),
+  });
   const connection = new RunnerConnection({
     server: credentials.server,
     token: credentials.token,
@@ -125,10 +139,13 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
       homeDir: deps.host.homedir,
       closeRun: (runId) => relay.closeRun(runId),
     }),
+    launches: launcher,
   });
 
   const stop = (why: string) => {
     logger.log('info', `stopping (${why})`);
+    // Spec 248, Decision 11: the run is cancelled; `finally` waits for it.
+    void launcher.close();
     void connection.stop();
   };
   const watch = setInterval(() => {
@@ -155,6 +172,8 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
     logFailure(logger, error);
     return EXIT_DAEMON_CRASHED;
   } finally {
+    // No child outlives the daemon, whatever ended it.
+    await launcher.close();
     clearInterval(watch);
     clearInterval(tick);
     process.off('SIGTERM', onSignal);

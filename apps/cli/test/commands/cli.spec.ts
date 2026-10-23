@@ -269,6 +269,8 @@ describe('demoflow run on a paired machine', () => {
         // Spec 225: what the MCP tools build the run's page URL from.
         projectId: 'srv-project',
         server: apiUrl(),
+        // Spec 248: the root it sent registers the project on this machine.
+        root: realpathSync.native(project),
       },
     ]);
   });

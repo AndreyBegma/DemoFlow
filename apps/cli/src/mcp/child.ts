@@ -20,7 +20,19 @@ export interface RunChild {
   kill(): Promise<void>;
 }
 
-export type SpawnRun = (args: string[], cwd: string) => RunChild;
+export interface SpawnRunOptions {
+  /**
+   * How long `kill()` waits after SIGTERM before SIGKILL; 5 s when absent.
+   * The runner daemon passes more, so the dev server stops too (spec 248).
+   */
+  killGraceMs?: number;
+}
+
+export type SpawnRun = (
+  args: string[],
+  cwd: string,
+  options?: SpawnRunOptions,
+) => RunChild;
 
 /**
  * `node <cli> run …` through `process.execPath`, so it works from npx, a global
@@ -28,8 +40,18 @@ export type SpawnRun = (args: string[], cwd: string) => RunChild;
  * channel. On POSIX the child leads its own process group, so a kill reaches
  * FFmpeg too (Playwright closes its own browser on SIGTERM).
  */
-export const spawnRun: SpawnRun = (args, cwd) => {
-  const child = spawn(process.execPath, [CLI_ENTRY, ...args], {
+export const spawnRun: SpawnRun = (args, cwd, options) =>
+  spawnNode(CLI_ENTRY, args, cwd, options);
+
+/** `spawnRun` for any Node entry point; tests run a stand-in through it. */
+export function spawnNode(
+  entry: string,
+  args: string[],
+  cwd: string,
+  options: SpawnRunOptions = {},
+): RunChild {
+  const graceMs = options.killGraceMs ?? KILL_GRACE_MS;
+  const child = spawn(process.execPath, [entry, ...args], {
     cwd,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -62,7 +84,7 @@ export const spawnRun: SpawnRun = (args, cwd) => {
     kill: async () => {
       if (done) return;
       killTree(child, 'SIGTERM');
-      const timer = setTimeout(() => killTree(child, 'SIGKILL'), KILL_GRACE_MS);
+      const timer = setTimeout(() => killTree(child, 'SIGKILL'), graceMs);
       await exited;
       clearTimeout(timer);
       // Anything left in the group (an FFmpeg that ignored SIGTERM) goes too;
@@ -70,7 +92,7 @@ export const spawnRun: SpawnRun = (args, cwd) => {
       if (process.platform !== 'win32') killTree(child, 'SIGKILL');
     },
   };
-};
+}
 
 function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
   const { pid } = child;

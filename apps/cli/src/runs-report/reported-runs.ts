@@ -22,6 +22,11 @@ export interface ReportedRun {
   projectId?: string;
   /** Spec 225: the server origin at report time; absent on older lines. */
   server?: string;
+  /**
+   * Spec 248, Decision 1: the canonical root sent as `rootPath`; absent on
+   * older lines. A root here is a registered project (ADR-0016 §2).
+   */
+  root?: string;
 }
 
 /** Spec 225, Decision 2: the run's page on the website, when the entry has what it takes. */
@@ -51,6 +56,24 @@ export async function readReportedRunsByDir(
     // An unreadable index is an empty one.
   }
   return byDir;
+}
+
+/**
+ * Spec 248, Decision 1: the machine's registry of projects, read once. Never
+ * throws: a missing or unreadable index registers nothing.
+ */
+export async function knownRoots(file: string): Promise<Set<string>> {
+  const roots = new Set<string>();
+  try {
+    const text = await readFile(file, 'utf8');
+    for (const line of text.split('\n')) {
+      const root = parseLine(line)?.root;
+      if (root !== undefined) roots.add(root);
+    }
+  } catch {
+    // An unreadable index is an empty one.
+  }
+  return roots;
 }
 
 /** The page URL of a run directory, from a map read once. */
@@ -122,7 +145,7 @@ function parseLine(line: string): ReportedRun | null {
     return null;
   }
   if (typeof value !== 'object' || value === null) return null;
-  const { id, runDir, at, projectId, server } = value as Record<
+  const { id, runDir, at, projectId, server, root } = value as Record<
     string,
     unknown
   >;
@@ -137,5 +160,6 @@ function parseLine(line: string): ReportedRun | null {
     entry.projectId = projectId;
   }
   if (typeof server === 'string' && server !== '') entry.server = server;
+  if (typeof root === 'string' && root !== '') entry.root = root;
   return entry;
 }
