@@ -8,6 +8,7 @@ import {
   type ProjectRunsPage,
   type RunDetail,
   type Runner,
+  type RunStatusFilter,
 } from '@/lib/api';
 
 async function target() {
@@ -41,8 +42,9 @@ export async function getRunDetail(
 /** The first page of a project's runs: the page, `'not_found'` or `'error'`. */
 export async function getFirstRuns(
   id: string,
+  status?: RunStatusFilter,
 ): Promise<ProjectRunsPage | 'not_found' | 'error'> {
-  const result = await listProjectRuns(id, undefined, await target());
+  const result = await listProjectRuns(id, undefined, await target(), status);
   if (result.ok) return result.data;
   return result.status === 404 ? 'not_found' : 'error';
 }
