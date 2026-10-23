@@ -19,6 +19,7 @@ import {
   HEARTBEAT_TICK_MS,
   IDLE_TIMEOUT_MS,
   LAST_SEEN_WRITE_INTERVAL_MS,
+  type LaunchMessage,
   PING_INTERVAL_MS,
   parseClientMessage,
   type ServerMessage,
@@ -42,6 +43,8 @@ interface Connection {
   warnedStrayChunk: boolean;
   /** An `artifacts.*` answer for no pending request was logged on this socket. */
   warnedStrayArtifacts: boolean;
+  /** A `scenarios.*` or `run.*` answer for no pending request was logged on this socket. */
+  warnedStrayLaunch: boolean;
 }
 
 /**
@@ -66,6 +69,16 @@ export interface ArtifactsSink {
 }
 
 /**
+ * Where website-started runs (spec #247) hear from the sockets. `message`
+ * answers false for a request or launch it does not hold.
+ */
+export interface LaunchSink {
+  message(runnerId: string, message: LaunchMessage): boolean;
+  /** The machine's socket is gone: closed, replaced, revoked or shut down. */
+  closed(runnerId: string): void;
+}
+
+/**
  * The open runner sockets of this API instance (one today, #120): online is
  * "has an entry here", never a column. One socket per machine — a second one
  * replaces the first with `4409`. Heartbeats run on the injected clock, so
@@ -81,6 +94,7 @@ export class RunnerConnections
   private shuttingDown = false;
   private videoSink: VideoSink | undefined;
   private artifactsSink: ArtifactsSink | undefined;
+  private launchSink: LaunchSink | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -149,6 +163,11 @@ export class RunnerConnections
     this.artifactsSink = sink;
   }
 
+  /** Website-started runs' hook (spec #247, Decision 10). One sink per instance. */
+  setLaunchSink(sink: LaunchSink): void {
+    this.launchSink = sink;
+  }
+
   /** An authenticated socket, straight after the upgrade. */
   async accept(
     socket: WebSocket,
@@ -164,6 +183,7 @@ export class RunnerConnections
       lastSeenWrittenAt: now.getTime(),
       warnedStrayChunk: false,
       warnedStrayArtifacts: false,
+      warnedStrayLaunch: false,
     };
     // Listeners first: a frame that arrives during the writes below counts.
     socket.on('message', (data, isBinary) =>
@@ -317,6 +337,26 @@ export class RunnerConnections
       case 'artifacts.error':
         this.relayArtifacts(connection, message);
         return;
+      case 'scenarios.listed':
+      case 'scenarios.error':
+      case 'run.started':
+      case 'run.error':
+      case 'run.finished':
+        this.relayLaunch(connection, message);
+        return;
+    }
+  }
+
+  /** As `relayArtifacts`, with its own once-per-socket warning. */
+  private relayLaunch(connection: Connection, message: LaunchMessage): void {
+    if (this.launchSink?.message(connection.runnerId, message)) {
+      return;
+    }
+    if (!connection.warnedStrayLaunch) {
+      connection.warnedStrayLaunch = true;
+      this.logger.warn(
+        `Dropped ${message.type} from runner ${connection.runnerId} for a request that is not pending`,
+      );
     }
   }
 
@@ -342,6 +382,7 @@ export class RunnerConnections
   private socketGone(runnerId: string): void {
     this.videoSink?.closed(runnerId);
     this.artifactsSink?.closed(runnerId);
+    this.launchSink?.closed(runnerId);
   }
 
   private touch(connection: Connection): void {

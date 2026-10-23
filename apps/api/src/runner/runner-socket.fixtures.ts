@@ -20,6 +20,11 @@ export interface ArtifactsDelete extends Received {
   runId: string;
 }
 
+/** `scenarios.list`, `run.start` or `run.cancel` (spec #247). */
+export interface LaunchRequest extends Received {
+  requestId: string;
+}
+
 export interface Closed {
   code: number;
   reason: string;
@@ -121,6 +126,17 @@ export class TestSocket {
       throw new Error('artifacts.delete carries no requestId');
     }
     return ask as ArtifactsDelete;
+  }
+
+  /** The next `scenarios.list`, `run.start` or `run.cancel`, with its request id. */
+  async nextLaunch(
+    type: 'scenarios.list' | 'run.start' | 'run.cancel',
+  ): Promise<LaunchRequest> {
+    const ask = await this.next(type);
+    if (typeof ask.requestId !== 'string') {
+      throw new Error(`${type} carries no requestId`);
+    }
+    return ask as LaunchRequest;
   }
 
   /**
