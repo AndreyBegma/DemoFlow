@@ -7,10 +7,8 @@ import { EXIT_STAGE_FAILED } from '../commands/errors.ts';
 import type { Io } from '../commands/io.ts';
 import { runCommand } from '../commands/run.ts';
 import {
-  CliError,
-  findProjectRoot,
   loadProjectConfig,
-  PROJECT_CONFIG_FILE,
+  projectRootAbove,
   projectRootAt,
 } from '../config/index.ts';
 import {
@@ -148,22 +146,6 @@ export async function recordCommand(
     return 0;
   }
   return deps.run(file, root, io);
-}
-
-/** The project holding `dir`, searched upwards as for a scenario file. */
-function projectRootAbove(dir: string): string {
-  try {
-    // The walk starts at the directory of the path it is given.
-    return findProjectRoot(path.join(dir, PROJECT_CONFIG_FILE));
-  } catch (error) {
-    if (error instanceof CliError && error.code === 'no-project-config') {
-      throw new CliError(
-        'no-project-config',
-        `no ${PROJECT_CONFIG_FILE} found in ${dir} or any parent directory`,
-      );
-    }
-    throw error;
-  }
 }
 
 function reportRecordError(error: unknown, io: Io): number {

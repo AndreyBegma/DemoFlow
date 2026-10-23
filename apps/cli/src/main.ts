@@ -16,6 +16,7 @@ import {
 import { type Io, processIo } from './commands/io.ts';
 import { type LoginFlags, loginCommand } from './commands/login.ts';
 import { logoutCommand } from './commands/logout.ts';
+import { type RenderFlags, renderCommand } from './commands/render.ts';
 import { runCommand } from './commands/run.ts';
 import { setupCommand } from './commands/setup.ts';
 import { validateCommand } from './commands/validate.ts';
@@ -88,6 +89,23 @@ export async function main(
         exitCode = await runCommand(scenario, flags, io);
       },
     );
+
+  program
+    .command('render')
+    .description('Render an existing run again with the current render config')
+    .argument('<runId>', 'the run directory under <home>/runs/')
+    .option('--out <dir>', 'artifacts directory (the home of runs/)')
+    .option('--json', 'print the result as one JSON object on stdout')
+    .addOption(
+      new Option(
+        '--format <format>',
+        `a file to render, repeatable; replaces render.formats (${RENDER_FORMATS.join(', ')})`,
+      ).argParser(collectFormat),
+    )
+    .addOption(new Option('--project <dir>', 'the project root').hideHelp())
+    .action(async (runId: string, flags: RenderFlags) => {
+      exitCode = await renderCommand(runId, flags, io);
+    });
 
   program
     .command('record')

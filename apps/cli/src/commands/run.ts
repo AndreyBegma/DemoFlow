@@ -31,6 +31,7 @@ import { CommandError, EXIT_STAGE_FAILED } from './errors.ts';
 import { exitCodeFor } from './exit.ts';
 import type { Io } from './io.ts';
 import { formatJson, formatSummary } from './output.ts';
+import { renderPlanOptions } from './render.ts';
 import { assertSafeRunId, generateRunId } from './run-id.ts';
 import { loadScenario } from './scenario-file.ts';
 import { settleRun } from './settle.ts';
@@ -167,25 +168,10 @@ export async function runCommand(
     if (existsSync(path.join(runDir, RUN_FILES.video))) {
       io.stderr('Rendering\n');
       try {
-        const plan = await buildRenderPlan(runDir, {
-          idle: config.render.idle,
-          output: {
-            width: config.render.width,
-            height: config.render.height,
-            fps: config.render.fps,
-          },
-          frame: config.render.frame,
-          background: config.render.background,
-          cards: config.render.cards,
-          transitions: config.render.transitions,
-          formats: flags.format ?? config.render.formats,
-          gif: config.render.gif,
-          vertical: config.render.vertical,
-          scenario:
-            scenario.description === undefined
-              ? {}
-              : { description: scenario.description },
-        });
+        const plan = await buildRenderPlan(
+          runDir,
+          renderPlanOptions(config, flags.format, scenario.description),
+        );
         await ffmpegRenderer.render(runDir, plan);
       } catch (error) {
         renderError = error;
