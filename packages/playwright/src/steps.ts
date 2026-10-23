@@ -22,6 +22,7 @@ const NEUTRAL_OPTIONS: Readonly<Record<string, readonly string[]>> = {
   selectOption: ['force', 'noWaitAfter', 'timeout'],
   press: ['noWaitAfter', 'timeout'],
   waitFor: ['state', 'timeout'],
+  scrollIntoViewIfNeeded: ['timeout'],
 };
 
 /** Why `options` changes what `action` does, or `undefined`. */
@@ -159,6 +160,48 @@ export function scrollStep(
     return { step: { action: 'scroll', to: 'bottom' } };
   }
   return { reason: 'the scroll ended between the top and the bottom' };
+}
+
+/** A scroll container's position, read in the browser. */
+export interface ContainerTop {
+  top: number;
+  /** The largest `top` the container can reach. */
+  maxTop: number;
+}
+
+/** The container under the pointer, and the locator it is recorded as. */
+export interface ContainerScroll extends ContainerTop {
+  /** `{ testId }`, `{ css: "#<id>" }`, or `null` when it has neither. */
+  within: Locator | null;
+}
+
+/** What a wheel is decided from: the page, and the container under the pointer. */
+export interface WheelPosition<Container extends ContainerTop = ContainerTop> {
+  page: ScrollPosition;
+  container: Container | null;
+}
+
+/**
+ * A wheel scroll, from its effect (spec 209, Decision 3): the page's rule when
+ * the page moved, otherwise the container's; `undefined` when nothing moved.
+ */
+export function wheelStep(
+  before: WheelPosition<ContainerScroll>,
+  after: WheelPosition,
+): Mapped | undefined {
+  const page = scrollStep(before.page, after.page);
+  if (page !== undefined) return page;
+  const from = before.container;
+  const to = after.container;
+  if (from === null || to === null || from.top === to.top) return undefined;
+  // Fractional device pixels, as for the page: within a pixel of the end.
+  const end =
+    to.top <= 0 ? 'top' : to.top >= to.maxTop - 1 ? 'bottom' : undefined;
+  if (end === undefined) return { reason: 'the scroll ends mid-container' };
+  if (from.within === null) {
+    return { reason: 'the scroll container has no data-testid or id' };
+  }
+  return { step: { action: 'scroll', to: end, within: from.within } };
 }
 
 const TEXT_MATCHERS: Readonly<Record<string, 'exact' | 'contains'>> = {

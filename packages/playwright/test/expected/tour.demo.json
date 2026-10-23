@@ -50,8 +50,20 @@
       }
     },
     {
+      "action": "scroll",
+      "to": "bottom",
+      "within": {
+        "testId": "log-panel"
+      }
+    },
+    {
       "action": "navigate",
       "path": "/slow"
+    },
+    {
+      "action": "marker",
+      "title": "Slow report",
+      "kind": "caption"
     },
     {
       "action": "marker",

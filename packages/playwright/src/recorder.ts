@@ -73,7 +73,11 @@ export class Recorder {
    * so a test that catches it still fails at teardown and writes nothing.
    */
   refuse(message: string): Error {
-    const error = new Error(`demoflow: ${message}`);
+    return this.keep(new Error(`demoflow: ${message}`));
+  }
+
+  /** Keeps `error` as what fails the test, as `refuse` does, and returns it. */
+  keep(error: Error): Error {
     this.#refusal ??= error;
     return error;
   }
