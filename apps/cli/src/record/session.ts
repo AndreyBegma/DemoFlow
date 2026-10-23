@@ -1,4 +1,4 @@
-import type { StepInput, Viewport } from '@demoflow/core';
+import { ReadyNameSchema, type StepInput, type Viewport } from '@demoflow/core';
 import type { Browser, ElementHandle, Page } from 'playwright';
 import {
   CAPTURE_BINDING,
@@ -266,6 +266,17 @@ export async function openRecorder(
           render();
         }
         return;
+      case 'waitForReady': {
+        const name = command.name.trim();
+        const parsed = ReadyNameSchema.safeParse(name);
+        if (parsed.success) {
+          push({ action: 'waitForReady', name });
+        } else {
+          notice = `"${name}" is not a ready name: ${parsed.error.issues[0]?.message}`;
+          render();
+        }
+        return;
+      }
       case 'remove':
         steps = removeStep(steps, command.index);
         render();
