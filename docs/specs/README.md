@@ -118,6 +118,7 @@ from the [#202 spike report](../research/202-playwright-reuse-spike.md).
 | Issue | Spec | Depends on |
 |---|---|---|
 | [#197](https://github.com/AndreyBegma/DemoFlow/issues/197) | [`data-demoflow-mask` masks a marked element](197-mask-attribute.md) | — |
+| [#221](https://github.com/AndreyBegma/DemoFlow/issues/221) | [A marked element drawn unblurred on one frame](221-marked-mask-frame-leak.md) | — |
 | [#198](https://github.com/AndreyBegma/DemoFlow/issues/198) | [`window.demoflow.ready(name)` and `waitForReady`](198-ready-signal.md) | #197 (merge order) |
 | [#201](https://github.com/AndreyBegma/DemoFlow/issues/201) | [Scenes and captions from the page](201-page-annotations.md) | #198 |
 | [#202](https://github.com/AndreyBegma/DemoFlow/issues/202) | [Spike: reuse Playwright tests as scenarios](202-playwright-reuse-spike.md) | — |
