@@ -235,6 +235,61 @@ export const en = {
       loadFailed: 'We could not load more runs. Try again.',
       pageFailed: 'We could not load the runs. Try again in a moment.',
     },
+    launch: {
+      title: 'Run a scenario',
+      unbound:
+        'Bind this project to a folder on a machine to run its scenarios from here.',
+      removed: 'The machine of this project was removed.',
+      loading: 'Loading scenarios',
+      scenario: 'Scenario',
+      refresh: 'Refresh',
+      run: 'Run',
+      empty: 'No scenarios in demoflow/',
+      skipped: '{count} files could not be read as scenarios.',
+      truncated: 'Showing the first 100 scenarios.',
+      confirm: {
+        title: 'Run {name} on {machine}?',
+        body: "The machine starts the app with the project's devCommand, records the demo and reports the run here.",
+        verb: 'Run',
+        cancel: 'Not now',
+      },
+      elapsed: 'Elapsed {time}',
+      cancelRun: 'Cancel run',
+      cancelling: 'Cancelling…',
+      openRun: 'Open the run',
+      noReport: 'The run finished, but its report did not reach the site.',
+      state: {
+        starting: 'Starting',
+        running: 'Running',
+        cancelling: 'Cancelling',
+        passed: 'Passed',
+        failed: 'Failed',
+        cancelled: 'Cancelled',
+        timedOut: 'Timed out (15 min)',
+        lostLabel: 'Lost contact',
+        lost: 'Lost contact. The run may still finish and appear in the library.',
+      },
+      errors: {
+        runnerOffline:
+          'The machine is offline. Start the runner on it (demoflow runner start) and try again.',
+        runnerRemoved: 'The machine of this project was removed.',
+        projectUnbound: 'Bind this project to a folder on a machine first.',
+        projectUnknown:
+          'This machine has not reported a run from this folder yet. Run demoflow run there once, then refresh.',
+        runnerBusy:
+          'The machine is already running a scenario started from the website.',
+        reportingOff:
+          'Reporting is off on the machine (CI or DEMOFLOW_NO_REPORT), so it takes no runs from the website.',
+        scenarioNotFound:
+          'This scenario is no longer in the project. Refresh the list.',
+        scenarioInvalid:
+          'The scenario file is not valid. Run demoflow validate on the machine.',
+        configInvalid: 'demoflow.config.json on the machine is not valid.',
+        runnerTimeout:
+          'The machine did not answer. Make sure it runs the latest demoflow, then try again.',
+        runnerError: 'The machine could not do it. Try again.',
+      },
+    },
   },
   runPage: {
     title: 'Run of {name}',

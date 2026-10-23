@@ -306,6 +306,72 @@ export function deleteRunArtifacts(id: string) {
   });
 }
 
+// Starting a run from the website (spec #249, contract from spec #247).
+
+/** A scenario file on the project's machine. */
+export interface ScenarioEntry {
+  id: string;
+  name: string;
+}
+
+export interface ScenarioList {
+  scenarios: ScenarioEntry[];
+  /** More valid scenarios exist than were sent. */
+  truncated: boolean;
+  /** `*.demo.json` files that could not be read as scenarios. */
+  skipped: number;
+}
+
+export type LaunchState =
+  | 'starting'
+  | 'running'
+  | 'cancelling'
+  | 'passed'
+  | 'failed'
+  | 'cancelled'
+  | 'timed-out'
+  | 'lost';
+
+/** The project's latest website-started run, held in memory by the API. */
+export interface LaunchView {
+  id: string;
+  scenarioId: string;
+  scenarioName: string | null;
+  state: LaunchState;
+  startedAt: string;
+  finishedAt: string | null;
+  runId: string | null;
+}
+
+export function listScenarios(projectId: string) {
+  return request<ScenarioList>(
+    `/projects/${encodeURIComponent(projectId)}/scenarios`,
+    { method: 'GET' },
+  );
+}
+
+/** Sends the scenario id only; the machine owns everything else. */
+export function startLaunch(projectId: string, scenarioId: string) {
+  return request<{ launch: LaunchView }>(
+    `/projects/${encodeURIComponent(projectId)}/launch`,
+    { method: 'POST', body: { scenarioId } },
+  );
+}
+
+export function getLaunch(projectId: string) {
+  return request<{ launch: LaunchView | null }>(
+    `/projects/${encodeURIComponent(projectId)}/launch`,
+    { method: 'GET' },
+  );
+}
+
+export function cancelLaunch(projectId: string) {
+  return request<{ launch: LaunchView }>(
+    `/projects/${encodeURIComponent(projectId)}/launch`,
+    { method: 'DELETE' },
+  );
+}
+
 export function listProjectRuns(id: string, cursor?: string, target?: Target) {
   const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
   return request<ProjectRunsPage>(

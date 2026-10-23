@@ -3,6 +3,7 @@ import { Card } from '@andrewbehma/glass-ui/card';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { RunsTable } from '@/components/projects/runs-table';
+import { StartRun } from '@/components/projects/start-run';
 import { t } from '@/i18n';
 import { getFirstRuns, getProjects } from '../_data';
 
@@ -38,13 +39,20 @@ export default async function ProjectLibraryPage({
             </p>
           </div>
         ) : null}
-        <div className="mt-4">
-          {runs === 'error' ? (
-            <Banner tone="danger">{t('projects.library.pageFailed')}</Banner>
-          ) : (
-            <RunsTable projectId={id} first={runs} />
-          )}
-        </div>
+      </Card>
+      {project ? (
+        <StartRun
+          projectId={id}
+          rootPath={project.rootPath}
+          machine={project.runner}
+        />
+      ) : null}
+      <Card pad="lg">
+        {runs === 'error' ? (
+          <Banner tone="danger">{t('projects.library.pageFailed')}</Banner>
+        ) : (
+          <RunsTable projectId={id} first={runs} />
+        )}
       </Card>
     </main>
   );
