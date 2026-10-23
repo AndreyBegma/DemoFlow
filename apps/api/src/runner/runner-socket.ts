@@ -65,19 +65,28 @@ export type ServerMessage =
       range: VideoRange | null;
     }
   | { type: 'video.ack'; streamId: string; bytes: number }
-  | { type: 'video.cancel'; streamId: string };
+  | { type: 'video.cancel'; streamId: string }
+  | { type: 'artifacts.delete'; requestId: string; runId: string };
 
 export type ClientMessage =
   | PingMessage
   | PongMessage
   | RotatedMessage
   | ByeMessage
-  | VideoMessage;
+  | VideoMessage
+  | ArtifactsMessage;
 
 export type VideoMessage =
   | VideoHeadMessage
   | VideoEndMessage
   | VideoErrorMessage;
+
+/** A Runner's answer to `artifacts.delete` (spec #233). */
+export type ArtifactsMessage = ArtifactsDeletedMessage | ArtifactsErrorMessage;
+
+/** `not-found`: the machine does not know the run; `io`: deletion failed part-way. */
+export const ARTIFACTS_ERROR_CODES = ['not-found', 'io'] as const;
+export type ArtifactsErrorCode = (typeof ARTIFACTS_ERROR_CODES)[number];
 
 class PingMessage {
   @IsIn(['ping'])
@@ -164,6 +173,26 @@ class VideoErrorMessage {
   size?: number;
 }
 
+/** The run's directory no longer exists on the machine, including "already gone". */
+class ArtifactsDeletedMessage {
+  @IsIn(['artifacts.deleted'])
+  type!: 'artifacts.deleted';
+
+  @IsUUID('4')
+  requestId!: string;
+}
+
+class ArtifactsErrorMessage {
+  @IsIn(['artifacts.error'])
+  type!: 'artifacts.error';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsIn(ARTIFACTS_ERROR_CODES)
+  code!: ArtifactsErrorCode;
+}
+
 const CLIENT_MESSAGES: Record<
   ClientMessage['type'],
   ClassConstructor<ClientMessage>
@@ -175,6 +204,8 @@ const CLIENT_MESSAGES: Record<
   'video.head': VideoHeadMessage,
   'video.end': VideoEndMessage,
   'video.error': VideoErrorMessage,
+  'artifacts.deleted': ArtifactsDeletedMessage,
+  'artifacts.error': ArtifactsErrorMessage,
 };
 
 /** A binary frame: part of a stream's file, in order. */

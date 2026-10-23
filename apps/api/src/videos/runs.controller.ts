@@ -1,7 +1,9 @@
 import {
   Controller,
+  Delete,
   Get,
   Headers,
+  HttpCode,
   HttpStatus,
   Param,
   Res,
@@ -13,6 +15,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { SessionGuard } from '../auth/session.guard';
 import { RunnerConnections } from '../runner/runner-connections.service';
 import { MAX_STREAMS_PER_RUNNER } from '../runner/runner-socket';
+import { ArtifactsService } from './artifacts.service';
 import { parseRange } from './byte-range';
 import { RunVideoParamsDto } from './runs.dto';
 import {
@@ -31,6 +34,7 @@ export class RunsController {
     private readonly runs: RunsService,
     private readonly connections: RunnerConnections,
     private readonly relay: VideoRelay,
+    private readonly artifacts: ArtifactsService,
   ) {}
 
   @Get(':id')
@@ -50,6 +54,10 @@ export class RunsController {
     if (!run.formats.includes(format)) {
       throw runError(HttpStatus.NOT_FOUND, 'not-found');
     }
+    // Spec #233, Decision 6: before the machine state.
+    if (run.artifactsDeletedAt) {
+      throw runError(HttpStatus.GONE, 'artifacts-deleted');
+    }
     const machine = liveMachine(run);
     if (!machine) {
       throw runError(HttpStatus.SERVICE_UNAVAILABLE, 'runner-removed');
@@ -67,5 +75,29 @@ export class RunsController {
       range: parseRange(range),
       res,
     });
+  }
+
+  /**
+   * Deletes the run's directory on its machine; the run stays (spec #233,
+   * Decisions 1–3). Idempotent: an already deleted run is 204 at once.
+   */
+  @Delete(':id/artifacts')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteArtifacts(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+  ): Promise<void> {
+    const run = await this.runs.find(user.id, id);
+    if (run.artifactsDeletedAt) {
+      return;
+    }
+    const machine = liveMachine(run);
+    if (!machine) {
+      throw runError(HttpStatus.SERVICE_UNAVAILABLE, 'runner-removed');
+    }
+    if (!this.connections.isOnline(machine.id)) {
+      throw runError(HttpStatus.SERVICE_UNAVAILABLE, 'runner-offline');
+    }
+    await this.artifacts.delete(machine.id, run.id);
   }
 }

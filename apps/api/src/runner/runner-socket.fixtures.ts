@@ -15,6 +15,11 @@ export interface VideoOpen extends Received {
   range: unknown;
 }
 
+export interface ArtifactsDelete extends Received {
+  requestId: string;
+  runId: string;
+}
+
 export interface Closed {
   code: number;
   reason: string;
@@ -107,6 +112,15 @@ export class TestSocket {
       throw new Error('video.open carries no streamId');
     }
     return open as VideoOpen;
+  }
+
+  /** The next `artifacts.delete` (spec #233), with its request id as a string. */
+  async nextDelete(): Promise<ArtifactsDelete> {
+    const ask = await this.next('artifacts.delete');
+    if (typeof ask.requestId !== 'string') {
+      throw new Error('artifacts.delete carries no requestId');
+    }
+    return ask as ArtifactsDelete;
   }
 
   /**

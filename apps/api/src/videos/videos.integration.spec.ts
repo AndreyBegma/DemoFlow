@@ -584,6 +584,7 @@ describe('run video through the runner relay (integration)', () => {
           formats: ['mp4', 'webm', 'mp4-vertical'],
           failedStep: null,
           cliVersion: '0.4.0',
+          artifactsDeletedAt: null,
         },
         project: { id: expect.any(String), name: 'shop' },
         machine: { id: machine.runnerId, name: 'Laptop', online: true },
