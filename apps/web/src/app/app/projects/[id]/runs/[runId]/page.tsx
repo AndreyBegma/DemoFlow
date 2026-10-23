@@ -4,6 +4,10 @@ import { KeyValueList } from '@andrewbehma/glass-ui/key-value-list';
 import { notFound } from 'next/navigation';
 import { RunPlayback } from '@/components/player/run-playback';
 import { RunBreadcrumbs } from '@/components/projects/run-breadcrumbs';
+import {
+  RunDetails,
+  RunFailureBanner,
+} from '@/components/projects/run-details';
 import { RunStatus } from '@/components/projects/run-status';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format-date';
@@ -98,6 +102,7 @@ export default async function RunPage({
           />
         </div>
       </Card>
+      <RunFailureBanner failure={run.failure} />
       <Card pad="lg">
         <RunPlayback
           runId={run.id}
@@ -106,6 +111,7 @@ export default async function RunPage({
           artifactsDeletedAt={run.artifactsDeletedAt}
         />
       </Card>
+      <RunDetails stages={run.stages} renders={run.renders} />
     </main>
   );
 }
