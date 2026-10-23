@@ -14,6 +14,11 @@ import {
   EXIT_STAGE_FAILED,
   isInputError,
 } from './commands/errors.ts';
+import {
+  DEFAULT_BASE_URL,
+  type InitFlags,
+  initCommand,
+} from './commands/init.ts';
 import { type Io, processIo } from './commands/io.ts';
 import { type ListFlags, listCommand } from './commands/list.ts';
 import { type LoginFlags, loginCommand } from './commands/login.ts';
@@ -126,6 +131,17 @@ export async function main(
     .addOption(new Option('--project <dir>', 'the project root').hideHelp())
     .action(async (flags: CheckFlags) => {
       exitCode = await checkCommand(flags, io);
+    });
+
+  program
+    .command('init')
+    .description('Write demoflow.config.json and a first scenario here')
+    .option(
+      '--base-url <url>',
+      `the app's base URL (default ${DEFAULT_BASE_URL})`,
+    )
+    .action(async (flags: InitFlags) => {
+      exitCode = await initCommand(flags, io);
     });
 
   program
