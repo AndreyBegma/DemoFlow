@@ -70,6 +70,16 @@ shorter than `deadZone` (a share of the crop width) is skipped, so the camera
 does not jitter. `captionBand` is the share of the frame height, at the
 bottom, that captions sit in.
 
+`demoflow render <runId>` renders a finished run again from
+`<home>/runs/<runId>/` with the current `render.*` config, without the app or
+the browser — to restyle it, add a format, or retry a render that crashed.
+It takes `--format`, `--out` and `--json` like `run`. Only `renders[]` and the
+`rendering` stage of `result.json` change: a failed run stays failed and
+keeps its failure card. Files of formats it does not write stay on disk but
+are no longer listed. The website is not told, so its runs list keeps the
+first render's formats. A run that is unfinished or has no recording is
+refused with exit 2; a render that fails exits 3.
+
 `demoflow record` writes a scenario from what you do in the app. To post the
 same thing for several items, tick a run of steps in the recording panel and
 choose **Repeat over data**. Name the list, then give one line per item for each
@@ -82,6 +92,7 @@ typed value. Secret fills are left as recorded.
 | `demoflow record [name]` | record a scenario by using the app |
 | `demoflow validate <scenario>` | check a scenario against the schema |
 | `demoflow run <scenario>` | run it in a browser and render the video |
+| `demoflow render <runId>` | render an existing run again with the current config |
 | `demoflow setup` | install Chromium now instead of on the first run |
 | `demoflow mcp` | serve demo generation to MCP clients over stdio |
 | `demoflow login` | pair this machine with your DemoFlow account |

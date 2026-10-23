@@ -29,7 +29,7 @@ export function assertSafeRunId(id: string): void {
   if (!SAFE_RUN_ID.test(id)) {
     throw new CommandError(
       'invalid-run-id',
-      `--run-id must be a plain directory name (letters, digits, "_", ".", "-"): ${JSON.stringify(id)}`,
+      `a run id must be a plain directory name (letters, digits, "_", ".", "-"): ${JSON.stringify(id)}`,
     );
   }
 }

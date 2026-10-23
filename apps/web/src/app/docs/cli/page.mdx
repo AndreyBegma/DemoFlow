@@ -10,6 +10,7 @@ Run `demoflow` through `npx demoflow`, or install it globally. `demoflow
 | `demoflow record [name]` | Record a scenario by using the app. |
 | `demoflow validate <scenario>` | Check a scenario against the schema. |
 | `demoflow run <scenario>` | Run it in a browser and render the video. |
+| `demoflow render <runId>` | Render an existing run again with the current config. |
 | `demoflow setup` | Install Chromium now instead of on the first run. |
 | `demoflow mcp` | Serve demo generation to MCP clients over stdio. |
 | `demoflow login` | Pair this machine with your DemoFlow account. |
@@ -38,6 +39,36 @@ Exit codes:
 | `1` | A step failed or an assertion did not hold. |
 | `2` | The input was invalid: the scenario, the config, or a missing secret. |
 | `3` | Recording, rendering or storage failed. |
+
+## render
+
+```sh
+npx demoflow render 20261023-101500-abcdef
+```
+
+Renders a finished run again from `<home>/runs/<runId>/`, without starting the
+app or the browser: a new background, a GIF after the fact, or a retry after a
+render crash. It uses the project's current `render.*` config, so a change to
+`demoflow.config.json` restyles the video. The run id is the run directory's
+name, the one `run` prints.
+
+| Flag | Meaning |
+|---|---|
+| `--out <dir>` | The artifacts home, which holds `runs/`. |
+| `--json` | Print the result as one JSON object on stdout. |
+| `--format <format>` | A file to render, as for `run`. Repeat it for several. Replaces `render.formats`. |
+
+Only the rendered files and the rendering stage change. The verdict never
+does: a failed run stays failed and keeps its failure card. The new files
+replace the run's earlier ones in `result.json`. A file of a format this
+render does not write stays on disk but is no longer listed.
+
+The website is not told: its runs list keeps the formats of the first render.
+
+It exits `2` without writing anything when the run id is not a plain name, the
+run directory or its `result.json` is missing or invalid, the run has not
+finished, or it has no recording. A render that fails exits `3`; otherwise the
+exit code is the run's, as for `run`.
 
 ## validate
 
