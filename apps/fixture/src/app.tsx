@@ -7,6 +7,7 @@ import { Home } from './pages/home';
 import { Hover } from './pages/hover';
 import { Login } from './pages/login';
 import { Long } from './pages/long';
+import { Masked } from './pages/masked';
 import { Slow } from './pages/slow';
 
 export function App() {
@@ -32,6 +33,7 @@ export function App() {
           <Route path="/long" element={<Long />} />
           <Route path="/slow" element={<Slow />} />
           <Route path="/hover" element={<Hover />} />
+          <Route path="/masked" element={<Masked />} />
         </Routes>
       </main>
       <Toaster />

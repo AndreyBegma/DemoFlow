@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { ArtifactsPort } from '../../src/runner/artifacts/index.ts';
 import {
   BACKOFF_MAX_MS,
   backoffDelay,
@@ -8,6 +9,10 @@ import {
   RunnerConnection,
   socketUrl,
 } from '../../src/runner/connection.ts';
+import type {
+  RelaySender,
+  VideoRelayPort,
+} from '../../src/runner/relay/index.ts';
 import type { ConnectionState } from '../../src/runner/state.ts';
 import {
   FakeClock,
@@ -30,7 +35,11 @@ let connection: RunnerConnection;
 let outcome: ConnectionOutcome | null;
 let order: string[];
 
-function start(random = 0.5) {
+function start(
+  random = 0.5,
+  relay?: VideoRelayPort,
+  artifacts?: ArtifactsPort,
+) {
   const fake = fakeSockets();
   sockets = fake.sockets;
   connection = new RunnerConnection({
@@ -52,6 +61,8 @@ function start(random = 0.5) {
     onState: (state, retryAt) => {
       states.push(retryAt === undefined ? { state } : { state, retryAt });
     },
+    ...(relay === undefined ? {} : { relay }),
+    ...(artifacts === undefined ? {} : { artifacts }),
   });
   void connection.run().then((value) => {
     outcome = value;
@@ -305,5 +316,123 @@ describe('RunnerConnection', () => {
     expect(await connection.stop()).toBe('stopped');
     await clock.advance(BACKOFF_MAX_MS);
     expect(sockets).toHaveLength(1);
+  });
+});
+
+describe('RunnerConnection and the video relay', () => {
+  function recordingRelay() {
+    const relay = {
+      handled: [] as Array<{
+        message: Record<string, unknown>;
+        sender: RelaySender;
+      }>,
+      closed: 0,
+      handle(message: Record<string, unknown>, sender: RelaySender) {
+        relay.handled.push({ message, sender });
+      },
+      closeAll() {
+        relay.closed++;
+      },
+      async closeRun() {},
+    };
+    return relay;
+  }
+
+  it('routes video.open, video.ack and video.cancel to the relay', () => {
+    const relay = recordingRelay();
+    start(0.5, relay);
+    last().open();
+    for (const type of ['video.open', 'video.ack', 'video.cancel']) {
+      last().receive({ type, streamId: 's' });
+    }
+    expect(relay.handled.map((item) => item.message.type)).toEqual([
+      'video.open',
+      'video.ack',
+      'video.cancel',
+    ]);
+    expect(logger.text()).not.toMatch(/ignored/);
+  });
+
+  it('logs video.* as unknown when it has no relay, as a daemon before #192 did', () => {
+    start();
+    last().open();
+    last().receive({ type: 'video.open', streamId: 's' });
+    expect(logger.text()).toMatch(/ignored a message of type "video.open"/);
+    expect(last().sent).toEqual([]);
+  });
+
+  it('sends text and binary frames on the socket the open came in on', () => {
+    const relay = recordingRelay();
+    start(0.5, relay);
+    last().open();
+    last().receive({ type: 'video.open', streamId: 's' });
+    const sender = relay.handled[0]?.sender;
+    if (sender === undefined) throw new Error('not routed');
+    sender.send({ type: 'video.end', streamId: 's' });
+    sender.sendBinary(new Uint8Array([1, 2, 3]));
+    expect(last().sent).toContainEqual({ type: 'video.end', streamId: 's' });
+    expect(last().binary).toEqual([new Uint8Array([1, 2, 3])]);
+  });
+
+  it('closes every stream when the socket closes, and never sends on the next socket', async () => {
+    const relay = recordingRelay();
+    start(0.5, relay);
+    last().open();
+    last().receive({ type: 'video.open', streamId: 's' });
+    const sender = relay.handled[0]?.sender;
+    if (sender === undefined) throw new Error('not routed');
+    last().serverClose(1006);
+    expect(relay.closed).toBe(1);
+    await clock.advance(BACKOFF_MAX_MS);
+    expect(sockets).toHaveLength(2);
+    last().open();
+    sender.send({ type: 'video.end', streamId: 's' });
+    sender.sendBinary(new Uint8Array([1]));
+    expect(last().sent.filter((m) => m.type === 'video.end')).toEqual([]);
+    expect(last().binary).toEqual([]);
+  });
+
+  it('routes artifacts.delete to the deleter, which answers on that socket', () => {
+    const handled: Array<Record<string, unknown>> = [];
+    const artifacts: ArtifactsPort = {
+      handle(message, sender) {
+        handled.push(message);
+        sender.send({
+          type: 'artifacts.deleted',
+          requestId: message.requestId,
+        });
+      },
+    };
+    start(0.5, undefined, artifacts);
+    last().open();
+    last().receive({ type: 'artifacts.delete', requestId: 'q', runId: 'r' });
+    expect(handled).toEqual([
+      { type: 'artifacts.delete', requestId: 'q', runId: 'r' },
+    ]);
+    expect(last().sent).toContainEqual({
+      type: 'artifacts.deleted',
+      requestId: 'q',
+    });
+    expect(logger.text()).not.toMatch(/ignored/);
+  });
+
+  it('logs artifacts.delete as unknown without a deleter, as a daemon before #234 did', () => {
+    start();
+    last().open();
+    last().receive({ type: 'artifacts.delete', requestId: 'q', runId: 'r' });
+    expect(logger.text()).toMatch(
+      /ignored a message of type "artifacts.delete"/,
+    );
+    expect(last().sent).toEqual([]);
+  });
+
+  it('closes every stream when the daemon stops', async () => {
+    const relay = recordingRelay();
+    start(0.5, relay);
+    last().open();
+    const stopped = connection.stop();
+    last().serverClose(1000, 'bye');
+    expect(await stopped).toBe('stopped');
+    expect(relay.closed).toBeGreaterThanOrEqual(1);
   });
 });

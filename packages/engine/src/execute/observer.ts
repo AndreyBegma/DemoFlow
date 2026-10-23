@@ -1,4 +1,6 @@
 import type {
+  Annotation,
+  MaskedElement,
   Navigation,
   RunStatus,
   Scenario,
@@ -27,6 +29,10 @@ export interface RunOutcome {
   syncMark?: SyncMark;
   /** The main frame's document navigations (#114); absent when the browser never started. */
   navigations?: Navigation[];
+  /** Elements marked `data-demoflow-mask` that were on screen (#197); absent when none was. */
+  maskedElements?: MaskedElement[];
+  /** Scenes and captions the page set through `window.demoflow` (#201); absent when none. */
+  annotations?: Annotation[];
   /** The absolute path of the raw recording, when the browser was started. */
   videoPath?: string;
 }

@@ -5,7 +5,7 @@ it is accepted: a later record supersedes it and says so.
 
 | ADR | Decision | Status |
 |---|---|---|
-| [0001](0001-control-plane-execution-plane-one-package.md) | Control plane and execution plane; one `demoflow` package on Node; module layout | accepted |
+| [0001](0001-control-plane-execution-plane-one-package.md) | Control plane and execution plane; one `demoflow` package on Node; module layout | accepted; amended by 0015 |
 | [0002](0002-develop-integration-staging-and-os-matrix.md) | `develop` integration, staging on merge, GitHub Actions OS matrix | accepted |
 | [0003](0003-scenario-format-and-project-config.md) | Scenario format, locators, secrets, project config | accepted |
 | [0004](0004-recording-is-separate-from-rendering.md) | Capture model, stage statuses, failure rendering, output defaults, artifact location | accepted; §1's 2× premise superseded by 0010 |
@@ -17,3 +17,6 @@ it is accepted: a later record supersedes it and says so.
 | [0010](0010-source-video-at-viewport-size.md) | The source video is recorded at the viewport size (1×) | accepted |
 | [0011](0011-no-docker-socket-or-host-cache-on-pull-requests.md) | No Docker socket and no host cache on a pull request | accepted |
 | [0012](0012-camera-directed-by-the-scenario.md) | The camera zooms only where a step asks for it (`zoom`); no automatic zoom | accepted |
+| [0013](0013-page-side-contract.md) | The page-side contract: `data-demoflow-mask` and `window.demoflow` (`ready`, `waitForReady`) | accepted; extended by 0014 |
+| [0014](0014-page-annotations.md) | Scenes and captions from the page: `window.demoflow.scene` and `caption` | accepted |
+| [0015](0015-playwright-tests-become-scenarios.md) | Playwright tests become scenarios: a `demoflow/playwright` fixture records a `.demo.json`, the engine replays it; new module `packages/playwright`, optional peer `@playwright/test` | accepted |

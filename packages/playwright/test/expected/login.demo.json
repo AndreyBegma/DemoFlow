@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "name": "sign in",
+  "description": "Recorded from test/playwright/login.pw.ts by demoflow/playwright.",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "path": "/login"
+    },
+    {
+      "action": "fill",
+      "target": {
+        "label": "Email"
+      },
+      "value": "ada@example.com"
+    },
+    {
+      "action": "fill",
+      "target": {
+        "label": "Password"
+      },
+      "valueFrom": {
+        "env": "FIXTURE_PASSWORD"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Sign in"
+      }
+    },
+    {
+      "action": "assertText",
+      "target": {
+        "role": "heading",
+        "name": "Welcome"
+      },
+      "text": "Welcome, ada@example.com",
+      "match": "exact"
+    }
+  ]
+}

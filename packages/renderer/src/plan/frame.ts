@@ -99,7 +99,7 @@ function viewOf(plan: RenderPlan, layout: Layout): View {
   }
   const { vertical } = plan;
   if (vertical === undefined) {
-    throw new Error('a vertical frame needs a plan with mp4-vertical');
+    throw new Error('a vertical frame needs a plan with a vertical format');
   }
   return {
     width: vertical.width,

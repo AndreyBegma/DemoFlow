@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { TimelineSchema } from '@demoflow/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -24,6 +25,9 @@ const runDirs: string[] = [];
 const PAGES: Readonly<Record<string, string>> = {
   '/a': '<h1>Page A</h1><a href="/b">Go to B</a>',
   '/b': '<h1>Page B</h1>',
+  // Leaves for `/b` on its own, 200 ms after it loads.
+  '/later':
+    '<h1>Later</h1><script>setTimeout(() => { location.href = "/b" }, 200)</script>',
   '/to-chain': '<h1>Start</h1><a href="/chain">Go on</a>',
   // Navigates again before its own `load`: one loading stretch.
   '/chain': '<script>location.replace("/b")</script><h1>Chain</h1>',
@@ -135,6 +139,41 @@ describe('navigations (#114)', () => {
     );
     expect(outcome.status).toBe('running');
     expect(outcome.navigations).toHaveLength(2);
+  });
+
+  it('starts a navigation when the browser sent it, not when a starved Node heard of it (#150)', async () => {
+    const opts = await options();
+    // Node is busy for 800 ms from the wait's start; the page leaves at most
+    // 200 ms in, and its `request` event reaches Node only after the spin.
+    const SPIN_MS = 800;
+    const outcome = await runScenario(
+      scenario([
+        { action: 'navigate', path: '/later' },
+        { action: 'wait', ms: 1500 },
+        { action: 'assertVisible', target: { text: 'Page B' } },
+      ]),
+      {
+        ...opts,
+        observers: [
+          ...(opts.observers ?? []),
+          {
+            onStepStarted: ({ stepIndex }) => {
+              if (stepIndex !== 1) return;
+              const until = performance.now() + SPIN_MS;
+              while (performance.now() < until) {
+                // Starve the event loop, as a loaded runner does.
+              }
+            },
+          },
+        ],
+      },
+    );
+    expect(outcome.status).toBe('running');
+    const [first, later] = outcome.navigations ?? [];
+    const wait = outcome.events[1];
+    expect(later).toBeDefined();
+    expect(later.startMs).toBeGreaterThanOrEqual(first.endMs ?? 0);
+    expect(later.startMs).toBeLessThan(wait.startMs + SPIN_MS / 2);
   });
 
   it('records a redirect as one navigation', async () => {

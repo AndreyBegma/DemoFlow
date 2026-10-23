@@ -10,6 +10,7 @@ export type PanelCommand =
   | { type: 'mode'; mode: CaptureMode }
   | { type: 'marker'; kind: MarkerKind; title: string }
   | { type: 'wait'; ms: number }
+  | { type: 'waitForReady'; name: string }
   | { type: 'remove'; index: number }
   | { type: 'move'; index: number; delta: number }
   | { type: 'secretEnv'; name: string }
@@ -94,6 +95,8 @@ export function describeStep(step: ScenarioStepInput): string {
       return `wait ${step.ms} ms`;
     case 'screenshot':
       return `screenshot ${step.name}`;
+    case 'waitForReady':
+      return `wait for ready ${step.name}`;
     default:
       return `${step.action} ${describeLocator(step.target)}`;
   }
@@ -143,6 +146,10 @@ export const PANEL_HTML = `<!doctype html>
     <button id="wait">Wait</button>
   </div>
   <div class="row">
+    <input id="ready" aria-label="Ready name" placeholder="e.g. dashboard-loaded">
+    <button id="wait-ready">Wait for ready</button>
+  </div>
+  <div class="row">
     <button data-mode="pick-visible">Pick: visible</button>
     <button data-mode="pick-text">Pick: text</button>
     <button data-mode="hover">Hover next</button>
@@ -180,6 +187,12 @@ export const PANEL_HTML = `<!doctype html>
   $('scene').onclick = () => marker('scene');
   $('caption').onclick = () => marker('caption');
   $('wait').onclick = () => send({ type: 'wait', ms: Number($('ms').value) });
+  $('wait-ready').onclick = () => {
+    const name = $('ready').value.trim();
+    if (!name) return $('ready').focus();
+    send({ type: 'waitForReady', name });
+    $('ready').value = '';
+  };
   $('env').onchange = () => send({ type: 'secretEnv', name: $('env').value.trim() });
   $('stop').onclick = () => send({ type: 'stop' });
   let current = 'record';

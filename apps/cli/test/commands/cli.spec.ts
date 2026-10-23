@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { cp, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { createRequire } from 'node:module';
@@ -23,6 +23,7 @@ import {
   startFixtureServer,
 } from '../../../../packages/engine/test/execute/fixture-server.ts';
 import { writeCredentials } from '../../src/auth/credentials.ts';
+import { runnerPaths } from '../../src/runner/paths.ts';
 
 const CLI_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -221,7 +222,9 @@ describe('demoflow run on a paired machine', () => {
           });
         }
         response.statusCode = status;
-        response.end('{}');
+        response.end(
+          JSON.stringify({ runId: 'srv-run', projectId: 'srv-project' }),
+        );
       });
     });
     await new Promise<void>((resolve) => api.listen(0, '127.0.0.1', resolve));
@@ -251,6 +254,23 @@ describe('demoflow run on a paired machine', () => {
       status: 'passed',
       formats: ['mp4'],
     });
+    // Spec 192: the server's run id now names this run's directory here.
+    const index = runnerPaths({
+      platform: process.platform,
+      env,
+      homedir: home,
+    }).reportedRuns;
+    const lines = readFileSync(index, 'utf8').trim().split('\n');
+    expect(lines.map((line) => JSON.parse(line))).toEqual([
+      {
+        id: 'srv-run',
+        runDir: path.resolve(JSON.parse(result.stdout).runDir),
+        at: expect.any(String),
+        // Spec 225: what the MCP tools build the run's page URL from.
+        projectId: 'srv-project',
+        server: apiUrl(),
+      },
+    ]);
   });
 
   it('sends no report with DEMOFLOW_NO_REPORT=1', async () => {
@@ -266,14 +286,21 @@ describe('demoflow run on a paired machine', () => {
 
   it('keeps the output and the exit code when the API answers 500', async () => {
     status = 500;
+    const env = pairedEnv(apiUrl());
     const result = await demoflow(
       ['run', scenario('customers'), '--json', '--out', out],
       project,
-      pairedEnv(apiUrl()),
+      env,
     );
     expect(result.code, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout).status).toBe('completed');
     expect(result.stderr).not.toMatch(/report|500|runner\/runs/i);
+    const index = runnerPaths({
+      platform: process.platform,
+      env,
+      homedir: home,
+    }).reportedRuns;
+    expect(existsSync(index)).toBe(false);
   });
 
   it('keeps the output and the exit code when the API is unreachable', async () => {

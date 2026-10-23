@@ -1,5 +1,7 @@
 import {
+  type Annotation,
   deriveRunStatus,
+  type MaskedElement,
   type RunResult,
   type Stages,
   type Timeline,
@@ -72,12 +74,20 @@ function result(failed?: {
 function plan(
   events: TimelineEvent[],
   freezes: Interval[],
-  options: RenderPlanOptions & { failed?: Parameters<typeof result>[0] } = {},
+  options: RenderPlanOptions & {
+    failed?: Parameters<typeof result>[0];
+    maskedElements?: MaskedElement[];
+    annotations?: Annotation[];
+  } = {},
 ): RenderPlan {
-  const { failed, ...rest } = options;
+  const { failed, maskedElements, annotations, ...rest } = options;
   return planRender(
     {
-      timeline: timeline(events),
+      timeline: {
+        ...timeline(events),
+        ...(maskedElements === undefined ? {} : { maskedElements }),
+        ...(annotations === undefined ? {} : { annotations }),
+      },
       result: result(failed),
       source: {
         width: 1280,
@@ -162,6 +172,18 @@ describe('time map', () => {
       [
         click(0, 1000, { x: 300, y: 200 }),
         event({ action: 'wait', startMs: 1000, endMs: 4000 }),
+        click(4000, 4600, { x: 900, y: 500 }),
+      ],
+      [{ startMs: 1000, endMs: 4000 }],
+    );
+    expect(toOutputMs(rendered.timeMap, 4000)).toBe(1400);
+  });
+
+  it('compresses a frozen waitForReady like a wait (#198)', () => {
+    const rendered = plan(
+      [
+        click(0, 1000, { x: 300, y: 200 }),
+        event({ action: 'waitForReady', startMs: 1000, endMs: 4000 }),
         click(4000, 4600, { x: 900, y: 500 }),
       ],
       [{ startMs: 1000, endMs: 4000 }],
@@ -863,6 +885,90 @@ describe('masks', () => {
       expect(rendered.masks[0].keys).toHaveLength(1);
     });
   });
+
+  describe('with maskedElements (#197)', () => {
+    const key = { x: 40, y: 40, width: 200, height: 24 };
+    const grown = { x: 36, y: 36, width: 208, height: 32 };
+    const scroll = event({
+      action: 'scroll',
+      startMs: 1200,
+      endMs: 1800,
+      scroll: { before: { x: 0, y: 0 }, after: { x: 0, y: 500 } },
+    });
+
+    it('spans an interval from its start less the lead to its end plus the trail, with one grown box', () => {
+      const rendered = plan(
+        [event({ action: 'wait', startMs: 0, endMs: 3000 })],
+        [],
+        {
+          maskedElements: [
+            { intervals: [{ startMs: 1000, endMs: 2000, box: key }] },
+          ],
+        },
+      );
+      expect(rendered.masks).toEqual([
+        { startMs: 800, endMs: 2200, keys: [{ atMs: 800, box: grown }] },
+      ]);
+      expect(frameAt(rendered, frames(rendered, 2200, 2300)[0]).masks).toEqual(
+        [],
+      );
+    });
+
+    it('runs an open interval to the end of the video', () => {
+      const rendered = plan(
+        [event({ action: 'wait', startMs: 0, endMs: 3000 })],
+        [],
+        { maskedElements: [{ intervals: [{ startMs: 1000, box: key }] }] },
+      );
+      expect(rendered.masks).toHaveLength(1);
+      expect(rendered.masks[0].endMs).toBe(rendered.durationMs);
+    });
+
+    it('does not move the box with a page scroll: the engine measured it', () => {
+      const rendered = plan(
+        [event({ action: 'wait', startMs: 0, endMs: 1200 }), scroll],
+        [],
+        { maskedElements: [{ intervals: [{ startMs: 1000, box: key }] }] },
+      );
+      expect(rendered.masks[0].keys).toEqual([{ atMs: 800, box: grown }]);
+    });
+
+    it('masks both boxes of a move while its intervals overlap by a frame', () => {
+      const moved = { ...key, y: 300 };
+      const rendered = plan(
+        [event({ action: 'wait', startMs: 0, endMs: 3000 })],
+        [],
+        {
+          maskedElements: [
+            {
+              intervals: [
+                { startMs: 1000, endMs: 1500, box: key },
+                { startMs: 1480, box: moved },
+              ],
+            },
+          ],
+        },
+      );
+      expect(rendered.masks).toHaveLength(2);
+      expect(
+        frameAt(rendered, frames(rendered, 1500, 1550)[0]).masks,
+      ).toHaveLength(2);
+    });
+
+    it('masks every element alongside a masked fill', () => {
+      const rendered = plan(
+        [masked, event({ action: 'wait', startMs: 1400, endMs: 3000 })],
+        [],
+        {
+          maskedElements: [
+            { intervals: [{ startMs: 1000, box: key }] },
+            { intervals: [{ startMs: 1100, endMs: 1300, box: key }] },
+          ],
+        },
+      );
+      expect(rendered.masks).toHaveLength(3);
+    });
+  });
 });
 
 describe('captions', () => {
@@ -890,6 +996,104 @@ describe('captions', () => {
       { startMs: 0, endMs: 801, text: 'Slow report' },
       { startMs: 3000, endMs: 4800, text: 'Open it' },
     ]);
+  });
+
+  describe('from the page (#201)', () => {
+    const wait = event({ action: 'wait', startMs: 4000, endMs: 9000 });
+    const shortWait = event({ action: 'wait', startMs: 4000, endMs: 6000 });
+    const pageCaption = (atMs: number, title: string): Annotation => ({
+      atMs,
+      kind: 'caption',
+      title,
+    });
+
+    it('shows a page caption for 3 000 ms from the call', () => {
+      const rendered = plan([wait], [], {
+        annotations: [pageCaption(4200, 'Paying with a card')],
+      });
+      expect(rendered.captions).toEqual([
+        { startMs: 4200, endMs: 7200, text: 'Paying with a card' },
+      ]);
+    });
+
+    it('cuts it at the next page caption', () => {
+      const rendered = plan([wait], [], {
+        annotations: [pageCaption(4000, 'One'), pageCaption(5000, 'Two')],
+      });
+      expect(rendered.captions).toEqual([
+        { startMs: 4000, endMs: 5000, text: 'One' },
+        { startMs: 5000, endMs: 8000, text: 'Two' },
+      ]);
+    });
+
+    it('is cut by a following step caption', () => {
+      const rendered = plan(
+        [
+          wait,
+          { ...click(6000, 7000, { x: 300, y: 200 }), caption: 'Open it' },
+        ],
+        [],
+        { annotations: [pageCaption(5000, 'From the page')] },
+      );
+      expect(rendered.captions).toEqual([
+        { startMs: 5000, endMs: 6000, text: 'From the page' },
+        { startMs: 6000, endMs: 7800, text: 'Open it' },
+      ]);
+    });
+
+    it('cuts an earlier step caption', () => {
+      const rendered = plan(
+        [
+          { ...click(1000, 2000, { x: 300, y: 200 }), caption: 'Open it' },
+          wait,
+        ],
+        [],
+        { annotations: [pageCaption(1500, 'From the page')] },
+      );
+      expect(rendered.captions).toEqual([
+        { startMs: 1000, endMs: 1500, text: 'Open it' },
+        { startMs: 1500, endMs: 4500, text: 'From the page' },
+      ]);
+    });
+
+    it('lists captions from both sources sorted by start', () => {
+      const rendered = plan(
+        [
+          { ...click(1000, 1100, { x: 300, y: 200 }), caption: 'Step one' },
+          { ...click(3000, 3100, { x: 300, y: 200 }), caption: 'Step two' },
+          wait,
+        ],
+        [],
+        {
+          annotations: [pageCaption(2000, 'Page one'), pageCaption(5000, 'P')],
+        },
+      );
+      expect(rendered.captions.map((caption) => caption.text)).toEqual([
+        'Step one',
+        'Page one',
+        'Step two',
+        'P',
+      ]);
+      const starts = rendered.captions.map((caption) => caption.startMs);
+      expect(starts).toEqual([...starts].sort((a, b) => a - b));
+    });
+
+    it('is clamped to the end of the video', () => {
+      const rendered = plan([shortWait], [], {
+        annotations: [pageCaption(5900, 'Last words')],
+      });
+      const last = rendered.captions.at(-1);
+      expect(last?.text).toBe('Last words');
+      expect(last?.endMs).toBe(rendered.durationMs);
+      expect(last?.endMs).toBeLessThan(5900 + 3000);
+    });
+
+    it('draws no scene card for a caption and ignores scenes', () => {
+      const rendered = plan([wait], [], {
+        annotations: [{ atMs: 4500, kind: 'scene', title: 'Not a caption' }],
+      });
+      expect(rendered.captions).toEqual([]);
+    });
   });
 });
 

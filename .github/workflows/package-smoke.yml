@@ -15,6 +15,7 @@ on:
       - packages/core/**
       - packages/engine/**
       - packages/renderer/**
+      - packages/playwright/**
       - apps/cli/**
       - apps/fixture/**
       - package.json

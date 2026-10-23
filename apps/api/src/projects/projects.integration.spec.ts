@@ -100,6 +100,7 @@ describe('projects (integration)', () => {
           formats: ['mp4', 'gif'],
           failedStep: null,
           cliVersion: '0.4.0',
+          artifactsDeletedAt: null,
         },
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
@@ -151,6 +152,20 @@ describe('projects (integration)', () => {
       expect((await list(alice.cookie).expect(200)).body.projects).toHaveLength(
         3,
       );
+    });
+
+    it('accepts every format the CLI renders, the vertical export too', async () => {
+      const formats = [
+        'mp4',
+        'gif',
+        'webm',
+        'mp4-vertical',
+        'gif-vertical',
+        'webm-vertical',
+      ];
+      await report(laptop.token, runReport({ formats })).expect(201);
+      const { projects } = (await list(alice.cookie).expect(200)).body;
+      expect(projects[0].lastRun.formats).toEqual(formats);
     });
 
     it('stores no field it was not given a column for', async () => {

@@ -4,7 +4,9 @@ import type { RenderFormat, RunResult } from '@demoflow/core';
 import { readCredentials } from '../auth/credentials.ts';
 import { apiBase } from '../auth/server.ts';
 import { type HostEnvironment, pathFor } from '../config/platform.ts';
+import { runnerPaths } from '../runner/paths.ts';
 import { packageVersion } from '../version.ts';
+import { appendReportedRun } from './reported-runs.ts';
 
 export const REPORT_TIMEOUT_MS = 2_000;
 
@@ -93,13 +95,30 @@ export async function canonicalRoot(root: string): Promise<string> {
   }
 }
 
+/** The server's run id in a `POST /runner/runs` answer, or `null`. */
+function runIdOf(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const { runId } = body as Record<string, unknown>;
+  return typeof runId === 'string' && runId !== '' ? runId : null;
+}
+
+/** The project id in a `POST /runner/runs` answer, or `undefined`. */
+function projectIdOf(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const { projectId } = body as Record<string, unknown>;
+  return typeof projectId === 'string' && projectId !== ''
+    ? projectId
+    : undefined;
+}
+
 /**
  * Decision 3: after a run on a paired machine, tell the server it happened.
  * Never throws, never prints, and is over within the timeout: the run's own
- * output and exit code are untouched.
+ * output and exit code are untouched. A report the server took is recorded in
+ * `reported-runs.jsonl`, so the daemon can stream its video (spec 192).
  */
 export async function reportRun(
-  input: { root: string; result: RunResult },
+  input: { root: string; runDir: string; result: RunResult },
   deps: ReportDeps,
 ): Promise<void> {
   try {
@@ -125,8 +144,24 @@ export async function reportRun(
         signal: AbortSignal.timeout(deps.timeoutMs ?? REPORT_TIMEOUT_MS),
       },
     );
-    // Drain so the connection is released; the answer is not used.
-    await response.body?.cancel();
+    if (!response.ok) {
+      // Drain so the connection is released.
+      await response.body?.cancel();
+      return;
+    }
+    // The 2 s signal above still bounds this read (spec 192, Decision 1).
+    const answer: unknown = await response.json();
+    const runId = runIdOf(answer);
+    if (runId === null) return;
+    const projectId = projectIdOf(answer);
+    appendReportedRun(runnerPaths(deps.host).reportedRuns, {
+      id: runId,
+      runDir: path.resolve(input.runDir),
+      at: new Date().toISOString(),
+      // Spec 225: kept so the MCP tools can link the run's page.
+      ...(projectId === undefined ? {} : { projectId }),
+      server: credentials.server,
+    });
   } catch {
     // Decision 3: every failure is silent.
   }

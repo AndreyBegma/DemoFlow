@@ -12,12 +12,21 @@ export interface Manifest {
   license?: string;
   engines?: Record<string, string>;
   dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
 }
 
 export const WORKSPACE_SCOPE = '@demoflow/';
 
 /** The bundle, relative to the package root: two levels deep (see stage.ts). */
 export const BIN = 'dist/bin/main.js';
+
+/**
+ * `demoflow/playwright`, the Playwright Test fixture (ADR-0015): its bundle
+ * and its declarations, relative to the package root.
+ */
+export const PLAYWRIGHT_ENTRY = 'dist/playwright/index.js';
+export const PLAYWRIGHT_TYPES = 'dist/playwright/index.d.ts';
 
 /**
  * The name the package is published under. The workspace package is
@@ -75,6 +84,31 @@ export function runtimeDependencies(
   );
 }
 
+/**
+ * The CLI's peer dependencies, each optional: `demoflow` installed alone must
+ * work, and only `demoflow/playwright` needs its peer (ADR-0015 §2). The peer
+ * range is a range by nature; `dependencies` stay exact.
+ */
+export function peerDependencies(cli: Manifest): {
+  peerDependencies: Record<string, string>;
+  peerDependenciesMeta: Record<string, { optional: true }>;
+} {
+  const peers = cli.peerDependencies ?? {};
+  for (const name of Object.keys(peers)) {
+    if (cli.peerDependenciesMeta?.[name]?.optional !== true) {
+      throw new Error(
+        `${name} is a peer dependency: mark it optional in peerDependenciesMeta`,
+      );
+    }
+  }
+  return {
+    peerDependencies: { ...peers },
+    peerDependenciesMeta: Object.fromEntries(
+      Object.keys(peers).map((name) => [name, { optional: true as const }]),
+    ),
+  };
+}
+
 /** The manifest `npm pack` and `npm publish` see: no workspace references, no scripts. */
 export function publishManifest(
   cli: Manifest,
@@ -82,6 +116,13 @@ export function publishManifest(
 ): Record<string, unknown> {
   if (cli.name === undefined || cli.version === undefined) {
     throw new Error('the CLI manifest has no name or version');
+  }
+  const dependencies = runtimeDependencies(cli, workspace);
+  const peers = peerDependencies(cli);
+  for (const name of Object.keys(peers.peerDependencies)) {
+    if (name in dependencies) {
+      throw new Error(`${name} is a peer dependency and a runtime dependency`);
+    }
   }
   return {
     name: PUBLISHED_NAME,
@@ -98,8 +139,17 @@ export function publishManifest(
     license: cli.license,
     type: 'module',
     bin: { demoflow: BIN },
+    // Only `demoflow/playwright` is importable; the bin is not an export.
+    exports: {
+      './playwright': {
+        types: `./${PLAYWRIGHT_TYPES}`,
+        import: `./${PLAYWRIGHT_ENTRY}`,
+      },
+      './package.json': './package.json',
+    },
     files: ['dist', 'fonts'],
     engines: cli.engines,
-    dependencies: runtimeDependencies(cli, workspace),
+    dependencies,
+    ...peers,
   };
 }

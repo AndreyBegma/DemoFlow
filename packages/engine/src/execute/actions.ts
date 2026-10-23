@@ -8,6 +8,7 @@ import {
 } from '@demoflow/core';
 import type { Page, Locator as PlaywrightLocator } from 'playwright';
 import { describeLocator, resolveLocator } from './locator.ts';
+import { MASK_ATTRIBUTE } from './marked-masks.ts';
 import type { EngineObserver } from './observer.ts';
 import { withNavigation } from './pending-navigation.ts';
 import { boxCentre, moveSteps, type Point } from './pointer.ts';
@@ -16,6 +17,7 @@ import {
   type OriginGuard,
   originNotAllowed,
 } from './readiness.ts';
+import { waitForReady } from './ready.ts';
 
 /** Spec 3: the recording shows typing, one character every 35 ms. */
 export const TYPING_DELAY_MS = 35;
@@ -182,6 +184,9 @@ export async function runAction(
       return { marker: { title: step.title, kind: step.kind } };
     case 'wait':
       await sleep(step.ms);
+      return {};
+    case 'waitForReady':
+      await waitForReady(ctx.page, step.name, step.timeoutMs);
       return {};
   }
 }
@@ -444,11 +449,27 @@ async function assertText(
     await sleep(100);
   }
   const verb = step.match === 'exact' ? 'to be' : 'to contain';
-  const message = `expected ${describeLocator(step.target)} ${verb} ${JSON.stringify(step.text)}, got ${JSON.stringify(actual)}`;
+  // The failure card renders this message into the video (ADR-0004 §4): a marked element's text stays out of it (#197).
+  const message = (await insideMarked(target))
+    ? `expected text ${JSON.stringify(step.text)} in a masked element`
+    : `expected ${describeLocator(step.target)} ${verb} ${JSON.stringify(step.text)}, got ${JSON.stringify(actual)}`;
   throw new StepFailure('verification', message, {
     ...withBox(await measure(target)),
     assertion: { passed: false, message },
   });
+}
+
+/** Whether the target is marked `data-demoflow-mask` or inside such an element; one that cannot be asked counts as marked. */
+async function insideMarked(target: PlaywrightLocator): Promise<boolean> {
+  try {
+    return await target.evaluate(
+      (element, selector) => element.closest(selector) !== null,
+      `[${MASK_ATTRIBUTE}]`,
+      { timeout: 1_000 },
+    );
+  } catch {
+    return true;
+  }
 }
 
 function normalise(text: string): string {

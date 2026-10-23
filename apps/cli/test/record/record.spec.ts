@@ -258,6 +258,49 @@ describe('demoflow record: Repeat over data', () => {
   });
 });
 
+describe('demoflow record: Wait for ready', () => {
+  it('appends a waitForReady step for a valid name, clears the input, and the scenario validates', async () => {
+    const root = await project(counterOrigin);
+    const result = await record(root, 'ready', {}, async (session) => {
+      const { panel } = session;
+      await panelShows(panel, 'navigate /');
+      await panel.getByLabel('Ready name').fill(' dashboard-loaded ');
+      await panelButton(panel, 'Wait for ready');
+      await panelShows(panel, 'wait for ready dashboard-loaded');
+      expect(await panel.getByLabel('Ready name').inputValue()).toBe('');
+      await stopAndSave(session);
+    });
+
+    expect(result.code).toBe(0);
+    const scenario = await readScenario(root, 'ready');
+    expect(scenario.steps).toEqual([
+      { action: 'navigate', path: '/' },
+      { action: 'waitForReady', name: 'dashboard-loaded' },
+    ]);
+    expect(() => parseScenario(JSON.stringify(scenario))).not.toThrow();
+  });
+
+  it('adds no step for a name ReadyNameSchema rejects, and the notice names the rule', async () => {
+    const root = await project(counterOrigin);
+    const result = await record(root, 'bad-ready', {}, async (session) => {
+      const { panel } = session;
+      await panelShows(panel, 'navigate /');
+      await panel.getByLabel('Ready name').fill('9 bad name!');
+      await panelButton(panel, 'Wait for ready');
+      await panel
+        .getByText(
+          '"9 bad name!" is not a ready name: expected 1–64 characters',
+        )
+        .waitFor();
+      await stopAndSave(session);
+    });
+
+    expect(result.code).toBe(0);
+    const scenario = await readScenario(root, 'bad-ready');
+    expect(scenario.steps).toEqual([{ action: 'navigate', path: '/' }]);
+  });
+});
+
 describe('demoflow record on a test page', () => {
   it('in pick mode adds an assertion and the click never reaches the page', async () => {
     const root = await project(counterOrigin);

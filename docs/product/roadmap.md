@@ -29,7 +29,8 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
   [ADR-0008](../adr/0008-cloud-boundary.md) §1).
 - Specs: [68](../specs/68-mcp-generate-poll-cancel.md) (generate, poll, cancel),
   [69](../specs/69-mcp-read-only-tools.md) (validate, list, check).
-- The "DemoFlow page reference for a video" (vision §3.3) waits for Phase 5.
+- The "DemoFlow page reference for a video" (vision §3.3) waited for Phase 5;
+  with Phase 5 shipped it is [225](../specs/225-mcp-run-page-url.md).
 
 ## Before Phase 4 — visual baselines
 
@@ -68,6 +69,8 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
      9:16 follow-camera waits for that answer;
   3. cards and transitions;
   4. export formats.
+- Vertical GIF and WebM, spec 176's follow-up, are
+  [236](../specs/236-vertical-gif-webm.md).
 
 ## Phase 5 — Website and Runner pairing
 
@@ -101,6 +104,11 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
   under a tag that can be pinned") has fired. No ADR change.
 - The work is the Luna implementation of the `VideoPlayer` adapter, pinned
   exactly, keeping the native `<video>` fallback.
+- Playback through the relay shipped in #191–#193. Deleting a run's
+  artifacts from the website, the fourth action ADR-0008 §3 allows and vision
+  §16's criterion 15, is [233](../specs/233-delete-run-artifacts-api.md)
+  (API and protocol), [234](../specs/234-runner-deletes-artifacts.md) (the
+  daemon) and [235](../specs/235-run-page-delete-artifacts.md) (the run page).
 
 ## Phase 7 — Optional SDK
 
@@ -112,6 +120,30 @@ All four, in this order:
    on;
 3. annotations — the application sets scenes and captions through a JS API;
 4. reuse of existing Playwright tests as demo scenarios.
+
+- The page-side contract of items 1–2 is
+  [ADR-0013](../adr/0013-page-side-contract.md); item 3 extends it in
+  [ADR-0014](../adr/0014-page-annotations.md).
+- Item 4 is [ADR-0015](../adr/0015-playwright-tests-become-scenarios.md): a
+  `demoflow/playwright` Playwright Test fixture records a `.demo.json`, and
+  the engine replays it.
+- Specs: [197](../specs/197-mask-attribute.md) (`data-demoflow-mask`),
+  [198](../specs/198-ready-signal.md) (`window.demoflow.ready`, `waitForReady`),
+  [201](../specs/201-page-annotations.md) (`window.demoflow.scene`, `caption`),
+  [202](../specs/202-playwright-reuse-spike.md) (item 4: a spike first; its
+  [report](../research/202-playwright-reuse-spike.md) recommends a
+  `demoflow/playwright` fixture that records a scenario for the engine to
+  replay, with a draft ADR and four follow-up issues),
+  [203](../specs/203-sdk-docs.md) (the website's Application SDK page, after
+  197, 198 and 201),
+  [208](../specs/208-playwright-fixture.md) (item 4: the `demoflow/playwright`
+  fixture),
+  [209](../specs/209-playwright-scrolls-captions.md) (container scrolls, the
+  `caption` and `scene` helpers),
+  [210](../specs/210-playwright-docs.md) (the website's "Reuse Playwright
+  tests" page),
+  [224](../specs/224-record-wait-for-ready.md) (a "Wait for ready" control in
+  the `demoflow record` panel, spec 198's follow-up).
 
 ## Cross-cutting
 

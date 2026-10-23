@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "name": "tour",
+  "description": "Recorded from test/playwright/tour.pw.ts by demoflow/playwright.",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "steps": [
+    {
+      "action": "navigate",
+      "path": "/hover"
+    },
+    {
+      "action": "marker",
+      "title": "Hover",
+      "kind": "scene"
+    },
+    {
+      "action": "hover",
+      "target": {
+        "testId": "hover-card"
+      }
+    },
+    {
+      "action": "screenshot",
+      "name": "hover-tooltip"
+    },
+    {
+      "action": "navigate",
+      "path": "/long"
+    },
+    {
+      "action": "marker",
+      "title": "Scrolling",
+      "kind": "scene"
+    },
+    {
+      "action": "scroll",
+      "to": "bottom"
+    },
+    {
+      "action": "scroll",
+      "to": "top"
+    },
+    {
+      "action": "hover",
+      "target": {
+        "testId": "log-panel"
+      }
+    },
+    {
+      "action": "scroll",
+      "to": "bottom",
+      "within": {
+        "testId": "log-panel"
+      }
+    },
+    {
+      "action": "navigate",
+      "path": "/slow"
+    },
+    {
+      "action": "marker",
+      "title": "Slow report",
+      "kind": "caption"
+    },
+    {
+      "action": "marker",
+      "title": "Slow report",
+      "kind": "scene"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Load report"
+      }
+    },
+    {
+      "action": "waitFor",
+      "target": {
+        "text": "Report ready"
+      },
+      "state": "visible",
+      "timeoutMs": 10000
+    },
+    {
+      "action": "screenshot",
+      "name": "report-ready"
+    }
+  ]
+}

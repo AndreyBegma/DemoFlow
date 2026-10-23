@@ -282,6 +282,28 @@ describe('parseScenario: data and repeat', () => {
     ]);
   });
 
+  it('takes a {{…}} name on waitForReady and checks the expanded name', () => {
+    const repeat = {
+      action: 'repeat',
+      each: 'posts',
+      as: 'post',
+      steps: [{ action: 'waitForReady', name: 'post-{{index}}' }],
+    };
+    expect(
+      expandScenario(parsed(scenario([repeat], { posts: POSTS }))).steps.map(
+        (step) => step.action === 'waitForReady' && step.name,
+      ),
+    ).toEqual(['post-1', 'post-2', 'post-3', 'post-4', 'post-5']);
+
+    const bad = {
+      ...repeat,
+      steps: [{ action: 'waitForReady', name: '{{post.text}}' }],
+    };
+    expect(
+      errorsOf(scenario([bad], { posts: [{ text: 'bad name!' }] })),
+    ).toEqual([expect.objectContaining({ path: 'steps[0].steps[0].name' })]);
+  });
+
   it('rejects an unknown data list', () => {
     expect(errorsOf(scenario([postRepeat], { users: POSTS }))).toEqual([
       {

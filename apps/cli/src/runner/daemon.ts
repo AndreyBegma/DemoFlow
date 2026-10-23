@@ -3,6 +3,7 @@ import { type Fetch, fetchSelf } from '../auth/client.ts';
 import { readCredentials, writeCredentials } from '../auth/credentials.ts';
 import type { Io } from '../commands/io.ts';
 import type { HostEnvironment } from '../config/platform.ts';
+import { ArtifactsDeleter, nodeArtifactsFs } from './artifacts/index.ts';
 import {
   type Clock,
   nodeSocket,
@@ -14,6 +15,7 @@ import {
 import { acquireLock, releaseLock } from './lock.ts';
 import { fileLogger, type Logger } from './log.ts';
 import { runnerPaths } from './paths.ts';
+import { nodeRelayFs, VideoRelay } from './relay/index.ts';
 import { type ConnectionState, writeState } from './state.ts';
 
 /** How often the daemon looks for `runner.stop`. */
@@ -92,6 +94,12 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
   };
   saveState();
 
+  const relay = new VideoRelay({
+    indexFile: paths.reportedRuns,
+    fs: nodeRelayFs,
+    logger,
+    platform: deps.host.platform,
+  });
   const connection = new RunnerConnection({
     server: credentials.server,
     token: credentials.token,
@@ -108,6 +116,15 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
       current = retryAt === undefined ? { state } : { state, retryAt };
       saveState();
     },
+    relay,
+    artifacts: new ArtifactsDeleter({
+      indexFile: paths.reportedRuns,
+      fs: nodeArtifactsFs,
+      logger,
+      platform: deps.host.platform,
+      homeDir: deps.host.homedir,
+      closeRun: (runId) => relay.closeRun(runId),
+    }),
   });
 
   const stop = (why: string) => {

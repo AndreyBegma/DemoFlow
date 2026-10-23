@@ -47,6 +47,7 @@ decisions live in [../adr/](../adr/README.md).
 | [#91](https://github.com/AndreyBegma/DemoFlow/issues/91) | [A `press` step](91-press-step.md) | #85 |
 | [#103](https://github.com/AndreyBegma/DemoFlow/issues/103) | [`record`: no extra step on a slow runner](103-record-extra-step.md) | — |
 | [#105](https://github.com/AndreyBegma/DemoFlow/issues/105) | [`npx demoflow` inside the monorepo](105-workspace-package-name.md) | — |
+| [#225](https://github.com/AndreyBegma/DemoFlow/issues/225) | [MCP: the run's page URL in `get_task` and `list_demos`](225-mcp-run-page-url.md) — vision §3.3, deferred to after Phase 5 | — |
 
 ## Before Phase 4 (roadmap)
 
@@ -87,6 +88,9 @@ renderer.
 | [#163](https://github.com/AndreyBegma/DemoFlow/issues/163) | [Zoom set per step, no automatic zoom](163-step-zoom.md) | — |
 | [#165](https://github.com/AndreyBegma/DemoFlow/issues/165) | [Scenario data and `repeat`](165-scenario-data-repeat.md) | #163 |
 | [#173](https://github.com/AndreyBegma/DemoFlow/issues/173) | [Mask timing test flakes on macOS](173-mask-timing-flake.md) | — |
+| [#218](https://github.com/AndreyBegma/DemoFlow/issues/218) | [waitForReady timing test flakes on macOS](218-ready-timing-flake.md) | — |
+| [#219](https://github.com/AndreyBegma/DemoFlow/issues/219) | [Runner log rotation test flakes on Windows](219-log-rotation-flake.md) | — |
+| [#242](https://github.com/AndreyBegma/DemoFlow/issues/242) | [Woodpecker `test-pr` runs out of memory when every package is affected](242-woodpecker-test-oom.md) — blocks #241 | — |
 
 ## Phase 4–5 remainder
 
@@ -94,6 +98,38 @@ renderer.
 |---|---|---|
 | [#150](https://github.com/AndreyBegma/DemoFlow/issues/150) | [Real-run hold test flake](150-real-run-hold-flake.md) | — |
 | [#176](https://github.com/AndreyBegma/DemoFlow/issues/176) | [Vertical 9:16 export](176-vertical-export.md) | — |
+| [#236](https://github.com/AndreyBegma/DemoFlow/issues/236) | [Vertical GIF and WebM export](236-vertical-gif-webm.md) — spec 176 follow-up | — |
 | [#177](https://github.com/AndreyBegma/DemoFlow/issues/177) | [Delete my account](177-account-deletion.md) | — |
 | [#178](https://github.com/AndreyBegma/DemoFlow/issues/178) | [Projects and the demo library](178-projects-and-library.md) | — |
 | [#179](https://github.com/AndreyBegma/DemoFlow/issues/179) | [Documentation section](179-docs-section.md) | — |
+
+## Phase 6 — Playback through the relay
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#191](https://github.com/AndreyBegma/DemoFlow/issues/191) | [Video relay (API) and its protocol](191-video-relay-api.md) | — |
+| [#192](https://github.com/AndreyBegma/DemoFlow/issues/192) | [The runner daemon streams a reported run's video](192-runner-serves-video.md) | #191 (merge order) |
+| [#193](https://github.com/AndreyBegma/DemoFlow/issues/193) | [Run page and the `VideoPlayer` adapter](193-run-video-page.md) | #191 |
+| [#233](https://github.com/AndreyBegma/DemoFlow/issues/233) | [Delete a run's artifacts on its machine (API) and its protocol](233-delete-run-artifacts-api.md) | — |
+| [#234](https://github.com/AndreyBegma/DemoFlow/issues/234) | [The runner daemon deletes a reported run's artifacts](234-runner-deletes-artifacts.md) | #233 (merge order) |
+| [#235](https://github.com/AndreyBegma/DemoFlow/issues/235) | [Delete a run's video files from the run page](235-run-page-delete-artifacts.md) | #233 |
+
+## Phase 7 — Optional SDK
+
+The page-side contract is [ADR-0013](../adr/0013-page-side-contract.md),
+extended for annotations by [ADR-0014](../adr/0014-page-annotations.md).
+Reuse of Playwright tests is [ADR-0015](../adr/0015-playwright-tests-become-scenarios.md),
+from the [#202 spike report](../research/202-playwright-reuse-spike.md).
+
+| Issue | Spec | Depends on |
+|---|---|---|
+| [#197](https://github.com/AndreyBegma/DemoFlow/issues/197) | [`data-demoflow-mask` masks a marked element](197-mask-attribute.md) | — |
+| [#221](https://github.com/AndreyBegma/DemoFlow/issues/221) | [A marked element drawn unblurred on one frame](221-marked-mask-frame-leak.md) | — |
+| [#198](https://github.com/AndreyBegma/DemoFlow/issues/198) | [`window.demoflow.ready(name)` and `waitForReady`](198-ready-signal.md) | #197 (merge order) |
+| [#201](https://github.com/AndreyBegma/DemoFlow/issues/201) | [Scenes and captions from the page](201-page-annotations.md) | #198 |
+| [#202](https://github.com/AndreyBegma/DemoFlow/issues/202) | [Spike: reuse Playwright tests as scenarios](202-playwright-reuse-spike.md) | — |
+| [#203](https://github.com/AndreyBegma/DemoFlow/issues/203) | [Docs: the Application SDK page](203-sdk-docs.md) | #197, #198, #201 |
+| [#208](https://github.com/AndreyBegma/DemoFlow/issues/208) | [`demoflow/playwright`: a fixture that records a scenario](208-playwright-fixture.md) | — |
+| [#209](https://github.com/AndreyBegma/DemoFlow/issues/209) | [Fixture: container scrolls, `caption` and `scene` helpers](209-playwright-scrolls-captions.md) | #208 |
+| [#210](https://github.com/AndreyBegma/DemoFlow/issues/210) | [Docs: reuse Playwright tests](210-playwright-docs.md) | #208; after #209; not beside #203 |
+| [#224](https://github.com/AndreyBegma/DemoFlow/issues/224) | [A "Wait for ready" control in the record panel](224-record-wait-for-ready.md) — spec 198 follow-up | — |

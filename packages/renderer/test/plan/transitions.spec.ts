@@ -1,9 +1,11 @@
 import {
   type CardsConfig,
   deriveRunStatus,
+  type MaskedElement,
   type Navigation,
   type RunResult,
   type Stages,
+  type Timeline,
   type TimelineEvent,
 } from '@demoflow/core';
 import { describe, expect, it } from 'vitest';
@@ -104,9 +106,19 @@ function plan(
     navigations?: Navigation[] | undefined;
     failedAt?: number;
     events?: Omit<TimelineEvent, 'stepIndex'>[];
+    maskedElements?: MaskedElement[];
+    /** Measures the offset on this mark instead of the fixed `offsetMs: 0`. */
+    sync?: { mark: NonNullable<Timeline['syncMark']>; clearMs: number };
   } = {},
 ): RenderPlan {
-  const { navigations: given, failedAt, events = EVENTS, ...rest } = options;
+  const {
+    navigations: given,
+    failedAt,
+    events = EVENTS,
+    maskedElements,
+    sync,
+    ...rest
+  } = options;
   // `navigations: undefined` is a timeline from before #114.
   const navigations = 'navigations' in options ? given : NAVIGATIONS;
   return planRender(
@@ -118,6 +130,8 @@ function plan(
         videoFile: 'source.webm',
         events: events.map((event, stepIndex) => ({ ...event, stepIndex })),
         ...(navigations === undefined ? {} : { navigations }),
+        ...(sync === undefined ? {} : { syncMark: sync.mark }),
+        ...(maskedElements === undefined ? {} : { maskedElements }),
       },
       result: result(failedAt),
       source: {
@@ -128,8 +142,14 @@ function plan(
         codec: 'vp9',
         freezes: [],
       },
+      ...(sync === undefined ? {} : { syncClearMs: sync.clearMs }),
     },
-    { offsetMs: 0, frame: {}, cards: cards(true), ...rest },
+    {
+      ...(sync === undefined ? { offsetMs: 0 } : {}),
+      frame: {},
+      cards: cards(true),
+      ...rest,
+    },
   );
 }
 
@@ -154,15 +174,89 @@ describe('page-load holds (spec 114)', () => {
       // about:blank is never shown: the background from page 0.
       { startMs: 0, endMs: 700, fadeEndMs: 1000, fadeMs: 300, masks: [] },
       {
-        startMs: 1950,
+        // 200 ms before the navigation, at the frame held: the unmeasured
+        // offset's lead (#150).
+        startMs: 1750,
         // The scene card at 2000 is inside the load: 1 500 ms later.
         endMs: 4400,
         fadeEndMs: 4700,
         fadeMs: 300,
-        sourceMs: 1949,
+        sourceMs: 1750,
         masks: [MASKED],
       },
     ]);
+  });
+
+  it('holds a frame a lead before the start, not the last one before it, so no early-stamped blank frame is held (#150)', () => {
+    // A source frame's time can be ~40 ms early (the recorder's 25 fps slots,
+    // plus the sync offset's error): the frame just before the start can be
+    // the new document's blank page. Unmeasured offset: the 200 ms mask lead.
+    const unmeasured = plan({ transitions: FADE });
+    const [, held] = unmeasured.transitions?.holds ?? [];
+    expect(held.sourceMs).toBe(1950 + unmeasured.offsetMs - 200);
+    // The old page still shows the field there: the held frame keeps its mask.
+    expect(held.masks).toEqual([MASKED]);
+
+    // Measured offset: the measured mask lead, three source frames (#185),
+    // never less than two.
+    const measured = plan({
+      transitions: FADE,
+      sync: { mark: { colour: '#ff00ff', onMs: 25, offMs: 180 }, clearMs: 240 },
+    });
+    expect(measured.offsetMeasured).toBe(true);
+    expect(measured.maskLeadMs).toBe(120);
+    const [, measuredHold] = measured.transitions?.holds ?? [];
+    expect(measuredHold.sourceMs).toBeCloseTo(
+      1950 + measured.offsetMs - 120,
+      6,
+    );
+  });
+
+  it('draws no live frame in the lead before a navigation: the hold starts at the frame held (#150)', () => {
+    // The live frames there can already read the new document's blank page.
+    const transitioned = plan({ transitions: FADE, cards: cards(false) });
+    const [, hold] = transitioned.transitions?.holds ?? [];
+    const navigationSourceMs = 1950 + transitioned.offsetMs;
+    let live = 0;
+    for (const { atMs, state } of frames(transitioned)) {
+      for (const layer of layers(state)) {
+        if (layer.sourceMs === null || layer.sourceMs === hold.sourceMs) {
+          continue;
+        }
+        live++;
+        const inLead =
+          layer.sourceMs > (hold.sourceMs ?? Number.NaN) &&
+          layer.sourceMs <= navigationSourceMs;
+        expect(inLead, `${atMs}: live source ${layer.sourceMs}`).toBe(false);
+      }
+    }
+    expect(live).toBeGreaterThan(0);
+  });
+
+  it('never starts a hold before the step before the triggering one, and still holds a frame from before the navigation', () => {
+    // A `navigate` at 1900 loads at 1950; the step before it, a 100 ms wait,
+    // starts at 1800 — inside the 200 ms lead. The marker takes no time and
+    // is no step of its own.
+    const transitioned = plan({
+      transitions: FADE,
+      cards: cards(false),
+      events: [
+        { action: 'navigate', startMs: 0, endMs: 800 },
+        { action: 'wait', startMs: 800, endMs: 1800 },
+        { action: 'wait', startMs: 1800, endMs: 1900 },
+        {
+          action: 'marker',
+          startMs: 1900,
+          endMs: 1900,
+          marker: { title: 'Next', kind: 'scene' },
+        },
+        { action: 'navigate', startMs: 1900, endMs: 3000 },
+        { action: 'wait', startMs: 3000, endMs: 5000 },
+      ],
+    });
+    const [, hold] = transitioned.transitions?.holds ?? [];
+    expect(hold.startMs).toBe(1800);
+    expect(hold.sourceMs).toBe(1950 + transitioned.offsetMs - 200);
   });
 
   it('shows the background, never the blank page, until the first load, then dissolves into the page', () => {
@@ -198,8 +292,8 @@ describe('page-load holds (spec 114)', () => {
         held++;
       }
     }
-    // 1 250 ms of page frames and 600 ms of card dissolves: 55 frames.
-    expect(held).toBe(55);
+    // 1 450 ms of page frames and 600 ms of card dissolves: 61 frames.
+    expect(held).toBe(61);
     // The live page's own mask ended with the hold's start: after the hold, none.
     expect(frameAt(transitioned, Math.ceil((4500 * FPS) / 1000)).masks).toEqual(
       [],
@@ -212,7 +306,7 @@ describe('page-load holds (spec 114)', () => {
     // Frame 59, 1 966 ms: the click's ring is under way on the held frame.
     const frame = 59;
     const state = frameAt(transitioned, frame);
-    expect(state.sourceMs).toBe(1949);
+    expect(state.sourceMs).toBe(1750);
     expect(state.cursor).toEqual(frameAt(plain, frame).cursor);
     expect(state.rings).toEqual(frameAt(plain, frame).rings);
   });
@@ -223,7 +317,7 @@ describe('page-load holds (spec 114)', () => {
       navigations: [{ startMs: 0, endMs: 700 }, { startMs: 1950 }],
     }).transitions?.holds;
     // The marker at 2 000 is the next step; the card on that cut comes first.
-    expect(holds?.[1]).toMatchObject({ startMs: 1950, endMs: 3500 });
+    expect(holds?.[1]).toMatchObject({ startMs: 1750, endMs: 3500 });
   });
 
   it('holds no navigation the page never reached after a failure', () => {
@@ -291,7 +385,7 @@ describe('card dissolves (spec 114)', () => {
       card.startMs + card.durationMs - 100,
     ]) {
       const from = at(ms).fade?.from;
-      expect(from?.sourceMs).toBe(1949);
+      expect(from?.sourceMs).toBe(1750);
       expect(from?.masks).toHaveLength(1);
     }
   });
@@ -428,6 +522,91 @@ describe('a masked field across a document navigation (spec 146)', () => {
         plan({ ...options, events: stays, navigations: undefined }).masks,
       );
     }
+  });
+});
+
+describe('a marked element across a document navigation (#221)', () => {
+  const NO_CARDS = { cards: cards(false) };
+  const OFF = { ...NO_CARDS, transitions: { enabled: false, durationMs: 300 } };
+  const ON = { ...NO_CARDS, transitions: FADE };
+  const LEAD_TRAIL_MS = 200;
+  const [FIRST, LOGIN] = NAVIGATIONS;
+  /** The sign-in with no masked fill: only the marked element is masked. */
+  const UNFILLED: typeof EVENTS = EVENTS.map((event) =>
+    event === EVENTS[1]
+      ? { action: 'wait', startMs: event.startMs, endMs: event.endMs }
+      : event,
+  );
+  const marked = (startMs: number, endMs?: number): MaskedElement[] => [
+    {
+      intervals: [
+        endMs === undefined
+          ? { startMs, box: FIELD }
+          : { startMs, endMs, box: FIELD },
+      ],
+    },
+  ];
+
+  it('never ends a span on the load that brought its document in, when its start maps a few ms early', () => {
+    // The engine maps a start by the bound that errs early: here 10 ms before the load's request.
+    const cases: Array<{
+      navigations: Navigation[];
+      maskedElements: MaskedElement[];
+    }> = [
+      // The first load: not held, so the span ended at its load plus the trail.
+      {
+        navigations: [{ ...FIRST, startMs: 100 }, LOGIN],
+        maskedElements: marked(90),
+      },
+      // The sign-in's load: held with transitions on, so the span ended at its start.
+      { navigations: NAVIGATIONS, maskedElements: marked(LOGIN.startMs - 10) },
+      {
+        navigations: NAVIGATIONS,
+        maskedElements: marked(LOGIN.startMs - 10, 4000),
+      },
+    ];
+    for (const options of [ON, OFF]) {
+      for (const { navigations, maskedElements } of cases) {
+        const planned = plan({
+          ...options,
+          events: UNFILLED,
+          navigations,
+          maskedElements,
+        });
+        expect(planned.masks).toEqual(
+          plan({
+            ...options,
+            events: UNFILLED,
+            navigations: undefined,
+            maskedElements,
+          }).masks,
+        );
+      }
+    }
+  });
+
+  it('masks an element of the old page until the new one loads, transitions off', () => {
+    const planned = plan({
+      ...OFF,
+      events: UNFILLED,
+      maskedElements: marked(800, 2000),
+    });
+    expect(planned.masks.map((mask) => mask.endMs)).toEqual([
+      (LOGIN.endMs ?? 0) + LEAD_TRAIL_MS,
+    ]);
+  });
+
+  it('masks an element of the old page on the held frame, and never ends its span before its measured end', () => {
+    const planned = plan({
+      ...ON,
+      events: UNFILLED,
+      maskedElements: marked(800, 2000),
+    });
+    expect(planned.masks.map((mask) => mask.endMs)).toEqual([
+      2000 + LEAD_TRAIL_MS,
+    ]);
+    const [, hold] = planned.transitions?.holds ?? [];
+    expect(hold.masks).toEqual([MASKED]);
   });
 });
 

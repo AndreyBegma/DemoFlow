@@ -51,6 +51,17 @@ describe('parseProjectConfig', () => {
     });
   });
 
+  it('accepts the vertical GIF and WebM (spec 236)', () => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: { formats: ['mp4', 'gif-vertical', 'webm-vertical'] },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { render: { formats: ['mp4', 'gif-vertical', 'webm-vertical'] } },
+    });
+  });
+
   it('keeps the formats given, in order, and the GIF settings', () => {
     const result = parseProjectConfig({
       baseUrl: 'https://a.example',

@@ -1,10 +1,23 @@
 import { WebSocket } from 'ws';
+import { encodeVideoChunk } from './runner-socket';
 
 /** A daemon stand-in for the runner socket specs. Test code only. */
 
 export interface Received {
   type: string;
   [field: string]: unknown;
+}
+
+export interface VideoOpen extends Received {
+  streamId: string;
+  runId: string;
+  format: string;
+  range: unknown;
+}
+
+export interface ArtifactsDelete extends Received {
+  requestId: string;
+  runId: string;
 }
 
 export interface Closed {
@@ -20,7 +33,10 @@ export class TestSocket {
   private waiters: Array<() => void> = [];
 
   private constructor(readonly ws: WebSocket) {
-    ws.on('message', (data) => {
+    ws.on('message', (data, isBinary) => {
+      if (isBinary) {
+        return;
+      }
       this.received.push(JSON.parse(data.toString()) as Received);
       for (const wake of this.waiters.splice(0)) {
         wake();
@@ -82,6 +98,54 @@ export class TestSocket {
 
   sendRaw(data: string | Buffer): void {
     this.ws.send(data);
+  }
+
+  /** A binary video chunk (spec #191). */
+  sendChunk(streamId: string, bytes: Buffer): void {
+    this.ws.send(encodeVideoChunk(streamId, bytes), { binary: true });
+  }
+
+  /** The next `video.open`, with its stream id as a string. */
+  async nextOpen(): Promise<VideoOpen> {
+    const open = await this.next('video.open');
+    if (typeof open.streamId !== 'string') {
+      throw new Error('video.open carries no streamId');
+    }
+    return open as VideoOpen;
+  }
+
+  /** The next `artifacts.delete` (spec #233), with its request id as a string. */
+  async nextDelete(): Promise<ArtifactsDelete> {
+    const ask = await this.next('artifacts.delete');
+    if (typeof ask.requestId !== 'string') {
+      throw new Error('artifacts.delete carries no requestId');
+    }
+    return ask as ArtifactsDelete;
+  }
+
+  /**
+   * Plays the daemon for one stream of `file`: the head for `start`–`end`,
+   * the bytes in chunks of `chunkSize`, then `video.end`.
+   */
+  serve(
+    streamId: string,
+    file: Buffer,
+    { start = 0, end = file.length - 1, chunkSize = 1000 } = {},
+  ): void {
+    this.send({
+      type: 'video.head',
+      streamId,
+      size: file.length,
+      start,
+      end,
+    });
+    for (let at = start; at <= end; at += chunkSize) {
+      this.sendChunk(
+        streamId,
+        file.subarray(at, Math.min(at + chunkSize, end + 1)),
+      );
+    }
+    this.send({ type: 'video.end', streamId });
   }
 
   /**

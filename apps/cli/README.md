@@ -44,9 +44,13 @@ as well, all encoded in one pass; the GIF is 800 px wide at 12 fps unless
 `demoflow run --format gif --format mp4` replaces `render.formats` for one
 run; `generate_demo` takes the same list as `formats`. The files are
 `render/ffmpeg.mp4`, `render/ffmpeg.gif`, `render/ffmpeg.webm` and
-`render/ffmpeg.vertical.mp4`.
+`render/ffmpeg.vertical.mp4`, `render/ffmpeg.vertical.webm` and
+`render/ffmpeg.vertical.gif`.
 
-`mp4-vertical` is a 1080×1920 MP4 for phones, rendered from the same run. The
+`mp4-vertical` is a 1080×1920 MP4 for phones, rendered from the same run.
+`webm-vertical` is the same frames as a 1080×1920 VP9 WebM, and `gif-vertical`
+as a GIF whose height is `render.gif.width` (450×800 by default, the pixels of
+the landscape GIF). They share the crop below; ask for any mix of them. The
 page is still recorded at its normal size. A 9:16 crop follows each step's
 target and stays on the page. Each step's `zoom` still applies inside it, and
 captions sit larger in a band at the bottom. `render.vertical` tunes it, all

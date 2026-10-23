@@ -22,7 +22,15 @@ export const PROJECT_NAME_MAX = 200;
 export const PATH_MAX = 4096;
 
 /** `RENDER_FORMATS` of `@demoflow/core`, which the API does not depend on. */
-export const RUN_FORMATS = ['mp4', 'gif', 'webm'] as const;
+export const RUN_FORMATS = [
+  'mp4',
+  'gif',
+  'webm',
+  'mp4-vertical',
+  'gif-vertical',
+  'webm-vertical',
+] as const;
+export type RunFormat = (typeof RUN_FORMATS)[number];
 export const RUN_STATUSES = ['passed', 'failed'] as const;
 
 /** What `demoflow run` sends after a run on a paired machine (spec #178, Decision 3). */
@@ -64,7 +72,7 @@ export class RunReportDto {
   @ArrayMaxSize(RUN_FORMATS.length)
   @ArrayUnique()
   @IsIn(RUN_FORMATS, { each: true })
-  formats!: (typeof RUN_FORMATS)[number][];
+  formats!: RunFormat[];
 
   /** The 0-based index of the failed step. */
   @IsOptional()

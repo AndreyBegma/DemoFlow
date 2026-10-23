@@ -1,4 +1,5 @@
 import {
+  type Annotation,
   CardsConfigSchema,
   type RunResult,
   type Stages,
@@ -45,8 +46,9 @@ const RESULT: RunResult = {
 
 function plan(
   events: Omit<TimelineEvent, 'stepIndex'>[],
-  options: RenderPlanOptions = {},
+  options: RenderPlanOptions & { annotations?: Annotation[] } = {},
 ): RenderPlan {
+  const { annotations, ...rest } = options;
   return planRender(
     {
       timeline: {
@@ -55,6 +57,7 @@ function plan(
         deviceScaleFactor: 1,
         videoFile: 'source.webm',
         events: events.map((event, stepIndex) => ({ ...event, stepIndex })),
+        ...(annotations === undefined ? {} : { annotations }),
       },
       result: RESULT,
       source: {
@@ -70,7 +73,7 @@ function plan(
       offsetMs: 0,
       frame: { enabled: false },
       formats: ['mp4', 'mp4-vertical'],
-      ...options,
+      ...rest,
     },
   );
 }
@@ -123,6 +126,40 @@ describe('the vertical output (spec 176)', () => {
     );
     expect(renderPath('run', 'ffmpeg', 'mp4')).toMatch(
       /render[/\\]ffmpeg\.mp4$/,
+    );
+  });
+
+  it('plans the vertical WebM and GIF too, from the same vertical output (spec 236)', () => {
+    const rendered = plan([], { formats: ['gif-vertical', 'webm-vertical'] });
+    expect(rendered.output.files).toEqual([
+      { format: 'gif-vertical', width: 450, height: 800, fps: 12 },
+      {
+        format: 'webm-vertical',
+        codec: 'vp9',
+        pixelFormat: 'yuv420p',
+        crf: 32,
+        cpuUsed: 4,
+      },
+    ]);
+    expect(rendered.vertical).toMatchObject({ width: 1080, height: 1920 });
+  });
+
+  it('sizes the vertical GIF by gif.width as its height', () => {
+    const rendered = plan([], {
+      formats: ['gif-vertical'],
+      gif: { width: 640 },
+    });
+    expect(rendered.output.files).toEqual([
+      { format: 'gif-vertical', width: 360, height: 640, fps: 12 },
+    ]);
+  });
+
+  it('names the files <renderer>.vertical.webm and .vertical.gif', () => {
+    expect(renderPath('run', 'ffmpeg', 'webm-vertical')).toMatch(
+      /render[/\\]ffmpeg\.vertical\.webm$/,
+    );
+    expect(renderPath('run', 'ffmpeg', 'gif-vertical')).toMatch(
+      /render[/\\]ffmpeg\.vertical\.gif$/,
     );
   });
 
@@ -238,6 +275,22 @@ describe('the vertical output (spec 176)', () => {
     expect(tall.cursor?.x).toBeLessThan(1080);
   });
 
+  it('shows a caption the page set in the caption band, as a step caption', () => {
+    const rendered = plan([click(2000, 1000)], {
+      annotations: [
+        { atMs: 2200, kind: 'caption', title: 'Paying with a card' },
+      ],
+    });
+    const frame = Math.round((3000 * 30) / 1000);
+    const tall = frameAt(rendered, frame, 'vertical');
+    expect(tall.caption).toBe('Paying with a card');
+    expect(tall.caption).toBe(frameAt(rendered, frame).caption);
+    // Gone once its 3 s are up.
+    expect(
+      frameAt(rendered, Math.round((6000 * 30) / 1000), 'vertical').caption,
+    ).toBeUndefined();
+  });
+
   it('draws cards in the vertical layout with the same content', () => {
     const rendered = plan([click(2000, 1000)], {
       cards: CardsConfigSchema.parse({}),
@@ -251,6 +304,6 @@ describe('the vertical output (spec 176)', () => {
   it('refuses a vertical frame of a plan without the vertical output', () => {
     expect(() =>
       frameAt(plan([], { formats: ['mp4'] }), 0, 'vertical'),
-    ).toThrow(/mp4-vertical/);
+    ).toThrow(/vertical format/);
   });
 });

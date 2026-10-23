@@ -20,6 +20,8 @@ export interface TaskView {
   message?: string;
   stages?: Stages;
   failedStep?: { stepIndex: number; message: string };
+  /** The run's page on the DemoFlow website, when it was reported (spec 225). */
+  pageUrl?: string;
   artifacts?: {
     /** The first of `videos`. */
     video?: string;
@@ -55,9 +57,11 @@ export function taskView(input: {
   result?: RunResult;
   position?: number;
   message?: string;
+  pageUrl?: string;
 }): TaskView {
   const { taskId, status, runDir, result } = input;
   const view: TaskView = { taskId, status };
+  if (input.pageUrl !== undefined) view.pageUrl = input.pageUrl;
   if (input.position !== undefined) view.position = input.position;
   if (input.message !== undefined) view.message = input.message;
   if (result !== undefined) {

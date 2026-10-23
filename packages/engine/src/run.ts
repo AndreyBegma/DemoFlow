@@ -1,8 +1,10 @@
 import { mkdir } from 'node:fs/promises';
 import {
+  type Annotation,
   deriveRunStatus,
   type ExpandedStep,
   expandScenario,
+  type MaskedElement,
   type Navigation,
   type Scenario,
   type Stage,
@@ -17,11 +19,13 @@ import {
   runAction,
   StepFailure,
 } from './execute/actions.ts';
+import { Annotations } from './execute/annotations.ts';
 import { type Clock, startClock } from './execute/clock.ts';
+import { MarkedMasks } from './execute/marked-masks.ts';
 import { MaskTracker } from './execute/mask.ts';
 import { NavigationRecorder } from './execute/navigations.ts';
 import type { EngineObserver, RunOutcome } from './execute/observer.ts';
-import { installNavigationProbe } from './execute/pending-navigation.ts';
+import { installPageScripts } from './execute/page-scripts.ts';
 import { type Point, viewportCentre } from './execute/pointer.ts';
 import {
   checkReadiness,
@@ -108,13 +112,17 @@ export async function runScenario(
   try {
     await emit('onBrowserLaunched', { browser });
     const context = await browser.newContext(toContextOptions(recording));
-    await installNavigationProbe(context);
+    const marked = new MarkedMasks(scenario.viewport);
+    const annotations = new Annotations();
+    await installPageScripts(context, marked, annotations);
     const guard = new OriginGuard(options.allowedOrigins);
     const navigation = watchNavigation(context, guard);
 
     stages.recording = { status: 'running', startedAt: timestamp() };
     const page = await context.newPage();
     const clock = startClock();
+    marked.attach(page, clock);
+    annotations.attach(page, clock);
     const navigations = new NavigationRecorder(page, clock);
     await emit('onPageCreated', { page, recording });
     const syncMark = await recordSyncMark(page, clock);
@@ -140,9 +148,13 @@ export async function runScenario(
       events,
       navigation,
       masks: new MaskTracker(page, clock),
+      marked,
+      annotations,
       scrub,
       emit,
     });
+    // Before the context closes: a document's clock exchange may still be running on it.
+    const maskedElements = await marked.list();
 
     if (failure === undefined) {
       stages.execution = finish(stages.execution, 'passed');
@@ -181,6 +193,8 @@ export async function runScenario(
       videoPath,
       syncMark,
       navigations: navigations.list(),
+      maskedElements,
+      annotations: annotations.list(),
     });
     await emit('onRunFinished', { outcome, video });
     return outcome;
@@ -201,6 +215,8 @@ interface ExecuteInput {
   events: TimelineEvent[];
   navigation: NavigationWatch;
   masks: MaskTracker;
+  marked: MarkedMasks;
+  annotations: Annotations;
   scrub: (message: string) => string;
   emit: <K extends keyof EngineObserver>(
     hook: K,
@@ -221,6 +237,8 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
   let pointer = input.pointer;
   for (const [stepIndex, step] of input.steps.entries()) {
     const startMs = clock.now();
+    input.marked.stepStarted(startMs);
+    input.annotations.stepStarted(startMs);
     await emit('onStepStarted', { stepIndex, step, startMs });
 
     const ctx = {
@@ -258,6 +276,7 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
     const sightings = await input.masks.look();
     const endMs = Math.max(startMs, clock.now());
     input.masks.record(sightings, startMs, endMs);
+    input.marked.stepEnded(endMs);
 
     const event: TimelineEvent = {
       stepIndex,
@@ -370,9 +389,12 @@ function conclude(
     videoPath?: string | undefined;
     syncMark?: SyncMark | undefined;
     navigations?: Navigation[];
+    maskedElements?: MaskedElement[];
+    annotations?: Annotation[];
   } = {},
 ): RunOutcome {
-  const { videoPath, syncMark, navigations } = recorded;
+  const { videoPath, syncMark, navigations, maskedElements, annotations } =
+    recorded;
   const warnings: string[] = [];
   return {
     startedAt,
@@ -383,6 +405,14 @@ function conclude(
     warnings,
     ...(syncMark === undefined ? {} : { syncMark }),
     ...(navigations === undefined ? {} : { navigations }),
+    // Omitted when none was on screen: the timeline is then written as before #197.
+    ...(maskedElements === undefined || maskedElements.length === 0
+      ? {}
+      : { maskedElements }),
+    // Omitted when the page made no call: the timeline is then written as before #201.
+    ...(annotations === undefined || annotations.length === 0
+      ? {}
+      : { annotations }),
     ...(videoPath === undefined ? {} : { videoPath }),
   };
 }

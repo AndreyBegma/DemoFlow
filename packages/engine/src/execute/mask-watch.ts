@@ -1,5 +1,6 @@
 import type { ElementHandle, Page } from 'playwright';
 import type { Clock } from './clock.ts';
+import { type Shown, withShown } from './page-visibility.ts';
 import { SYNC_EXCHANGES } from './sync-mark.ts';
 
 /** The page global (a registered symbol) the watch lives on, as the navigation probe does (#143). */
@@ -49,7 +50,7 @@ export class MaskWatch {
   async watch(field: number, elements: ElementHandle[]): Promise<void> {
     try {
       if (elements.length > 0) {
-        await this.page.evaluate(register, {
+        await this.page.evaluate(withShown(register), {
           key: WATCH_KEY,
           field,
           elements,
@@ -110,7 +111,7 @@ export class MaskWatch {
   }
 }
 
-async function withTimeout<T>(
+export async function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
 ): Promise<T | undefined> {
@@ -150,11 +151,14 @@ interface Registry {
  * Runs in the page: creates the registry on first use — the frame loop and
  * the mutation record — and sets the watched elements of `field`.
  */
-function register(input: {
-  key: string;
-  field: number;
-  elements: Node[];
-}): void {
+function register(
+  input: {
+    key: string;
+    field: number;
+    elements: Node[];
+  },
+  shown: Shown,
+): void {
   const slot = window as unknown as Record<symbol, Registry | undefined>;
   let registry = slot[Symbol.for(input.key)];
   if (registry === undefined) {
@@ -162,13 +166,7 @@ function register(input: {
       fields: new Map(),
       touched: new Map(),
       running: false,
-      // Playwright's rule for a visible element: rendered, `visibility: visible`, a non-empty box.
-      shown(element) {
-        if (!element.isConnected || !element.checkVisibility()) return false;
-        if (getComputedStyle(element).visibility !== 'visible') return false;
-        const rect = element.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-      },
+      shown,
       frame(atMs) {
         if (created.fields.size === 0) {
           created.running = false;

@@ -26,6 +26,8 @@ export interface RunView {
   formats: string[];
   failedStep: number | null;
   cliVersion: string;
+  /** When the machine deleted the run's directory (spec #233); null while it is there. */
+  artifactsDeletedAt: Date | null;
 }
 
 export interface ProjectView {
@@ -60,7 +62,7 @@ type ProjectWithSummary = Prisma.ProjectGetPayload<{
   include: typeof PROJECT_INCLUDE;
 }>;
 
-function toRunView(run: Run): RunView {
+export function toRunView(run: Run): RunView {
   return {
     id: run.id,
     scenarioName: run.scenarioName,
@@ -71,6 +73,7 @@ function toRunView(run: Run): RunView {
     formats: run.formats,
     failedStep: run.failedStep,
     cliVersion: run.cliVersion,
+    artifactsDeletedAt: run.artifactsDeletedAt,
   };
 }
 
