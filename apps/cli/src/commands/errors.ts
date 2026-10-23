@@ -5,6 +5,7 @@ export type CommandErrorCode =
   | 'scenario-unreadable'
   | 'invalid-scenario'
   | 'invalid-run-id'
+  | 'invalid-limit'
   | 'run-not-found'
   | 'invalid-result'
   | 'run-unfinished'
