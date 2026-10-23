@@ -11,6 +11,8 @@ Run `demoflow` through `npx demoflow`, or install it globally. `demoflow
 | `demoflow validate <scenario>` | Check a scenario against the schema. |
 | `demoflow run <scenario>` | Run it in a browser and render the video. |
 | `demoflow render <runId>` | Render an existing run again with the current config. |
+| `demoflow list` | List recent runs of the current project, newest first. |
+| `demoflow check` | Check that the project, FFmpeg and the browser are ready. |
 | `demoflow setup` | Install Chromium now instead of on the first run. |
 | `demoflow mcp` | Serve demo generation to MCP clients over stdio. |
 | `demoflow login` | Pair this machine with your DemoFlow account. |
@@ -69,6 +71,51 @@ It exits `2` without writing anything when the run id is not a plain name, the
 run directory or its `result.json` is missing or invalid, the run has not
 finished, or it has no recording. A render that fails exits `3`; otherwise the
 exit code is the run's, as for `run`.
+
+## list
+
+```sh
+npx demoflow list --limit 5
+```
+
+Prints the recent runs of the current project, newest first: status, start
+time, duration, scenario name and run id, and the run's page URL when it was
+reported to the website. It reads the runs under the artifacts home that `run`
+writes to. Nothing is started or written.
+
+| Flag | Meaning |
+|---|---|
+| `--limit <n>` | How many runs to list, 1 to 100. Defaults to 20. |
+| `--json` | Print the runs as one `{ "demos": [...] }` object on stdout, the same as the MCP's `list_demos`. |
+
+It exits `0` when it listed runs, or found none. It exits `2` when `--limit` is
+not an integer from 1 to 100, or when the folder is not in a project (no
+`demoflow.config.json` in it or above).
+
+## check
+
+```sh
+npx demoflow check
+```
+
+Checks that a demo can run here: the project root, whether the config is
+valid, the scenario files (listed, not validated; use `validate`), FFmpeg
+(`system`, `bundled` or `missing`) and the browser (`installed` or `missing`,
+with a hint to run `demoflow setup`). It starts no browser and writes nothing.
+
+| Flag | Meaning |
+|---|---|
+| `--json` | Print the check as one JSON object on stdout, the same as the MCP's `check_project`. |
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | FFmpeg and the browser are both available. |
+| `1` | FFmpeg or the browser is missing, so a demo cannot run yet. |
+| `2` | The folder is not in a project (no `demoflow.config.json` in it or above). |
+
+A CI step can run `demoflow check` to gate on the machine being ready.
 
 ## validate
 
