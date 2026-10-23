@@ -4,9 +4,7 @@ export const en = {
   app: {
     tagline: 'Verified, polished demo videos of the features you ship.',
     shell: {
-      title: 'Your projects',
       signedInAs: 'Signed in as {email}',
-      empty: 'Projects will appear here.',
       signOut: 'Sign out',
       signingOut: 'Signing out…',
       verifyTitle: 'Verify your email',
@@ -85,6 +83,29 @@ export const en = {
       deniedTitle: 'Request denied',
       deniedBody: 'The machine was not paired.',
       machines: 'Go to machines',
+    },
+  },
+  dashboard: {
+    title: 'Overview',
+    projects: {
+      title: 'Recent projects',
+      all: 'All projects',
+      loadFailed: 'Projects could not be loaded.',
+      empty: {
+        title: 'No projects yet',
+        body: 'Run a scenario on a paired machine and its project appears here.',
+        docs: 'Read how to make your first run',
+      },
+    },
+    machines: {
+      title: 'Machines',
+      manage: 'Manage machines',
+      loadFailed: 'Machines could not be loaded.',
+      empty: {
+        title: 'No machines paired yet',
+        body: 'Pair a machine to see its runs here.',
+        docs: 'Read how to pair a machine',
+      },
     },
   },
   machines: {
