@@ -125,6 +125,12 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
   [247](../specs/247-start-run-api.md) (API and protocol),
   [248](../specs/248-runner-starts-runs.md) (the daemon) and
   [249](../specs/249-project-page-start-run.md) (the project page).
+- The run page's details that ADR-0008 §2 lets cross and vision §6 asks
+  for (stage statuses, resolution and file size per file, the failure
+  message) are [263](../specs/263-run-details-api.md) (API),
+  [264](../specs/264-report-run-details.md) (the CLI's report, with the
+  message redacted) and [265](../specs/265-run-page-details.md) (the run
+  page).
 
 ## Phase 7 — Optional SDK
 
@@ -185,3 +191,6 @@ All four, in this order:
 - **`demoflow record`**: opens the app in a browser with a step panel. Clicks and
   typing become steps with stable role/name locators. The panel adds captions,
   scenes and assertions. Password fields become `valueFrom.env` automatically.
+- **`demoflow list` and `demoflow check`** (vision §3.4): the MCP's
+  `list_demos` and `check_project` on the command line,
+  [266](../specs/266-list-and-check-commands.md).
