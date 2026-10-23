@@ -59,14 +59,14 @@ jobs:
           done
           echo "10 consecutive passes"
 
-      - name: The engine marked-masks spec, 10 times in a row (#227)
+      - name: The engine timer-inserted element test, 10 times in a row (#227)
         working-directory: packages/engine
         env:
           CI: 'true'
         run: |
           for i in $(seq 1 10); do
             echo "::group::run $i"
-            npx vitest run test/execute/marked-masks.spec.ts || { echo "run $i failed"; exit 1; }
+            npx vitest run test/execute/marked-masks.spec.ts -t 'a timer inserts' || { echo "run $i failed"; exit 1; }
             echo "::endgroup::"
           done
           echo "10 consecutive passes"
