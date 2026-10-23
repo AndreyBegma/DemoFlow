@@ -228,7 +228,8 @@ describe('data-demoflow-mask', () => {
     expect(intervals.length).toBeGreaterThan(10);
     const read = readOf(frames, 1);
     const zeroMs = frames.zeroMs();
-    let checked = 0;
+    /** Each checked frame's left edge, in order: the slide's way out and back. */
+    const xs: number[] = [];
     for (const [atMs, box] of read.frames) {
       if (box === null) continue;
       const covering = intervals.filter((interval) => {
@@ -246,9 +247,14 @@ describe('data-demoflow-mask', () => {
         covering.some((interval) => contains(interval.box, box)),
         `the frame at ${atMs} ms shows the element outside every interval covering it`,
       ).toBe(true);
-      checked++;
+      xs.push(box.x);
     }
-    expect(checked).toBeGreaterThan(30);
+    // A sanity count, not a masking bound: the probe saw the slide turn round at 1 s, with
+    // frames on both sides of it. Not a frame rate: macOS CI drew 23 frames at ~20 fps (#230).
+    expect(xs.length).toBeGreaterThanOrEqual(10);
+    const turn = xs.indexOf(Math.max(...xs));
+    expect(turn).toBeGreaterThan(0);
+    expect(turn).toBeLessThan(xs.length - 1);
   });
 
   it('keeps the interval open for an element scrolled out of the viewport', async () => {
