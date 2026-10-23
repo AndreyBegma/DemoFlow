@@ -47,16 +47,6 @@ jobs:
       - name: Build the execution plane and the fixture
         run: bun run build --filter=@demoflow/cli --filter=@demoflow/fixture
 
-      - name: Diagnostics
-        working-directory: packages/renderer
-        env:
-          DIAG_221: '1'
-          DIAG_221_RUNS: '15'
-          CI: 'true'
-        run: |
-          npx vitest run test/ffmpeg/diag-221.spec.ts 2>&1 | grep DIAG221 | sed 's/^.*DIAG221 //' \
-            | jq -c '{run, offsetMs, navs: [.navigations[] | [.startMs, .endMs]], key: (.elements[0].intervals | map([.startMs, .endMs])), gapMs: (.elements[0].intervals[0].startMs - .navigations[0].startMs), keySpans: [.spans[] | [.startMs, .endMs]], leaks: [.rows[] | select(startswith("LEAK"))]}' || true
-
       - name: The test, 10 times in a row
         working-directory: packages/renderer
         env:
@@ -65,6 +55,18 @@ jobs:
           for i in $(seq 1 10); do
             echo "::group::run $i"
             npx vitest run test/ffmpeg/masked-elements.spec.ts || { echo "run $i failed"; exit 1; }
+            echo "::endgroup::"
+          done
+          echo "10 consecutive passes"
+
+      - name: The engine marked-masks spec, 10 times in a row (#227)
+        working-directory: packages/engine
+        env:
+          CI: 'true'
+        run: |
+          for i in $(seq 1 10); do
+            echo "::group::run $i"
+            npx vitest run test/execute/marked-masks.spec.ts || { echo "run $i failed"; exit 1; }
             echo "::endgroup::"
           done
           echo "10 consecutive passes"
