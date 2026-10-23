@@ -100,6 +100,7 @@ describe('projects (integration)', () => {
           formats: ['mp4', 'gif'],
           failedStep: null,
           cliVersion: '0.4.0',
+          artifactsDeletedAt: null,
         },
         createdAt: expect.any(String),
         updatedAt: expect.any(String),

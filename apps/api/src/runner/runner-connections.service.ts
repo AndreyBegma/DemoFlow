@@ -9,6 +9,7 @@ import { Clock } from '../common/clock';
 import { PrismaService } from '../database/prisma.service';
 import { RunnerAuthService } from './runner-auth.service';
 import {
+  type ArtifactsMessage,
   CLOSE_GOING_AWAY,
   CLOSE_HEARTBEAT_TIMEOUT,
   CLOSE_NORMAL,
@@ -39,6 +40,8 @@ interface Connection {
   lastSeenWrittenAt: number;
   /** A chunk for a stream that is not open was logged on this socket. */
   warnedStrayChunk: boolean;
+  /** An `artifacts.*` answer for no pending request was logged on this socket. */
+  warnedStrayArtifacts: boolean;
 }
 
 /**
@@ -48,6 +51,16 @@ interface Connection {
 export interface VideoSink {
   message(runnerId: string, message: VideoMessage): void;
   chunk(runnerId: string, chunk: VideoChunk): boolean;
+  /** The machine's socket is gone: closed, replaced, revoked or shut down. */
+  closed(runnerId: string): void;
+}
+
+/**
+ * Where artifact deletion (spec #233) hears from the sockets. `message`
+ * answers false for a request it does not hold.
+ */
+export interface ArtifactsSink {
+  message(runnerId: string, message: ArtifactsMessage): boolean;
   /** The machine's socket is gone: closed, replaced, revoked or shut down. */
   closed(runnerId: string): void;
 }
@@ -67,6 +80,7 @@ export class RunnerConnections
   private timer: NodeJS.Timeout | undefined;
   private shuttingDown = false;
   private videoSink: VideoSink | undefined;
+  private artifactsSink: ArtifactsSink | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -90,7 +104,7 @@ export class RunnerConnections
     const connections = [...this.open.values()];
     this.open.clear();
     for (const { runnerId } of connections) {
-      this.videoSink?.closed(runnerId);
+      this.socketGone(runnerId);
     }
     const sockets = connections.map(({ socket }) => socket);
     const closed = sockets.map(
@@ -130,6 +144,11 @@ export class RunnerConnections
     this.videoSink = sink;
   }
 
+  /** Artifact deletion's hook (spec #233, Decision 8). One sink per instance. */
+  setArtifactsSink(sink: ArtifactsSink): void {
+    this.artifactsSink = sink;
+  }
+
   /** An authenticated socket, straight after the upgrade. */
   async accept(
     socket: WebSocket,
@@ -144,6 +163,7 @@ export class RunnerConnections
       lastPingAt: now.getTime(),
       lastSeenWrittenAt: now.getTime(),
       warnedStrayChunk: false,
+      warnedStrayArtifacts: false,
     };
     // Listeners first: a frame that arrives during the writes below counts.
     socket.on('message', (data, isBinary) =>
@@ -157,8 +177,8 @@ export class RunnerConnections
       this.logger.log(
         `Runner ${runner.id} reconnected; closing the older socket`,
       );
-      // The older socket's streams cannot continue on this one.
-      this.videoSink?.closed(runner.id);
+      // The older socket's streams and requests cannot continue on this one.
+      this.socketGone(runner.id);
       previous.socket.close(CLOSE_REPLACED, 'replaced');
     }
 
@@ -192,7 +212,7 @@ export class RunnerConnections
       return;
     }
     this.open.delete(runnerId);
-    this.videoSink?.closed(runnerId);
+    this.socketGone(runnerId);
     connection.socket.close(code, reason);
   }
 
@@ -293,7 +313,35 @@ export class RunnerConnections
       case 'video.error':
         this.videoSink?.message(connection.runnerId, message);
         return;
+      case 'artifacts.deleted':
+      case 'artifacts.error':
+        this.relayArtifacts(connection, message);
+        return;
     }
+  }
+
+  /**
+   * An answer for no pending request — a late one after a timeout, or a
+   * skewed daemon — is dropped, logged once per socket, and the socket stays.
+   */
+  private relayArtifacts(
+    connection: Connection,
+    message: ArtifactsMessage,
+  ): void {
+    if (this.artifactsSink?.message(connection.runnerId, message)) {
+      return;
+    }
+    if (!connection.warnedStrayArtifacts) {
+      connection.warnedStrayArtifacts = true;
+      this.logger.warn(
+        `Dropped ${message.type} from runner ${connection.runnerId} for a request that is not pending`,
+      );
+    }
+  }
+
+  private socketGone(runnerId: string): void {
+    this.videoSink?.closed(runnerId);
+    this.artifactsSink?.closed(runnerId);
   }
 
   private touch(connection: Connection): void {
@@ -307,7 +355,7 @@ export class RunnerConnections
   private closed(connection: Connection): void {
     if (this.open.get(connection.runnerId) === connection) {
       this.open.delete(connection.runnerId);
-      this.videoSink?.closed(connection.runnerId);
+      this.socketGone(connection.runnerId);
     }
     if (
       !this.shuttingDown &&

@@ -126,22 +126,24 @@ enum RunStatus {
 // The metadata of one `demoflow run`. Never a video, a frame or a step value:
 // values can hold secrets, and videos stay on the machine (ADR-0008).
 model Run {
-  id           String    @id @default(uuid())
-  projectId    String
-  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  runnerId     String?
-  runner       Runner?   @relation(fields: [runnerId], references: [id], onDelete: SetNull)
-  scenarioName String
+  id                 String    @id @default(uuid())
+  projectId          String
+  project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runnerId           String?
+  runner             Runner?   @relation(fields: [runnerId], references: [id], onDelete: SetNull)
+  scenarioName       String
   // Relative to the project root.
-  scenarioPath String
-  status       RunStatus
-  startedAt    DateTime
-  durationMs   Int
-  formats      String[]
+  scenarioPath       String
+  status             RunStatus
+  startedAt          DateTime
+  durationMs         Int
+  formats            String[]
   // The 0-based index of the step that failed, when one did.
-  failedStep   Int?
-  cliVersion   String
-  createdAt    DateTime  @default(now())
+  failedStep         Int?
+  cliVersion         String
+  // When the Runner deleted the run's directory (spec #233). The row stays.
+  artifactsDeletedAt DateTime?
+  createdAt          DateTime  @default(now())
 
   @@index([projectId, startedAt(sort: Desc), id(sort: Desc)])
 }

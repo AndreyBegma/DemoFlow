@@ -85,3 +85,45 @@ describe('video text messages', () => {
     expect(parse(message).ok).toBe(false);
   });
 });
+
+describe('artifacts messages (spec #233)', () => {
+  const requestId = randomUUID();
+
+  function parse(message: unknown) {
+    return parseClientMessage(Buffer.from(JSON.stringify(message)), false);
+  }
+
+  it('reads a deleted and both error codes', () => {
+    for (const message of [
+      { type: 'artifacts.deleted', requestId },
+      { type: 'artifacts.error', requestId, code: 'not-found' },
+      { type: 'artifacts.error', requestId, code: 'io' },
+    ]) {
+      expect(parse(message)).toEqual({
+        ok: true,
+        message: expect.objectContaining(message),
+      });
+    }
+  });
+
+  it.each([
+    [
+      'a request id that is not a UUID',
+      { type: 'artifacts.deleted', requestId: 'x' },
+    ],
+    [
+      'a UUID that is not v4',
+      {
+        type: 'artifacts.deleted',
+        requestId: '00000000-0000-1000-8000-000000000000',
+      },
+    ],
+    ['an error without a code', { type: 'artifacts.error', requestId }],
+    [
+      'an unknown error code',
+      { type: 'artifacts.error', requestId, code: 'busy' },
+    ],
+  ])('refuses %s', (_label, message) => {
+    expect(parse(message).ok).toBe(false);
+  });
+});
