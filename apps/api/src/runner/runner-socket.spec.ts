@@ -127,3 +127,115 @@ describe('artifacts messages (spec #233)', () => {
     expect(parse(message).ok).toBe(false);
   });
 });
+
+describe('launch messages (spec #247)', () => {
+  const requestId = randomUUID();
+  const scenario = { id: 'demoflow/checkout.demo.json', name: 'Checkout' };
+
+  function parse(message: unknown) {
+    return parseClientMessage(Buffer.from(JSON.stringify(message)), false);
+  }
+
+  function listed(fields: Record<string, unknown>) {
+    return {
+      type: 'scenarios.listed',
+      requestId,
+      scenarios: [scenario],
+      truncated: false,
+      skipped: 0,
+      ...fields,
+    };
+  }
+
+  it('reads every Runner message', () => {
+    for (const message of [
+      listed({}),
+      listed({ scenarios: [], truncated: true, skipped: 3 }),
+      { type: 'scenarios.error', requestId, code: 'project-unknown' },
+      { type: 'run.started', requestId, scenarioName: 'Checkout' },
+      { type: 'run.error', requestId, code: 'busy' },
+      { type: 'run.finished', requestId, outcome: 'passed', runId: 'r-1' },
+      { type: 'run.finished', requestId, outcome: 'cancelled', runId: null },
+    ]) {
+      expect(parse(message)).toEqual({
+        ok: true,
+        message: expect.objectContaining(message),
+      });
+    }
+  });
+
+  it('takes any error code up to 64 characters, so a newer one still ends the request', () => {
+    expect(
+      parse({ type: 'run.error', requestId, code: 'x'.repeat(64) }).ok,
+    ).toBe(true);
+    expect(
+      parse({ type: 'scenarios.error', requestId, code: 'x'.repeat(65) }).ok,
+    ).toBe(false);
+  });
+
+  it('drops fields a scenario entry does not have', () => {
+    const parsed = parse(
+      listed({ scenarios: [{ ...scenario, steps: ['secret'] }] }),
+    );
+    expect(parsed).toEqual({
+      ok: true,
+      message: expect.objectContaining({ scenarios: [scenario] }),
+    });
+  });
+
+  it('takes 100 entries', () => {
+    expect(
+      parse(listed({ scenarios: Array.from({ length: 100 }, () => scenario) }))
+        .ok,
+    ).toBe(true);
+  });
+
+  it.each([
+    ['a request id that is not a UUID v4', listed({ requestId: 'x' })],
+    [
+      '101 entries',
+      listed({ scenarios: Array.from({ length: 101 }, () => scenario) }),
+    ],
+    [
+      'an entry whose id breaks the rule',
+      listed({ scenarios: [{ id: '../x.demo.json', name: 'x' }] }),
+    ],
+    ['an entry without a name', listed({ scenarios: [{ id: scenario.id }] })],
+    [
+      'an entry with a 201-character name',
+      listed({ scenarios: [{ id: scenario.id, name: 'n'.repeat(201) }] }),
+    ],
+    ['an entry that is not an object', listed({ scenarios: ['x'] })],
+    ['scenarios that are not an array', listed({ scenarios: scenario })],
+    ['a truncated that is not a boolean', listed({ truncated: 'yes' })],
+    ['a negative skipped', listed({ skipped: -1 })],
+    ['a fractional skipped', listed({ skipped: 1.5 })],
+    [
+      'a started without a name',
+      { type: 'run.started', requestId, scenarioName: '' },
+    ],
+    [
+      'an unknown outcome',
+      { type: 'run.finished', requestId, outcome: 'lost', runId: null },
+    ],
+    [
+      'a finished without a run id',
+      { type: 'run.finished', requestId, outcome: 'passed' },
+    ],
+    [
+      'a run id past 64 characters',
+      {
+        type: 'run.finished',
+        requestId,
+        outcome: 'passed',
+        runId: 'r'.repeat(65),
+      },
+    ],
+    [
+      'a run id that is not a string',
+      { type: 'run.finished', requestId, outcome: 'passed', runId: 7 },
+    ],
+  ])('refuses %s', (_label, message) => {
+    expect(parse(message).ok).toBe(false);
+  });
+});

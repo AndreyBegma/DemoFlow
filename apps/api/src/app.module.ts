@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module';
 import { ClockModule } from './common/clock.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health.controller';
+import { LaunchesModule } from './launches/launches.module';
 import { MailModule } from './mail/mail.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RunnerModule } from './runner/runner.module';
@@ -22,6 +23,7 @@ import { VideosModule } from './videos/videos.module';
     RunnerModule,
     ProjectsModule,
     VideosModule,
+    LaunchesModule,
   ],
   controllers: [HealthController],
 })

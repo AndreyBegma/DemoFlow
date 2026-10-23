@@ -1,18 +1,29 @@
 import type { IncomingMessage } from 'node:http';
 import { applyDecorators } from '@nestjs/common';
-import { type ClassConstructor, plainToInstance } from 'class-transformer';
 import {
+  type ClassConstructor,
+  plainToInstance,
+  Type,
+} from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Length,
   Max,
   MaxLength,
   Min,
+  ValidateIf,
+  ValidateNested,
   validateSync,
 } from 'class-validator';
 import type { RawData } from 'ws';
+import { IsScenarioId } from '../launches/scenario-id';
 import type { RunnerContext } from './runner-token';
 
 /**
@@ -66,7 +77,15 @@ export type ServerMessage =
     }
   | { type: 'video.ack'; streamId: string; bytes: number }
   | { type: 'video.cancel'; streamId: string }
-  | { type: 'artifacts.delete'; requestId: string; runId: string };
+  | { type: 'artifacts.delete'; requestId: string; runId: string }
+  | { type: 'scenarios.list'; requestId: string; rootPath: string }
+  | {
+      type: 'run.start';
+      requestId: string;
+      rootPath: string;
+      scenarioId: string;
+    }
+  | { type: 'run.cancel'; requestId: string };
 
 export type ClientMessage =
   | PingMessage
@@ -74,7 +93,8 @@ export type ClientMessage =
   | RotatedMessage
   | ByeMessage
   | VideoMessage
-  | ArtifactsMessage;
+  | ArtifactsMessage
+  | LaunchMessage;
 
 export type VideoMessage =
   | VideoHeadMessage
@@ -87,6 +107,24 @@ export type ArtifactsMessage = ArtifactsDeletedMessage | ArtifactsErrorMessage;
 /** `not-found`: the machine does not know the run; `io`: deletion failed part-way. */
 export const ARTIFACTS_ERROR_CODES = ['not-found', 'io'] as const;
 export type ArtifactsErrorCode = (typeof ARTIFACTS_ERROR_CODES)[number];
+
+/** A Runner's answers to `scenarios.list` and `run.*` (spec #247). */
+export type LaunchMessage =
+  | ScenariosListedMessage
+  | ScenariosErrorMessage
+  | RunStartedMessage
+  | RunErrorMessage
+  | RunFinishedMessage;
+
+/** `scenarios.listed` carries this many entries at most. */
+export const MAX_LISTED_SCENARIOS = 100;
+export const RUN_OUTCOMES = [
+  'passed',
+  'failed',
+  'cancelled',
+  'timed-out',
+] as const;
+export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 
 class PingMessage {
   @IsIn(['ping'])
@@ -193,6 +231,96 @@ class ArtifactsErrorMessage {
   code!: ArtifactsErrorCode;
 }
 
+class ListedScenario {
+  @IsScenarioId()
+  id!: string;
+
+  @IsString()
+  @Length(1, 200)
+  name!: string;
+}
+
+/** At most 100 entries, sorted by `id`; `skipped` counts files that failed to parse. */
+class ScenariosListedMessage {
+  @IsIn(['scenarios.listed'])
+  type!: 'scenarios.listed';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsArray()
+  @ArrayMaxSize(MAX_LISTED_SCENARIOS)
+  @ValidateNested({ each: true })
+  @Type(() => ListedScenario)
+  scenarios!: ListedScenario[];
+
+  @IsBoolean()
+  truncated!: boolean;
+
+  @IsInt()
+  @Min(0)
+  skipped!: number;
+}
+
+/**
+ * `project-unknown` or `io`. Any string, so a code a newer daemon adds still
+ * ends the request instead of being dropped; the API maps it to `runner-error`.
+ */
+class ScenariosErrorMessage {
+  @IsIn(['scenarios.error'])
+  type!: 'scenarios.error';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @MaxLength(64)
+  code!: string;
+}
+
+/** The `demoflow run` child is running. `requestId` is the launch id. */
+class RunStartedMessage {
+  @IsIn(['run.started'])
+  type!: 'run.started';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @Length(1, 200)
+  scenarioName!: string;
+}
+
+/** Sent instead of `run.started`; any code string, as for `scenarios.error`. */
+class RunErrorMessage {
+  @IsIn(['run.error'])
+  type!: 'run.error';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @MaxLength(64)
+  code!: string;
+}
+
+/** `runId` is the server run id the child's report got, or null without one. */
+class RunFinishedMessage {
+  @IsIn(['run.finished'])
+  type!: 'run.finished';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsIn(RUN_OUTCOMES)
+  outcome!: RunOutcome;
+
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(64)
+  runId!: string | null;
+}
+
 const CLIENT_MESSAGES: Record<
   ClientMessage['type'],
   ClassConstructor<ClientMessage>
@@ -206,6 +334,11 @@ const CLIENT_MESSAGES: Record<
   'video.error': VideoErrorMessage,
   'artifacts.deleted': ArtifactsDeletedMessage,
   'artifacts.error': ArtifactsErrorMessage,
+  'scenarios.listed': ScenariosListedMessage,
+  'scenarios.error': ScenariosErrorMessage,
+  'run.started': RunStartedMessage,
+  'run.error': RunErrorMessage,
+  'run.finished': RunFinishedMessage,
 };
 
 /** A binary frame: part of a stream's file, in order. */
