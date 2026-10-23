@@ -193,4 +193,9 @@ All four, in this order:
   scenes and assertions. Password fields become `valueFrom.env` automatically.
 - **`demoflow list` and `demoflow check`** (vision §3.4): the MCP's
   `list_demos` and `check_project` on the command line,
-  [266](../specs/266-list-and-check-commands.md).
+  [266](../specs/266-list-and-check-commands.md); their docs, with the run
+  report's field list brought up to date, are
+  [272](../specs/272-docs-list-check.md).
+- **`demoflow init`** (vision §3.4, "creating a scenario template"): writes
+  `demoflow.config.json` and a first scenario without overwriting either,
+  [273](../specs/273-init-command.md).
