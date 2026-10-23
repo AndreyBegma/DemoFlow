@@ -45,7 +45,9 @@ Takes the `taskId` from `generate_demo`. `waitSeconds` holds the reply until
 the task finishes or that many seconds pass, so one call can replace a polling
 loop; poll again to wait longer. The answer has the status, the result of each
 stage, and the paths of the video, the timeline, the source recording and the
-run directory.
+run directory. When this machine is paired and the run was reported, the answer
+also has `pageUrl`, the run's page on the DemoFlow website. It opens only when
+you are signed in.
 
 ### cancel_task
 
@@ -61,7 +63,8 @@ an agent can fix a scenario before spending a run on it.
 ### list_demos
 
 Recent runs of the project's artifacts home: task ID, scenario name, status,
-start time, duration and video path. `limit` is 1 to 100, default 20.
+start time, duration and video path, and `pageUrl` when the run was reported.
+`limit` is 1 to 100, default 20.
 
 ### check_project
 
