@@ -143,6 +143,13 @@ model Run {
   cliVersion         String
   // When the Runner deleted the run's directory (spec #233). The row stays.
   artifactsDeletedAt DateTime?
+  // What the run page shows (spec #263). Null when the CLI did not report it.
+  // `{ <stage>: <status> }` for the six stages.
+  stages             Json?
+  // `[{ format, width, height, sizeBytes, durationMs }]`, one per format.
+  renders            Json?
+  failureStage       String?
+  failureMessage     String?
   createdAt          DateTime  @default(now())
 
   @@index([projectId, startedAt(sort: Desc), id(sort: Desc)])

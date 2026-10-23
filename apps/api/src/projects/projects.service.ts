@@ -6,10 +6,16 @@ import {
 } from '@nestjs/common';
 import { Prisma, type Run, type Runner, type RunStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
-import type {
-  CreateProjectDto,
-  RunReportDto,
-  UpdateProjectDto,
+import {
+  type CreateProjectDto,
+  RUN_FORMATS,
+  RUN_STAGE_STATUSES,
+  RUN_STAGES,
+  type RunFormat,
+  type RunReportDto,
+  type RunStage,
+  type RunStageStatus,
+  type UpdateProjectDto,
 } from './projects.dto';
 
 /** Runs per page of a project's library (spec #178, Decision 5). */
@@ -77,6 +83,104 @@ export function toRunView(run: Run): RunView {
   };
 }
 
+export type RunStages = Record<RunStage, RunStageStatus>;
+
+export interface RunRender {
+  format: RunFormat;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  durationMs: number;
+}
+
+/** A run as its own page returns it (spec #263, Decision 4). Null: not reported. */
+export type RunDetailView = RunView & {
+  stages: RunStages | null;
+  renders: RunRender[] | null;
+  failure: { stage: RunStage; message: string } | null;
+};
+
+export function toRunDetailView(run: Run): RunDetailView {
+  const failureStage = oneOf(RUN_STAGES, run.failureStage);
+  return {
+    ...toRunView(run),
+    stages: parseStages(run.stages),
+    renders: parseRenders(run.renders),
+    failure:
+      failureStage && run.failureMessage !== null
+        ? { stage: failureStage, message: run.failureMessage }
+        : null,
+  };
+}
+
+// The JSON columns are untyped: a value the DTO could not have written reads
+// as null rather than reaching the page.
+
+function oneOf<T extends string>(
+  values: readonly T[],
+  value: unknown,
+): T | null {
+  return values.find((candidate) => candidate === value) ?? null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const own = Object.keys(value);
+  return own.length === keys.length && keys.every((key) => key in value);
+}
+
+function parseStages(value: Prisma.JsonValue): RunStages | null {
+  if (!isRecord(value) || !hasExactKeys(value, RUN_STAGES)) {
+    return null;
+  }
+  const stages: Partial<RunStages> = {};
+  for (const stage of RUN_STAGES) {
+    const status = oneOf(RUN_STAGE_STATUSES, value[stage]);
+    if (!status) {
+      return null;
+    }
+    stages[stage] = status;
+  }
+  return stages as RunStages;
+}
+
+const RENDER_KEYS = ['format', 'width', 'height', 'sizeBytes', 'durationMs'];
+
+function parseRenders(value: Prisma.JsonValue): RunRender[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const renders: RunRender[] = [];
+  for (const item of value) {
+    if (!isRecord(item) || !hasExactKeys(item, RENDER_KEYS)) {
+      return null;
+    }
+    const format = oneOf(RUN_FORMATS, item.format);
+    const { width, height, sizeBytes, durationMs } = item;
+    if (
+      !format ||
+      !isInteger(width) ||
+      !isInteger(height) ||
+      !isInteger(sizeBytes) ||
+      !isInteger(durationMs)
+    ) {
+      return null;
+    }
+    renders.push({ format, width, height, sizeBytes, durationMs });
+  }
+  return renders;
+}
+
+function isInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value);
+}
+
 function toProjectView(project: ProjectWithSummary): ProjectView {
   const [lastRun] = project.runs;
   return {
@@ -136,6 +240,12 @@ export class ProjectsService {
           formats: report.formats,
           failedStep: report.failedStep ?? null,
           cliVersion: report.cliVersion,
+          stages: report.stages ? { ...report.stages } : Prisma.DbNull,
+          renders: report.renders
+            ? report.renders.map((render) => ({ ...render }))
+            : Prisma.DbNull,
+          failureStage: report.failure?.stage ?? null,
+          failureMessage: report.failure?.message ?? null,
         },
         select: { id: true },
       });
