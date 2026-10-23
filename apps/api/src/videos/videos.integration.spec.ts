@@ -59,7 +59,13 @@ describe('run video through the runner relay (integration)', () => {
     alice = await signedInUser(t, 'alice');
     bob = await signedInUser(t, 'bob');
     machine = await pair(http, alice, 'Laptop');
-    runId = await report(['mp4', 'webm', 'mp4-vertical']);
+    runId = await report([
+      'mp4',
+      'webm',
+      'mp4-vertical',
+      'webm-vertical',
+      'gif-vertical',
+    ]);
   });
 
   afterEach(async () => {
@@ -189,6 +195,8 @@ describe('run video through the runner relay (integration)', () => {
     it.each([
       ['webm', 'video/webm'],
       ['mp4-vertical', 'video/mp4'],
+      ['webm-vertical', 'video/webm'],
+      ['gif-vertical', 'image/gif'],
     ])('serves %s as %s', async (format, type) => {
       const socket = await daemon();
       const pending = play(format);
@@ -581,7 +589,13 @@ describe('run video through the runner relay (integration)', () => {
           status: 'passed',
           startedAt: t.clock.now().toISOString(),
           durationMs: 12_345,
-          formats: ['mp4', 'webm', 'mp4-vertical'],
+          formats: [
+            'mp4',
+            'webm',
+            'mp4-vertical',
+            'webm-vertical',
+            'gif-vertical',
+          ],
           failedStep: null,
           cliVersion: '0.4.0',
           artifactsDeletedAt: null,

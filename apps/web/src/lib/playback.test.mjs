@@ -33,12 +33,17 @@ test('any other failure falls back to the generic message', () => {
 });
 
 test('formats come back in display order', () => {
-  assert.deepEqual(orderFormats(['gif', 'mp4-vertical', 'webm', 'mp4']), [
-    'mp4',
-    'webm',
-    'mp4-vertical',
-    'gif',
-  ]);
+  assert.deepEqual(
+    orderFormats([
+      'gif-vertical',
+      'gif',
+      'webm-vertical',
+      'mp4-vertical',
+      'webm',
+      'mp4',
+    ]),
+    ['mp4', 'webm', 'mp4-vertical', 'webm-vertical', 'gif', 'gif-vertical'],
+  );
 });
 
 test('unknown and duplicate formats are ignored', () => {

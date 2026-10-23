@@ -2,7 +2,14 @@
 // `node --test` runs it as it is.
 
 /** The formats the page offers, in the order it offers them. */
-export const FORMAT_ORDER = ['mp4', 'webm', 'mp4-vertical', 'gif'] as const;
+export const FORMAT_ORDER = [
+  'mp4',
+  'webm',
+  'mp4-vertical',
+  'webm-vertical',
+  'gif',
+  'gif-vertical',
+] as const;
 
 export type PlayableFormat = (typeof FORMAT_ORDER)[number];
 

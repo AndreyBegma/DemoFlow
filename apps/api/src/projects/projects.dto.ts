@@ -22,7 +22,14 @@ export const PROJECT_NAME_MAX = 200;
 export const PATH_MAX = 4096;
 
 /** `RENDER_FORMATS` of `@demoflow/core`, which the API does not depend on. */
-export const RUN_FORMATS = ['mp4', 'gif', 'webm', 'mp4-vertical'] as const;
+export const RUN_FORMATS = [
+  'mp4',
+  'gif',
+  'webm',
+  'mp4-vertical',
+  'gif-vertical',
+  'webm-vertical',
+] as const;
 export type RunFormat = (typeof RUN_FORMATS)[number];
 export const RUN_STATUSES = ['passed', 'failed'] as const;
 

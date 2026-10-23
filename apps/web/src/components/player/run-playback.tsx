@@ -111,6 +111,7 @@ export function RunPlayback({
   const online = machine?.online === true;
   const Player = choosePlayer();
   const src = videoUrl(runId, format);
+  const isGif = format === 'gif' || format === 'gif-vertical';
 
   return (
     <div className="flex flex-col gap-4">
@@ -137,7 +138,7 @@ export function RunPlayback({
           ))}
         </SegmentedControl>
       ) : null}
-      {state === 'ready' && format === 'gif' ? (
+      {state === 'ready' && isGif ? (
         // biome-ignore lint/performance/noImgElement: a relay stream, not a static asset next/image can optimize
         <img
           key={`${src}-${attempt}`}
@@ -147,11 +148,11 @@ export function RunPlayback({
           className="mx-auto max-h-[70vh] rounded-control"
         />
       ) : null}
-      {state === 'ready' && format !== 'gif' ? (
+      {state === 'ready' && !isGif ? (
         <Player
           key={`${src}-${attempt}`}
           src={src}
-          vertical={format === 'mp4-vertical'}
+          vertical={format === 'mp4-vertical' || format === 'webm-vertical'}
           onError={handlePlayerError}
         />
       ) : null}

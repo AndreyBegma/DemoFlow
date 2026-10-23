@@ -271,7 +271,14 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["mp4", "gif", "webm", "mp4-vertical"]
+            "enum": [
+              "mp4",
+              "gif",
+              "webm",
+              "mp4-vertical",
+              "gif-vertical",
+              "webm-vertical"
+            ]
           }
         },
         "gif": {
