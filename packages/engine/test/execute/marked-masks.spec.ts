@@ -183,8 +183,9 @@ describe('data-demoflow-mask', () => {
     const read = readOf(frames, 1);
     const [atMs] = firstShown(read.frames);
     expectStartBy(interval.startMs, atMs, read, frames.zeroMs());
-    // Measured in the page, not at a step boundary: well inside the wait.
-    expect(interval.startMs).toBeGreaterThan(outcome.events[1].startMs);
+    // Measured in the page, after the page that holds it was requested. Not "inside the
+    // wait": on a slow host the navigate step outlasts the page's 300 ms timer (#227).
+    expect(interval.startMs).toBeGreaterThan(outcome.events[0].startMs);
   });
 
   for (const how of ['remove', 'display', 'visibility', 'attribute']) {
