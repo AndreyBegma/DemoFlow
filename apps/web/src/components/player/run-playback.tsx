@@ -2,38 +2,67 @@
 
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button } from '@andrewbehma/glass-ui/button';
+import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
+import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@andrewbehma/glass-ui/segmented-control';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { t } from '@/i18n';
-import { getRun, type RunDetail } from '@/lib/api';
+import { deleteRunArtifacts, getRun, type RunDetail } from '@/lib/api';
+import { formatDate } from '@/lib/format-date';
 import {
   availability,
+  type DeleteFailureKey,
+  deleteFailureKey,
   orderFormats,
   type PlayableFormat,
   videoUrl,
 } from '@/lib/playback';
 import { choosePlayer } from './video-player';
 
-/** The format switcher, the player (or image) and the availability messages. */
+/**
+ * The format switcher, the player (or image), the availability messages and
+ * the control that deletes the run's files from its machine.
+ */
 export function RunPlayback({
   runId,
   formats: runFormats,
   machine: initialMachine,
+  artifactsDeletedAt: initialDeletedAt,
 }: {
   runId: string;
   formats: string[];
   machine: RunDetail['machine'];
+  artifactsDeletedAt: string | null;
 }) {
+  const router = useRouter();
   const formats = orderFormats(runFormats);
   const [format, setFormat] = useState<PlayableFormat | undefined>(formats[0]);
   const [machine, setMachine] = useState(initialMachine);
+  const [deletedAt, setDeletedAt] = useState(initialDeletedAt);
   const [playerFailed, setPlayerFailed] = useState(false);
   // Bumped by Retry, so the player remounts and tries the stream again.
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  // True from the confirmation until the answer: the player is unmounted so
+  // the browser drops its range request and the relay cancels the stream.
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<
+    DeleteFailureKey | undefined
+  >();
+
+  if (deletedAt !== null) {
+    return (
+      <EmptyState
+        title={t('runPage.deleted.title')}
+        description={t('runPage.deleted.body', { date: formatDate(deletedAt) })}
+      />
+    );
+  }
 
   if (format === undefined) {
     return <Banner tone="info">{t('runPage.noFormats')}</Banner>;
@@ -44,7 +73,27 @@ export function RunPlayback({
     setBusy(true);
     const result = await getRun(runId);
     setBusy(false);
-    if (result.ok) setMachine(result.data.machine);
+    if (result.ok) {
+      setMachine(result.data.machine);
+      // A 410 from another tab's deletion looks like any player error.
+      setDeletedAt(result.data.run.artifactsDeletedAt);
+    }
+  }
+
+  async function confirmDelete() {
+    setDeleteError(undefined);
+    setDeleting(true);
+    const result = await deleteRunArtifacts(runId);
+    setConfirming(false);
+    if (result.ok) {
+      setDeletedAt(new Date().toISOString());
+      router.refresh();
+      return;
+    }
+    setDeleteError(deleteFailureKey(result.code));
+    setDeleting(false);
+    // The player comes back on the same attempt count, so it tries again.
+    setAttempt((current) => current + 1);
   }
 
   async function handlePlayerError() {
@@ -58,7 +107,8 @@ export function RunPlayback({
     setAttempt((current) => current + 1);
   }
 
-  const state = availability(machine, playerFailed);
+  const state = deleting ? 'deleting' : availability(machine, playerFailed);
+  const online = machine?.online === true;
   const Player = choosePlayer();
   const src = videoUrl(runId, format);
 
@@ -125,6 +175,34 @@ export function RunPlayback({
           </Button>
         </div>
       ) : null}
+      {deleteError ? <Banner tone="danger">{t(deleteError)}</Banner> : null}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          variant="danger"
+          disabled={!online || deleting}
+          onClick={() => setConfirming(true)}
+        >
+          {t('runPage.delete.open')}
+        </Button>
+        {online ? null : (
+          <span className="text-sm text-ink-2">
+            {t('runPage.delete.offlineHint')}
+          </span>
+        )}
+      </div>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={t('runPage.delete.title')}
+        consequence={t('runPage.delete.consequence', {
+          machine: machine?.name ?? '',
+        })}
+        verb={t('runPage.delete.confirm')}
+        cancelLabel={t('runPage.delete.cancel')}
+        busy={deleting}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
   );
 }

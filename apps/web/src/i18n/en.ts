@@ -227,6 +227,7 @@ export const en = {
         failedStep: 'Failed step',
       },
       noFormats: 'None',
+      filesDeleted: 'Files deleted',
       noFailedStep: '—',
       step: 'Step {number}',
       loadMore: 'Load more',
@@ -273,6 +274,24 @@ export const en = {
     retry: 'Retry',
     retrying: 'Checking…',
     pageFailed: 'We could not load this run. Try again in a moment.',
+    delete: {
+      open: 'Delete video files',
+      offlineHint: 'The machine is offline.',
+      title: 'Delete the video files of this run?',
+      consequence:
+        'The files are removed from {machine}. The run stays in your library. This cannot be undone.',
+      confirm: 'Delete files',
+      cancel: 'Keep',
+      errors: {
+        offline: 'The machine is offline. Try again when it is connected.',
+        failed: 'The machine did not delete the files. Try again.',
+        missing: "The machine no longer has this run's files.",
+      },
+    },
+    deleted: {
+      title: 'Video files deleted',
+      body: 'Deleted from the machine on {date}.',
+    },
   },
   meta: {
     title: 'DemoFlow',

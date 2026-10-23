@@ -1,6 +1,36 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { availability, orderFormats, videoUrl } from './playback.ts';
+import {
+  availability,
+  deleteFailureKey,
+  orderFormats,
+  videoUrl,
+} from './playback.ts';
+
+test('a machine that is gone or offline asks the user to reconnect it', () => {
+  for (const code of ['runner-offline', 'runner-removed']) {
+    assert.equal(deleteFailureKey(code), 'runPage.delete.errors.offline');
+  }
+});
+
+test('a machine that did not answer or failed asks to try again', () => {
+  for (const code of ['runner-timeout', 'runner-error']) {
+    assert.equal(deleteFailureKey(code), 'runPage.delete.errors.failed');
+  }
+});
+
+test('missing files have their own message', () => {
+  assert.equal(
+    deleteFailureKey('artifacts-missing'),
+    'runPage.delete.errors.missing',
+  );
+});
+
+test('any other failure falls back to the generic message', () => {
+  assert.equal(deleteFailureKey('not-found'), 'auth.errors.unknown');
+  assert.equal(deleteFailureKey('whatever'), 'auth.errors.unknown');
+  assert.equal(deleteFailureKey(undefined), 'auth.errors.unknown');
+});
 
 test('formats come back in display order', () => {
   assert.deepEqual(orderFormats(['gif', 'mp4-vertical', 'webm', 'mp4']), [
