@@ -7,7 +7,7 @@
     "start": "node dist/src/main",
     "start:dev": "nest start --watch",
     "lint": "biome lint src",
-    "test": "jest",
+    "test": "jest ${CI:+--maxWorkers=2}",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "db:migrate": "prisma migrate dev",
