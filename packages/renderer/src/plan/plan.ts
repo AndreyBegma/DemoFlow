@@ -263,7 +263,8 @@ export function planRender(
   const squareConfig = SquareConfigSchema.parse(options.square ?? {});
   const { follow, squareFollow, ...overlays } = shiftOverlays(
     {
-      cursor: cursorMoves(events, out),
+      // A phone has no mouse pointer: the click ring is the tap (spec 307).
+      cursor: timeline.device === 'phone' ? [] : cursorMoves(events, out),
       clicks: clickRings(events, out),
       camera: cameraKeyframes(events, out, viewport, defaultZoom),
       follow: followKeys(
