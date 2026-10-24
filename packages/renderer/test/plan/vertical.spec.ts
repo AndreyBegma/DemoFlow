@@ -7,13 +7,13 @@ import {
 } from '@demoflow/core';
 import { describe, expect, it } from 'vitest';
 import {
+  cropViewAt,
   frameAt,
   planRender,
   type RenderPlan,
   type RenderPlanOptions,
   renderPath,
   VERTICAL,
-  verticalViewAt,
 } from '../../src/index.ts';
 
 /** Spec 176: the 9:16 crop that follows each step's target. */
@@ -97,7 +97,7 @@ function click(
 function view(rendered: RenderPlan, atMs: number) {
   const { vertical } = rendered;
   if (vertical === undefined) throw new Error('no vertical output planned');
-  return verticalViewAt(rendered, vertical, atMs);
+  return cropViewAt(rendered, vertical, atMs);
 }
 
 function centreX(rendered: RenderPlan, atMs: number): number {

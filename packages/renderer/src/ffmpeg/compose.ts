@@ -1,9 +1,9 @@
 import type { Box } from '@demoflow/core';
 import type {
+  CropSpec,
   FrameState,
   OutputSpec,
   RenderPlan,
-  VerticalSpec,
 } from '../plan/types.ts';
 import {
   capHeight,
@@ -182,7 +182,7 @@ export function renderStage(plan: RenderPlan): Picture | undefined {
 export function createCompositor(
   output: OutputSpec,
   stage?: Picture,
-  band?: VerticalSpec['caption'],
+  band?: CropSpec['caption'],
 ): Compositor {
   const captions = new Map<string, Laid>();
   const cards = new Map<string, Laid>();
@@ -455,7 +455,7 @@ function layCaption(text: string, output: OutputSpec): Laid {
 function layBandCaption(
   text: string,
   output: OutputSpec,
-  band: VerticalSpec['caption'],
+  band: CropSpec['caption'],
 ): Laid {
   const { padding } = LOOK.caption;
   const style: TextStyle = {

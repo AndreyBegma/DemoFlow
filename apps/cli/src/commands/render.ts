@@ -216,6 +216,7 @@ export function renderPlanOptions(
     formats: formats ?? config.render.formats,
     gif: config.render.gif,
     vertical: config.render.vertical,
+    square: config.render.square,
     scenario: description === undefined ? {} : { description },
   };
 }

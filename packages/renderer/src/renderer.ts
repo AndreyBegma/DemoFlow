@@ -37,6 +37,9 @@ const EXTENSIONS: Record<RenderFormat, string> = {
   'mp4-vertical': 'vertical.mp4',
   'gif-vertical': 'vertical.gif',
   'webm-vertical': 'vertical.webm',
+  'mp4-square': 'square.mp4',
+  'gif-square': 'square.gif',
+  'webm-square': 'square.webm',
 };
 
 /** `<runDir>/render/<renderer>.<format>`, or `<renderer>.vertical.mp4`. */

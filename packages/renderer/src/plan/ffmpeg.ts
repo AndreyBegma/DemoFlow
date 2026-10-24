@@ -17,6 +17,9 @@ export const ENCODERS = {
   'mp4-vertical': 'libx264',
   'gif-vertical': 'gif',
   'webm-vertical': 'libvpx-vp9',
+  'mp4-square': 'libx264',
+  'gif-square': 'gif',
+  'webm-square': 'libvpx-vp9',
 } as const;
 
 /**

@@ -7,6 +7,7 @@ import {
   type RenderFormat,
   type RunResult,
   RunResultSchema,
+  SquareConfigSchema,
   type StepAction,
   type Timeline,
   type TimelineEvent,
@@ -16,7 +17,7 @@ import {
 import { resolveBackground } from './background.ts';
 import { placeCards, shiftOverlays } from './cards.ts';
 import { probeVideo } from './ffmpeg.ts';
-import { verticalCropSize } from './frame.ts';
+import { cropSize } from './frame.ts';
 import { measuredMaskMarginMs } from './mask-margin.ts';
 import { maskSpans } from './masks.ts';
 import { findSyncClear, syncOffset } from './sync-mark.ts';
@@ -31,6 +32,7 @@ import type {
   CameraKeyframe,
   Caption,
   ClickRing,
+  CropSpec,
   CursorMove,
   FailureSpec,
   FollowKey,
@@ -42,7 +44,6 @@ import type {
   RenderPlan,
   RenderPlanOptions,
   TransitionsSpec,
-  VerticalSpec,
   VideoProbe,
 } from './types.ts';
 
@@ -259,7 +260,8 @@ export function planRender(
     sourceFrameMs: 1000 / source.fps,
   });
   const verticalConfig = VerticalConfigSchema.parse(options.vertical ?? {});
-  const { follow, ...overlays } = shiftOverlays(
+  const squareConfig = SquareConfigSchema.parse(options.square ?? {});
+  const { follow, squareFollow, ...overlays } = shiftOverlays(
     {
       cursor: cursorMoves(events, out),
       clicks: clickRings(events, out),
@@ -268,8 +270,15 @@ export function planRender(
         events,
         out,
         viewport,
-        verticalCropSize(viewport, VERTICAL).width,
+        cropSize(viewport, VERTICAL).width,
         verticalConfig,
+      ),
+      squareFollow: followKeys(
+        events,
+        out,
+        viewport,
+        cropSize(viewport, SQUARE).width,
+        squareConfig,
       ),
       masks,
       captions: captions(events, timeline.annotations ?? [], out, pageEndMs),
@@ -307,14 +316,24 @@ export function planRender(
       ? undefined
       : failureCard(failure, videoEndMs, TIMING.endCardMs);
   const files = outputFiles(output, options);
-  const vertical: VerticalSpec | undefined = files.some((file) =>
+  const vertical: CropSpec | undefined = files.some((file) =>
     file.format.endsWith('-vertical'),
   )
     ? {
         width: VERTICAL.width,
         height: VERTICAL.height,
         follow,
-        caption: verticalCaption(verticalConfig.captionBand),
+        caption: cropCaption(VERTICAL, verticalConfig.captionBand),
+      }
+    : undefined;
+  const square: CropSpec | undefined = files.some((file) =>
+    file.format.endsWith('-square'),
+  )
+    ? {
+        width: SQUARE.width,
+        height: SQUARE.height,
+        follow: squareFollow,
+        caption: cropCaption(SQUARE, squareConfig.captionBand),
       }
     : undefined;
 
@@ -346,6 +365,7 @@ export function planRender(
     ...(transitions === undefined ? {} : { transitions }),
     ...(failureSpec === undefined ? {} : { failure: failureSpec }),
     ...(vertical === undefined ? {} : { vertical }),
+    ...(square === undefined ? {} : { square }),
   };
 }
 
@@ -358,14 +378,25 @@ export const VERTICAL = {
   captionMaxLines: 3,
 } as const;
 
-/** The band over the bottom `band` of the vertical frame, the type scaled with its width. */
-function verticalCaption(band: number): VerticalSpec['caption'] {
-  const height = Math.round(VERTICAL.height * band);
+/** The square output's size and caption type (spec 304, Decisions 2 and 6). */
+export const SQUARE = {
+  width: 1080,
+  height: 1080,
+  captionFontPx: 48,
+  captionMaxLines: 2,
+} as const;
+
+/** The band over the bottom `band` of a crop's frame, the type scaled with its width. */
+function cropCaption(
+  size: typeof VERTICAL | typeof SQUARE,
+  band: number,
+): CropSpec['caption'] {
+  const height = Math.round(size.height * band);
   return {
-    top: VERTICAL.height - height,
+    top: size.height - height,
     height,
-    fontPx: (VERTICAL.captionFontPx * VERTICAL.width) / 1080,
-    maxLines: VERTICAL.captionMaxLines,
+    fontPx: (size.captionFontPx * size.width) / 1080,
+    maxLines: size.captionMaxLines,
   };
 }
 
@@ -489,6 +520,7 @@ function outputFile(
         faststart: true,
       };
     case 'mp4-vertical':
+    case 'mp4-square':
       return {
         format,
         codec: 'h264',
@@ -497,7 +529,19 @@ function outputFile(
       };
     case 'webm':
     case 'webm-vertical':
+    case 'webm-square':
       return { format, codec: 'vp9', pixelFormat: 'yuv420p', ...WEBM };
+    case 'gif-square': {
+      // Three quarters of `gif.width` a side: the landscape GIF's pixels per frame (spec 304).
+      const width = options.gif?.width ?? Math.min(GIF.width, output.width);
+      const side = Math.max(2, Math.round((width * 3) / 4 / 2) * 2);
+      return {
+        format,
+        width: side,
+        height: side,
+        fps: options.gif?.fps ?? Math.min(GIF.fps, output.fps),
+      };
+    }
     case 'gif-vertical': {
       // The height is `gif.width`, so a frame has the landscape GIF's pixels (spec 236).
       const height = options.gif?.width ?? Math.min(GIF.width, VERTICAL.height);
