@@ -60,6 +60,7 @@ Every `render` key is optional. These are the defaults:
 | `formats` | `["mp4"]` | The files to render. |
 | `gif` | 800 px, 12 fps | The GIF's own size and rate. |
 | `vertical` | see below | The 9:16 crop of the `*-vertical` formats. |
+| `square` | see below | The 1:1 crop of the `*-square` formats. |
 
 ### Frame
 
@@ -133,6 +134,9 @@ pass, each at most once:
 | `mp4-vertical` | `render/ffmpeg.vertical.mp4` |
 | `gif-vertical` | `render/ffmpeg.vertical.gif` |
 | `webm-vertical` | `render/ffmpeg.vertical.webm` |
+| `mp4-square` | `render/ffmpeg.square.mp4` |
+| `gif-square` | `render/ffmpeg.square.gif` |
+| `webm-square` | `render/ffmpeg.square.webm` |
 
 ```json
 {
@@ -172,4 +176,33 @@ optional, and is used only when `formats` has a `*-vertical` format:
 |---|---|---|
 | `followMs` | 400 | How long the crop takes to move to the next target, eased in and out. 0 to 2000. |
 | `deadZone` | 0.1 | A move shorter than this share of the crop width is skipped, so the camera does not jitter. 0 up to, not including, 0.5. |
+| `captionBand` | 0.22 | The share of the frame height, at the bottom, that captions sit in. Above 0, at most 0.5. |
+
+#### Square video
+
+The `*-square` formats are 1:1 videos, the size of feed posts, rendered from the
+same run. `mp4-square` and `webm-square` are 1080×1080. `gif-square` is a GIF
+whose side is `round(render.gif.width × 3 / 4)`: 600×600 by default, the pixels
+of the landscape GIF. It uses `render.gif.fps`. Ask for any mix of landscape,
+vertical and square files.
+
+The square crop works like the vertical one, with its own camera: it follows
+each step's target, stays on the page, honours `zoom`, and captions sit in a
+band at the bottom, cut to two lines. `render.square` takes the same three
+fields as `render.vertical`, with the same ranges and defaults, tunes the
+square crop alone, and is used only when `formats` has a `*-square` format:
+
+```json
+{
+  "render": {
+    "formats": ["mp4", "mp4-vertical", "mp4-square", "gif-square"],
+    "square": { "followMs": 400, "deadZone": 0.1, "captionBand": 0.22 }
+  }
+}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `followMs` | 400 | How long the crop takes to move to the next target, eased in and out. 0 to 2000. |
+| `deadZone` | 0.1 | A move shorter than this share of the crop width is skipped. 0 up to, not including, 0.5. |
 | `captionBand` | 0.22 | The share of the frame height, at the bottom, that captions sit in. Above 0, at most 0.5. |
