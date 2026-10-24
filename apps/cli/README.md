@@ -102,6 +102,16 @@ the MCP's `check_project` answer.
 Both commands are read-only: no browser, no file written, no network request.
 Outside a project (no `demoflow.config.json` in the folder or above) they exit 2.
 
+Runs pile up in `<home>/runs/`. `demoflow runs list` prints every run there,
+newest first: status (`partial` for a run that never finished, `active` for one
+touched in the last 5 minutes), date, size, scenario name and run id, then the
+total. `demoflow runs delete <id…>` deletes runs by id, and
+`demoflow runs prune --older-than 30d` or `--partial-only` deletes the runs
+matching every filter given. Nothing asks for confirmation, so preview with
+`--dry-run` first. An active run is never deleted, and nothing outside
+`<home>/runs/` is ever touched. These commands work outside a project too, and
+take `--out <dir>` like `run`.
+
 `demoflow record` writes a scenario from what you do in the app. To post the
 same thing for several items, tick a run of steps in the recording panel and
 choose **Repeat over data**. Name the list, then give one line per item for each
@@ -117,6 +127,8 @@ typed value. Secret fills are left as recorded.
 | `demoflow run <scenario>` | run it in a browser and render the video |
 | `demoflow render <runId>` | render an existing run again with the current config |
 | `demoflow list` | list recent runs of the current project, newest first |
+| `demoflow runs list` | list every run on this machine, with its size |
+| `demoflow runs delete <id…>` / `prune` | delete runs by id, or by age and state |
 | `demoflow check` | check that the project, FFmpeg and the browser are ready |
 | `demoflow setup` | install Chromium now instead of on the first run |
 | `demoflow mcp` | serve demo generation to MCP clients over stdio |

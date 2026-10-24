@@ -13,6 +13,7 @@ Run `demoflow` through `npx demoflow`, or install it globally. `demoflow
 | `demoflow run <scenario>` | Run it in a browser and render the video. |
 | `demoflow render <runId>` | Render an existing run again with the current config. |
 | `demoflow list` | List recent runs of the current project, newest first. |
+| `demoflow runs …` | List, delete and prune the runs on this machine. |
 | `demoflow check` | Check that the project, FFmpeg and the browser are ready. |
 | `demoflow setup` | Install Chromium now instead of on the first run. |
 | `demoflow mcp` | Serve demo generation to MCP clients over stdio. |
@@ -120,6 +121,50 @@ writes to. Nothing is started or written.
 It exits `0` when it listed runs, or found none. It exits `2` when `--limit` is
 not an integer from 1 to 100, or when the folder is not in a project (no
 `demoflow.config.json` in it or above).
+
+## runs
+
+```sh
+npx demoflow runs list
+npx demoflow runs delete 20261017-123456-abcdef --dry-run
+npx demoflow runs prune --older-than 30d --dry-run
+```
+
+Every run leaves a directory under `<home>/runs/`, and runs that were cancelled,
+timed out or crashed leave partial ones. `runs` reclaims the space. It works
+outside a project too: the home comes from `--out`, `DEMOFLOW_HOME`, the
+project's or the global `artifactsDir`, or the OS data directory, and every
+output starts with the `<home>/runs` it read.
+
+`runs list` prints every run, newest first: status, date, size, scenario name
+and run id, the page URL of a run reported to the website, and a total. A run
+that never finished is `partial`. A run with anything in it modified in the
+last 5 minutes is `active`: it may still be running, or being rendered.
+
+`runs delete <id…>` deletes the runs you name, one line per id: `deleted`,
+`not found`, `refused` (active) or `failed`. One id's failure does not stop the
+others. `runs prune` deletes the runs that match every filter given, oldest
+first, and prints how much it freed.
+
+Nothing asks for confirmation. Preview with `--dry-run` first. An active run is
+never deleted, and nothing outside `<home>/runs/` is ever removed. A run the
+website knows stays in the project's library; its video answers as not found.
+
+| Flag | Meaning |
+|---|---|
+| `--out <dir>` | The artifacts home, which holds `runs/`. All three commands. |
+| `--json` | `list` only: print `{ "home": …, "runs": [...] }` on stdout. |
+| `--dry-run` | `delete` and `prune`: print what would be deleted, delete nothing. |
+| `--older-than <duration>` | `prune`: runs started longer ago than this. A positive integer and `m`, `h`, `d` or `w`: `90m`, `12h`, `30d`, `2w`. |
+| `--partial-only` | `prune`: only runs that never finished. |
+
+`prune` needs `--older-than`, `--partial-only` or both.
+
+| Code | Meaning |
+|---|---|
+| `0` | Listed; every named run deleted; or the prune removed what matched (possibly nothing). |
+| `1` | `delete`: a run was not found, active, or failed to delete. `prune`: a removal failed. |
+| `2` | An invalid run id or duration, `prune` without a filter, or an invalid config. Nothing is deleted. |
 
 ## check
 
