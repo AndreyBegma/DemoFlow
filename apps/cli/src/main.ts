@@ -25,6 +25,7 @@ import { type LoginFlags, loginCommand } from './commands/login.ts';
 import { logoutCommand } from './commands/logout.ts';
 import { type RenderFlags, renderCommand } from './commands/render.ts';
 import { runCommand } from './commands/run.ts';
+import { registerRunsCommands } from './commands/runs.ts';
 import { setupCommand } from './commands/setup.ts';
 import { validateCommand } from './commands/validate.ts';
 import { mcpCommand } from './mcp/command.ts';
@@ -191,6 +192,10 @@ export async function main(
     .action(async () => {
       exitCode = await logoutCommand(io);
     });
+
+  registerRunsCommands(program, io, (code) => {
+    exitCode = code;
+  });
 
   registerRunnerCommands(program, io, (code) => {
     exitCode = code;

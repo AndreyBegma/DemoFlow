@@ -89,7 +89,7 @@ function formatDemo(demo: DemoSummary): string {
 }
 
 /** `YYYY-MM-DD HH:mm` in the local time zone. */
-function formatStarted(iso: string): string {
+export function formatStarted(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   const two = (value: number) => String(value).padStart(2, '0');
