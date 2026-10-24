@@ -91,10 +91,17 @@ no folder or its machine was removed.
 
 ### What the site chooses
 
-The site sends only the scenario's path. The machine starts an ordinary
-`demoflow run` of that file with the project's own `demoflow.config.json`, its
-own `devCommand` and the runner's environment. No flags, formats or environment
-come from the site.
+The site sends the scenario's path and, if you choose, the output formats.
+Nothing else. The machine starts an ordinary `demoflow run` of that file with
+the project's own `demoflow.config.json`, its own `devCommand` and the runner's
+environment. The run is always headless. Size, frame, background and every
+other render setting come from `demoflow.config.json`.
+
+By default the site sends no formats and the run makes the project's formats.
+**Choose formats** on the card picks any of the nine instead. A machine with an
+older CLI offers no choice: the card says to update the CLI, and the run makes
+the project's formats. **Run again** repeats the formats the run rendered; if
+the run rendered none, or the CLI is older, it uses the project's formats.
 
 `valueFrom.env` secrets come from the runner's environment, which an autostart
 unit may not share with your shell.

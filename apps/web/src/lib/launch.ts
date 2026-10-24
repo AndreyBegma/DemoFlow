@@ -21,6 +21,8 @@ export type LaunchErrorKey =
   | 'projects.launch.errors.configInvalid'
   | 'projects.launch.errors.runnerTimeout'
   | 'projects.launch.errors.runnerError'
+  | 'projects.launch.errors.runnerOutdated'
+  | 'projects.launch.errors.optionsInvalid'
   | 'auth.errors.unknown';
 
 /** The message for an API error code from any of the launch calls. */
@@ -48,9 +50,36 @@ export function launchErrorKey(code: string | undefined): LaunchErrorKey {
       return 'projects.launch.errors.runnerTimeout';
     case 'runner-error':
       return 'projects.launch.errors.runnerError';
+    case 'runner-outdated':
+      return 'projects.launch.errors.runnerOutdated';
+    case 'options-invalid':
+      return 'projects.launch.errors.optionsInvalid';
     default:
       return 'auth.errors.unknown';
   }
+}
+
+/**
+ * Whether the machine takes output formats on a start (ADR-0017). An API
+ * older than spec #325 sends no `runOptions`, which counts as "no".
+ */
+export function canChooseFormats(
+  runOptions: readonly string[] | null | undefined,
+): boolean {
+  return runOptions?.includes('formats') ?? false;
+}
+
+/**
+ * The formats Run again sends (spec #327, Decision 5): the ones the run
+ * rendered, when the machine takes formats; otherwise undefined, which starts
+ * with the project's formats.
+ */
+export function runAgainFormats(
+  formats: readonly string[],
+  runOptions: readonly string[] | null | undefined,
+): string[] | undefined {
+  if (formats.length === 0 || !canChooseFormats(runOptions)) return undefined;
+  return [...formats];
 }
 
 /**

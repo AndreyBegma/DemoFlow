@@ -7,11 +7,13 @@ import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
 import { useEffect, useState } from 'react';
 import { t } from '@/i18n';
 import { useLaunch } from '@/lib/use-launch';
+import { formatList } from './format-choice';
 import { LaunchStatus } from './launch-status';
 
 /**
  * "Run again" on the run page (spec #282): starts the run's own scenario on
- * the machine that recorded it, through the project's launch, with no options.
+ * the machine that recorded it, through the project's launch, with the
+ * formats the run rendered when the machine takes them (spec #327).
  * Only rendered when `canRunAgain` allows it.
  */
 export function RunAgain({
@@ -20,12 +22,15 @@ export function RunAgain({
   scenarioName,
   machineName,
   offline,
+  formats,
 }: {
   projectId: string;
   scenarioId: string;
   scenarioName: string;
   machineName: string;
   offline: boolean;
+  /** The formats to repeat (`runAgainFormats`); undefined for the project's. */
+  formats: string[] | undefined;
 }) {
   const [confirming, setConfirming] = useState(false);
   // A terminal launch found on mount is not this run's result; one that was
@@ -39,7 +44,7 @@ export function RunAgain({
   }, [active]);
 
   async function confirmStart() {
-    await start(scenarioId);
+    await start(scenarioId, formats);
     setConfirming(false);
   }
 
@@ -86,7 +91,13 @@ export function RunAgain({
           name: scenarioName,
           machine: machineName,
         })}
-        consequence={t('projects.launch.confirm.body')}
+        consequence={`${t('projects.launch.confirm.body')} ${
+          formats
+            ? t('projects.launch.formats.confirmChosen', {
+                list: formatList(formats),
+              })
+            : t('projects.launch.formats.confirmDefault')
+        }`}
         verb={t('projects.launch.confirm.verb')}
         cancelLabel={t('projects.launch.confirm.cancel')}
         busy={starting}
