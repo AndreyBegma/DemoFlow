@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "name": "DemoFlow landing page",
+  "description": "Open the DemoFlow website and check the landing page heading.",
+  "viewport": { "width": 1280, "height": 720 },
+  "steps": [
+    { "action": "navigate", "path": "/" },
+    {
+      "action": "assertText",
+      "target": {
+        "role": "heading",
+        "name": "Demo videos of the features you ship"
+      },
+      "text": "Demo videos of the features you ship, from one JSON scenario."
+    }
+  ]
+}
