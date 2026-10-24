@@ -47,8 +47,8 @@ describe('recording options', () => {
     expect(context.userAgent).toContain('Android');
     expect(context.userAgent).toContain('Mobile');
     expect(context.userAgent).toContain('Chrome/131.0.6778.33');
-    expect(context.viewport).toEqual({ width: 412, height: 915 });
-    expect(context.recordVideo?.size).toEqual({ width: 412, height: 915 });
+    expect(context.viewport).toEqual({ width: 412, height: 914 });
+    expect(context.recordVideo?.size).toEqual({ width: 412, height: 914 });
     expect(context.deviceScaleFactor).toBe(DEVICE_SCALE_FACTOR);
   });
 

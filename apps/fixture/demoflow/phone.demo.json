@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "Sign in on a phone",
-  "description": "Sign in as a phone: a touch device with a mobile user agent and the default 412x915 viewport.",
+  "description": "Sign in as a phone: a touch device with a mobile user agent and the default 412x914 viewport.",
   "device": "phone",
   "steps": [
     { "action": "navigate", "path": "/login" },

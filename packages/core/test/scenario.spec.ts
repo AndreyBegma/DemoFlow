@@ -189,10 +189,10 @@ describe('parseScenario — device', () => {
     });
   });
 
-  it('gives a phone 412x915 when it sets no viewport', () => {
+  it('gives a phone 412x914 when it sets no viewport', () => {
     expect(parse({ device: 'phone' })).toMatchObject({
       ok: true,
-      value: { device: 'phone', viewport: { width: 412, height: 915 } },
+      value: { device: 'phone', viewport: { width: 412, height: 914 } },
     });
   });
 

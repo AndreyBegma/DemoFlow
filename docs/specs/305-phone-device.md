@@ -49,11 +49,13 @@ issue adds a scenario-level device with those three options.
      vocabulary in `packages/core` (ADR-0001: zod only), and room for a
      `tablet` later without a breaking change.
 2. **Default viewport follows the device.** `viewport` becomes optional in
-   the input. A transform fills it: 412×915 for `"phone"`, 1920×1080 for
+   the input. A transform fills it: 412×914 for `"phone"`, 1920×1080 for
    `"desktop"`. The parsed `Scenario` always has `viewport`. An explicit
    `viewport` always wins, including a wide one on a phone.
-   - *Why 412×915:* the CSS size of Playwright's `Pixel 7` descriptor, which
-     matches the Android user agent of Decision 3. It is also wider than the
+   - *Why 412×914:* the CSS size of Playwright's `Pixel 7` descriptor (412×915),
+     which matches the Android user agent of Decision 3, minus one row:
+     Playwright floors the video to even dimensions, so an odd height would
+     leave the video one row shorter than `timeline.viewport`. It is also wider than the
      common 390×844, so the 1× source (ADR-0010) is upscaled a little less in
      the 1080-wide outputs.
    - *Why not reject a wide phone viewport:* nothing breaks, and it is the
@@ -69,7 +71,7 @@ issue adds a scenario-level device with those three options.
      the launched `browser` in `run.ts`), so the function stays pure and unit
      tested.
 4. **`deviceScaleFactor` stays 2 for every device.** The video is recorded at
-   the viewport size, 412×915 for the default phone (ADR-0010 §1–2).
+   the viewport size, 412×914 for the default phone (ADR-0010 §1–2).
    - *Why:* ADR-0010 found no way to record device pixels; a phone's real
      factor (2.6–3) would change only `screenshot` steps and the
      `deviceScaleFactor` the renderer reads, not the video. One constant is
@@ -77,7 +79,7 @@ issue adds a scenario-level device with those three options.
    - Consequence, documented by #308: a phone source is
      upscaled about 2.6× in the 1080-wide vertical and square outputs, so it
      is softer than a desktop crop (ADR-0010 Consequences already says the
-     9:16 crop is soft). The landscape output fits the 915 px tall page into
+     9:16 crop is soft). The landscape output fits the 914 px tall page into
      the window at about 1.1×, so it stays sharp.
 5. **Steps are unchanged.** `click`, `fill`, `hover`, `press`, `scroll` act
    exactly as on desktop. Playwright's `click` in a `hasTouch` context
@@ -97,14 +99,14 @@ issue adds a scenario-level device with those three options.
 
 ## Acceptance criteria
 
-- [ ] Scenario tests: `device: "phone"` without `viewport` → 412×915; with a
+- [ ] Scenario tests: `device: "phone"` without `viewport` → 412×914; with a
       `viewport` → that viewport; no `device` → `"desktop"`, 1920×1080;
       `device: "tablet"` → an issue at `device`.
 - [ ] `recording.spec.ts`: phone options carry `isMobile`, `hasTouch` and a
       user agent with `Android`, `Mobile` and the given version; desktop
       options carry none of them.
 - [ ] A real run of `phone.demo.json`: `(pointer: coarse)` matches,
-      `navigator.userAgent` contains `Mobile`, the source video is 412×915,
+      `navigator.userAgent` contains `Mobile`, the source video and `timeline.viewport` are 412×914,
       the `click` and `fill` pass, and `timeline.json` has `device: "phone"`.
 - [ ] Timeline tests: with and without `device`.
 - [ ] The scenario JSON schema is regenerated; `device` has a description.

@@ -34,7 +34,7 @@ describe('phone.demo.json', () => {
     const parsed = parseScenario(JSON.parse(raw));
     if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
     const scenario: Scenario = parsed.value;
-    expect(scenario.viewport).toEqual({ width: 412, height: 915 });
+    expect(scenario.viewport).toEqual({ width: 412, height: 914 });
 
     const probes: { coarse: boolean; userAgent: string }[] = [];
     let page: Page | undefined;
@@ -76,14 +76,14 @@ describe('phone.demo.json', () => {
     expect(probes[0]?.userAgent).toContain('Android');
 
     const video = await readFile(path.join(runDir, 'source.webm'));
-    // Playwright floors the frame size to even numbers (VP8/yuv420p), so the
-    // 915 px tall viewport records as 914 px.
+    // The default phone height is even because Playwright floors the video
+    // frame to even dimensions: the video and the timeline agree.
     expect(webmFrameSize(video)).toEqual({ width: 412, height: 914 });
 
     const timeline = TimelineSchema.parse(
       JSON.parse(await readFile(path.join(runDir, 'timeline.json'), 'utf8')),
     );
     expect(timeline.device).toBe('phone');
-    expect(timeline.viewport).toEqual({ width: 412, height: 915 });
+    expect(timeline.viewport).toEqual({ width: 412, height: 914 });
   });
 });

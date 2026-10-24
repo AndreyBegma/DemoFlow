@@ -30,7 +30,7 @@
     },
     "device": {
       "default": "desktop",
-      "description": "What the browser records as. \"phone\" is a touch device with a mobile user agent and a 412x915 viewport unless `viewport` says otherwise.",
+      "description": "What the browser records as. \"phone\" is a touch device with a mobile user agent and a 412x914 viewport unless `viewport` says otherwise.",
       "type": "string",
       "enum": ["desktop", "phone"]
     },

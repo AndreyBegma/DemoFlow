@@ -35,7 +35,8 @@ export const DEFAULT_VIEWPORTS: Record<
   { width: number; height: number }
 > = {
   desktop: { width: 1920, height: 1080 },
-  phone: { width: 412, height: 915 },
+  // 914, not the Pixel 7's 915: Playwright floors the video to even dimensions.
+  phone: { width: 412, height: 914 },
 };
 
 /** A scenario file, `demoflow/**\/*.demo.json` (ADR-0003). */
@@ -49,7 +50,7 @@ export const ScenarioSchema = z
     baseUrl: HttpUrlSchema.optional(),
     device: DeviceSchema.default('desktop').meta({
       description:
-        'What the browser records as. "phone" is a touch device with a mobile user agent and a 412x915 viewport unless `viewport` says otherwise.',
+        'What the browser records as. "phone" is a touch device with a mobile user agent and a 412x914 viewport unless `viewport` says otherwise.',
     }),
     viewport: ViewportSchema.optional(),
     data: ScenarioDataSchema.optional(),
