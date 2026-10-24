@@ -171,3 +171,4 @@ Work traced to an ADR, the vision or spec 179 that no phase had picked up.
 | [#306](https://github.com/AndreyBegma/DemoFlow/issues/306) | [Vertical and square crops follow up and down on a tall source](306-follow-camera-portrait.md) | #304 |
 | [#307](https://github.com/AndreyBegma/DemoFlow/issues/307) | [No mouse cursor on a phone recording, taps only](307-phone-tap-indicator.md) | #305 |
 | [#308](https://github.com/AndreyBegma/DemoFlow/issues/308) | [Docs: square formats, `render.square` and phone recording](308-docs-square-and-phone.md) | #304-#307 |
+| [#315](https://github.com/AndreyBegma/DemoFlow/issues/315) | [Woodpecker `test-pr` still runs out of memory when every package is affected](315-ci-test-memory.md) — spec 242 follow-up | — |
