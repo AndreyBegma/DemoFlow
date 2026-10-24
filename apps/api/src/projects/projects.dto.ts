@@ -32,6 +32,9 @@ export const RUN_FORMATS = [
   'mp4-vertical',
   'gif-vertical',
   'webm-vertical',
+  'mp4-square',
+  'gif-square',
+  'webm-square',
 ] as const;
 export type RunFormat = (typeof RUN_FORMATS)[number];
 export const RUN_STATUSES = ['passed', 'failed'] as const;

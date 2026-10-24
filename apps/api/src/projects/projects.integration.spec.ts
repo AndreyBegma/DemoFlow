@@ -154,7 +154,7 @@ describe('projects (integration)', () => {
       );
     });
 
-    it('accepts every format the CLI renders, the vertical export too', async () => {
+    it('accepts every format the CLI renders, the vertical and square exports too', async () => {
       const formats = [
         'mp4',
         'gif',
@@ -162,6 +162,9 @@ describe('projects (integration)', () => {
         'mp4-vertical',
         'gif-vertical',
         'webm-vertical',
+        'mp4-square',
+        'gif-square',
+        'webm-square',
       ];
       await report(laptop.token, runReport({ formats })).expect(201);
       const { projects } = (await list(alice.cookie).expect(200)).body;

@@ -380,8 +380,11 @@ export const en = {
       webm: 'WebM',
       'mp4-vertical': 'Vertical MP4',
       'webm-vertical': 'Vertical WebM',
+      'mp4-square': 'Square MP4',
+      'webm-square': 'Square WebM',
       gif: 'GIF',
       'gif-vertical': 'Vertical GIF',
+      'gif-square': 'Square GIF',
     },
     failure: {
       title: 'Failed at {stage}',
