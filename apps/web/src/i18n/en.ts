@@ -293,6 +293,11 @@ export const en = {
       refresh: 'Refresh',
       run: 'Run',
       empty: 'No scenarios in demoflow/',
+      progress: {
+        app: 'Starting the app',
+        steps: 'Step {step} of {steps}',
+        rendering: 'Rendering the video',
+      },
       skipped: '{count} files could not be read as scenarios.',
       truncated: 'Showing the first 100 scenarios.',
       confirm: {

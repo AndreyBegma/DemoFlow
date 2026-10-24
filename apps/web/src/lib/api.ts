@@ -377,6 +377,15 @@ export type LaunchState =
   | 'timed-out'
   | 'lost';
 
+export type LaunchPhase = 'app' | 'steps' | 'rendering';
+
+/** Where a running launch is; absent or null on an older API or runner. */
+export interface LaunchProgress {
+  phase: LaunchPhase;
+  step: number | null;
+  steps: number | null;
+}
+
 /** The project's latest website-started run, held in memory by the API. */
 export interface LaunchView {
   id: string;
@@ -386,6 +395,7 @@ export interface LaunchView {
   startedAt: string;
   finishedAt: string | null;
   runId: string | null;
+  progress?: LaunchProgress | null;
 }
 
 export function listScenarios(projectId: string) {

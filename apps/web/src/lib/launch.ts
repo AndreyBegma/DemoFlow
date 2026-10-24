@@ -79,6 +79,57 @@ export function canRunAgain(input: {
   return machine.online ? 'ready' : 'offline';
 }
 
+export type LaunchProgressLine =
+  | {
+      key:
+        | 'projects.launch.progress.app'
+        | 'projects.launch.progress.rendering';
+    }
+  | {
+      key: 'projects.launch.progress.steps';
+      step: number;
+      steps: number;
+    };
+
+/**
+ * What the launch row shows about a running launch (spec #303), or null for
+ * today's row: not running, no progress, an unknown phase, or step numbers
+ * that do not add up.
+ */
+export function launchProgress(launch: {
+  state: string;
+  progress?: {
+    phase: string;
+    step: number | null;
+    steps: number | null;
+  } | null;
+}): LaunchProgressLine | null {
+  const progress = launch.progress;
+  if (launch.state !== 'running' || !progress) return null;
+  switch (progress.phase) {
+    case 'app':
+      return { key: 'projects.launch.progress.app' };
+    case 'rendering':
+      return { key: 'projects.launch.progress.rendering' };
+    case 'steps': {
+      const { step, steps } = progress;
+      if (
+        step === null ||
+        steps === null ||
+        !Number.isInteger(step) ||
+        !Number.isInteger(steps) ||
+        step < 1 ||
+        step > steps
+      ) {
+        return null;
+      }
+      return { key: 'projects.launch.progress.steps', step, steps };
+    }
+    default:
+      return null;
+  }
+}
+
 /** 0:07, 12:03: the time a launch has been active. */
 export function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));

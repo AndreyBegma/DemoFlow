@@ -116,6 +116,10 @@ refused when:
 The status row shows Starting, Running, Cancelling, Passed, Failed, Cancelled,
 Timed out or Lost contact.
 
+While a run is going, the card also shows what the machine is doing: starting
+the app, which step of how many it is on, or rendering the video. A machine
+with an older `demoflow` shows only **Running**.
+
 - A run still going after 15 minutes is stopped and ends **Timed out**.
 - **Cancel run** shows only while the state is Running and asks for no
   confirmation. It stops the browser and the dev server, giving them up to 15
