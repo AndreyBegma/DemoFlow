@@ -240,6 +240,57 @@ describe('launch messages (spec #247)', () => {
   });
 });
 
+describe('run.progress (spec #301)', () => {
+  const requestId = randomUUID();
+
+  function progress(fields: Record<string, unknown>) {
+    return parseClientMessage(
+      Buffer.from(
+        JSON.stringify({
+          type: 'run.progress',
+          requestId,
+          phase: 'steps',
+          step: 1,
+          steps: 1,
+          ...fields,
+        }),
+      ),
+      false,
+    );
+  }
+
+  it.each([
+    ['app with null numbers', { phase: 'app', step: null, steps: null }],
+    [
+      'rendering with null numbers',
+      { phase: 'rendering', step: null, steps: null },
+    ],
+    ['steps 1/1', { step: 1, steps: 1 }],
+    ['steps 10000/10000', { step: 10_000, steps: 10_000 }],
+  ])('reads %s', (_label, fields) => {
+    expect(progress(fields)).toEqual({
+      ok: true,
+      message: expect.objectContaining({
+        type: 'run.progress',
+        requestId,
+        ...fields,
+      }),
+    });
+  });
+
+  it.each([
+    ['a missing requestId', { requestId: undefined }],
+    ['an unknown phase', { phase: 'verifying' }],
+    ['step 0', { step: 0 }],
+    ['a non-integer step', { step: 1.5, steps: 3 }],
+    ['steps 10001', { step: 1, steps: 10_001 }],
+    ['a missing step', { step: undefined }],
+    ['a step that is not a number', { step: '1' }],
+  ])('refuses %s', (_label, fields) => {
+    expect(progress(fields).ok).toBe(false);
+  });
+});
+
 describe('launches.sync (spec #284)', () => {
   function sync(fields: Record<string, unknown>) {
     return parseClientMessage(

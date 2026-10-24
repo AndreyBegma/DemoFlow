@@ -118,6 +118,7 @@ export type LaunchMessage =
   | RunStartedMessage
   | RunErrorMessage
   | RunFinishedMessage
+  | RunProgressMessage
   | LaunchesSyncMessage;
 
 /** `scenarios.listed` carries this many entries at most. */
@@ -131,6 +132,11 @@ export const RUN_OUTCOMES = [
   'timed-out',
 ] as const;
 export type RunOutcome = (typeof RUN_OUTCOMES)[number];
+/** Where a running child is (spec #301): starting the app, running the steps, rendering. */
+export const RUN_PHASES = ['app', 'steps', 'rendering'] as const;
+export type RunPhase = (typeof RUN_PHASES)[number];
+/** `run.progress` counts this many expanded steps at most. */
+export const MAX_PROGRESS_STEPS = 10_000;
 
 class PingMessage {
   @IsIn(['ping'])
@@ -327,6 +333,36 @@ class RunFinishedMessage {
   runId!: string | null;
 }
 
+/** A step count of `run.progress`, or null outside the `steps` phase. */
+const IsProgressCount = () =>
+  applyDecorators(
+    ValidateIf((_, value) => value !== null),
+    IsInt(),
+    Min(1),
+    Max(MAX_PROGRESS_STEPS),
+  );
+
+/**
+ * The child's latest phase while it runs (spec #301, Decision 1): `step` of
+ * `steps` during `steps`, both null otherwise — the service checks the pair.
+ */
+class RunProgressMessage {
+  @IsIn(['run.progress'])
+  type!: 'run.progress';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsIn(RUN_PHASES)
+  phase!: RunPhase;
+
+  @IsProgressCount()
+  step!: number | null;
+
+  @IsProgressCount()
+  steps!: number | null;
+}
+
 /**
  * The daemon's first frame on every socket (spec #284, Decision 1): the
  * launch ids whose child it still has, possibly none.
@@ -359,6 +395,7 @@ const CLIENT_MESSAGES: Record<
   'run.started': RunStartedMessage,
   'run.error': RunErrorMessage,
   'run.finished': RunFinishedMessage,
+  'run.progress': RunProgressMessage,
   'launches.sync': LaunchesSyncMessage,
 };
 

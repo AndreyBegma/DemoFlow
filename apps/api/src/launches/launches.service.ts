@@ -13,7 +13,11 @@ import {
   type LaunchSink,
   RunnerConnections,
 } from '../runner/runner-connections.service';
-import type { LaunchMessage, RunOutcome } from '../runner/runner-socket';
+import type {
+  LaunchMessage,
+  RunOutcome,
+  RunPhase,
+} from '../runner/runner-socket';
 import { runError } from '../videos/runs.service';
 
 /** No `scenarios.listed` this long after `scenarios.list`: 504 (spec #247, Decision 5). */
@@ -46,6 +50,13 @@ const ACTIVE: ReadonlySet<LaunchState> = new Set([
   'cancelling',
 ]);
 
+/** The child's latest `run.progress` (spec #301): step `step` of `steps` while `phase` is `steps`. */
+export interface RunProgress {
+  phase: RunPhase;
+  step: number | null;
+  steps: number | null;
+}
+
 /** What the browser polls (Decision 1). */
 export interface LaunchView {
   id: string;
@@ -55,6 +66,8 @@ export interface LaunchView {
   startedAt: string;
   finishedAt: string | null;
   runId: string | null;
+  /** Only while `running`; null before the first frame (spec #301, Decision 7). */
+  progress: RunProgress | null;
 }
 
 export interface ScenarioList {
@@ -143,6 +156,8 @@ interface Launch {
    * `launches.sync` reattaches it (spec #284, Decision 2). Not in the view.
    */
   detachedAt: number | null;
+  /** The latest valid `run.progress`, kept across a detach (spec #301, Decision 6). */
+  progress: RunProgress | null;
   /** The `POST` waiting while `starting`. */
   settle?: (outcome: Outcome<LaunchView>) => void;
 }
@@ -237,6 +252,7 @@ export class LaunchesService
         runId: null,
         finishing: false,
         detachedAt: null,
+        progress: null,
         settle,
       };
       this.launches.set(launch.id, launch);
@@ -352,6 +368,25 @@ export class LaunchesService
             this.logger.error(error);
             this.end(launch, message.outcome, null);
           });
+        return true;
+      }
+      case 'run.progress': {
+        const launch = this.launches.get(message.requestId);
+        // Spec #301, Decision 4: early frames while `starting` are kept; not a heartbeat.
+        if (
+          launch?.runnerId !== runnerId ||
+          !ACTIVE.has(launch.state) ||
+          launch.finishing ||
+          !isConsistent(message)
+        ) {
+          return false;
+        }
+        // Decision 8: nothing logged per frame.
+        launch.progress = {
+          phase: message.phase,
+          step: message.step,
+          steps: message.steps,
+        };
         return true;
       }
       case 'launches.sync': {
@@ -639,5 +674,17 @@ function toView(launch: Launch): LaunchView {
         ? null
         : new Date(launch.finishedAt).toISOString(),
     runId: launch.runId,
+    progress: launch.state === 'running' ? launch.progress : null,
   };
+}
+
+/**
+ * Spec #301, Decision 3: `steps` carries both numbers with `step ≤ steps`,
+ * any other phase carries neither.
+ */
+function isConsistent({ phase, step, steps }: RunProgress): boolean {
+  if (phase !== 'steps') {
+    return step === null && steps === null;
+  }
+  return step !== null && steps !== null && step <= steps;
 }
