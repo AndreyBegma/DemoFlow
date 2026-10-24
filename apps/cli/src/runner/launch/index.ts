@@ -20,6 +20,7 @@ import {
   type ProjectLoad,
 } from './checks.ts';
 import { listedFrame, listScenarios } from './list.ts';
+import { ProgressGate, parseProgressLine } from './progress.ts';
 
 export { nodeLaunchFs } from './checks.ts';
 
@@ -298,21 +299,39 @@ export class Launcher implements LaunchPort {
     }
     const runId = deps.newRunId();
     const runDir = runDirFor(project.home, runId, deps.platform);
+    // Spec 302, Decision 6: the socket open when a frame is due, latest wins.
+    const gate = new ProgressGate(deps.clock, (progress) => {
+      current.send({
+        type: 'run.progress',
+        requestId,
+        phase: progress.phase,
+        step: progress.phase === 'steps' ? progress.step : null,
+        steps: progress.phase === 'steps' ? progress.steps : null,
+      });
+    });
     // Decision 6: nothing from the message but the checked file and root.
     const child = deps.spawn(
       [
         'run',
         scenario.file,
         '--json',
+        '--progress',
         '--run-id',
         runId,
         '--project',
         project.root,
       ],
       project.root,
-      { killGraceMs: LAUNCH_KILL_GRACE_MS },
+      {
+        killGraceMs: LAUNCH_KILL_GRACE_MS,
+        onStdoutLine: (line) => {
+          const progress = parseProgressLine(line);
+          if (progress !== null) gate.push(progress);
+        },
+      },
     );
     if (child.pid === undefined) {
+      gate.stop();
       await child.exited;
       throw new Refused('io');
     }
@@ -323,6 +342,8 @@ export class Launcher implements LaunchPort {
       void this.stop(launch, 'timed-out');
     });
     await child.exited;
+    // Nothing may follow the end of the run, `run.finished` included.
+    gate.stop();
     cancelCap();
     const outcome = launch.ending ?? (await this.outcomeOf(runDir));
     const entry = (await readReportedRunsByDir(deps.indexFile)).get(

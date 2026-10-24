@@ -81,6 +81,12 @@ export async function main(
     )
     .addOption(new Option('--run-id <id>', 'name the run directory').hideHelp())
     .addOption(new Option('--project <dir>', 'the project root').hideHelp())
+    .addOption(
+      new Option(
+        '--progress',
+        'print a JSON line on stdout per phase and step',
+      ).hideHelp(),
+    )
     .action(
       async (
         scenario: string,
@@ -92,6 +98,7 @@ export async function main(
           format?: RenderFormat[];
           runId?: string;
           project?: string;
+          progress?: boolean;
         },
       ) => {
         exitCode = await runCommand(scenario, flags, io);
