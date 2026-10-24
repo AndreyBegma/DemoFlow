@@ -47,7 +47,16 @@ export interface LaunchPort {
     reply: LaunchSender,
     current: LaunchSender,
   ): void;
+  /**
+   * The ids of the launches whose child is alive, for `launches.sync` after a
+   * (re)connect. Only ids the API accepts: a UUID v4.
+   */
+  running(): string[];
 }
+
+/** The `requestId` shape the API accepts in `launches.sync` (spec 284). */
+const UUID_V4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface LauncherDeps extends CheckDeps {
   fs: LaunchFs;
@@ -165,6 +174,24 @@ export class Launcher implements LaunchPort {
         this.cancel(requestId);
         return;
     }
+  }
+
+  /**
+   * Spec 285, Decisions 2 and 3: the launch with a spawned child, including
+   * one being killed. A start still in its checks has nothing to reattach, and
+   * an id the API would reject is left out so it cannot sink the whole frame.
+   */
+  running(): string[] {
+    const launch = this.launch;
+    if (launch?.child === undefined) return [];
+    if (!UUID_V4.test(launch.requestId)) {
+      this.deps.logger.log(
+        'warn',
+        `launch ${shown(launch.requestId)}: not announced, the request id is not a UUID v4`,
+      );
+      return [];
+    }
+    return [launch.requestId];
   }
 
   /** Decision 11: cancels the running launch and resolves once its child is gone. */

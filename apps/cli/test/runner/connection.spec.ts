@@ -28,6 +28,7 @@ import {
 
 const TOKEN = 'dfr_old-token';
 const NEW_TOKEN = 'dfr_new-token';
+const EMPTY_SYNC = { type: 'launches.sync', running: [] };
 
 let clock: FakeClock;
 let sockets: FakeSocket[];
@@ -122,7 +123,7 @@ describe('RunnerConnection', () => {
     socket.open();
     socket.receive({ type: 'hello', runnerId: 'runner-1', serverTime: '' });
     socket.receive({ type: 'ping', at: 42 });
-    expect(socket.sent).toEqual([{ type: 'pong', at: 42 }]);
+    expect(socket.sent).toEqual([EMPTY_SYNC, { type: 'pong', at: 42 }]);
 
     await clock.advance(PING_MS);
     expect(socket.sent.at(-1)).toEqual({ type: 'ping', at: PING_MS });
@@ -293,7 +294,7 @@ describe('RunnerConnection', () => {
     const socket = fake.sockets[0];
     socket?.open();
     socket?.receive({ type: 'rotate', token: NEW_TOKEN });
-    expect(socket?.sent).toEqual([]);
+    expect(socket?.sent).toEqual([EMPTY_SYNC]);
     expect(logger.text()).toContain('disk full');
   });
 
@@ -364,7 +365,7 @@ describe('RunnerConnection and the video relay', () => {
     last().open();
     last().receive({ type: 'video.open', streamId: 's' });
     expect(logger.text()).toMatch(/ignored a message of type "video.open"/);
-    expect(last().sent).toEqual([]);
+    expect(last().sent).toEqual([EMPTY_SYNC]);
   });
 
   it('sends text and binary frames on the socket the open came in on', () => {
@@ -429,7 +430,7 @@ describe('RunnerConnection and the video relay', () => {
     expect(logger.text()).toMatch(
       /ignored a message of type "artifacts.delete"/,
     );
-    expect(last().sent).toEqual([]);
+    expect(last().sent).toEqual([EMPTY_SYNC]);
   });
 
   it('routes scenarios.list and run.* to the launcher; run.finished goes on the socket open then', async () => {
@@ -442,6 +443,7 @@ describe('RunnerConnection and the video relay', () => {
         reply = replySender;
         current = currentSender;
       },
+      running: () => [],
     };
     start(0.5, undefined, undefined, launches);
     last().open();
@@ -476,6 +478,30 @@ describe('RunnerConnection and the video relay', () => {
     expect(last().sent).not.toContainEqual(
       expect.objectContaining({ type: 'run.error' }),
     );
+  });
+
+  it('sends launches.sync first on every open, with what the launcher still runs', async () => {
+    const ids = ['2f1f6d0e-7a53-4c1b-9d57-0c1f6f1d2a11'];
+    const launches: LaunchPort = { handle: () => {}, running: () => ids };
+    start(0.5, undefined, undefined, launches);
+    const first = last();
+    first.open();
+    first.receive({ type: 'ping', at: 1 });
+    expect(first.sent[0]).toEqual({ type: 'launches.sync', running: ids });
+    expect(logger.text()).toContain('announced 1 running launch');
+    first.serverClose(1006);
+
+    ids.length = 0;
+    await clock.advance(BACKOFF_MAX_MS);
+    last().open();
+    expect(last()).not.toBe(first);
+    expect(last().sent).toEqual([{ type: 'launches.sync', running: [] }]);
+  });
+
+  it('sends an empty launches.sync without a launcher', () => {
+    start();
+    last().open();
+    expect(last().sent).toEqual([EMPTY_SYNC]);
   });
 
   it('logs run.start as unknown without a launcher, as a daemon before #248 did', () => {

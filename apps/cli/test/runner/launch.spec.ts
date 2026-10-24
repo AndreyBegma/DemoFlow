@@ -710,6 +710,60 @@ describe('a running launch', () => {
     expect(await finished()).toMatchObject({ outcome: 'failed', runId: null });
   });
 
+  it('is announced by running() once its child is spawned, and not before', async () => {
+    const target = launcher();
+    expect(target.running()).toEqual([]);
+    send(target, startOf('demoflow/a.demo.json'));
+    // Still in its checks: nothing to reattach.
+    expect(target.running()).toEqual([]);
+    expect(await answered()).toMatchObject({ type: 'run.started' });
+    expect(target.running()).toEqual([REQUEST]);
+    spawned.calls[0]?.exit(0);
+    await finished();
+    expect(target.running()).toEqual([]);
+  });
+
+  it('is still announced while its child is being killed', async () => {
+    const target = launcher();
+    const call = await started(target);
+    call.child.kill = () => new Promise<void>(() => {});
+    send(target, { type: 'run.cancel', requestId: REQUEST });
+    expect(target.running()).toEqual([REQUEST]);
+  });
+
+  it('is not announced when its request id is not a UUID v4, and the log says so', async () => {
+    const target = launcher();
+    const id = 'not-a-uuid';
+    target.handle(
+      { ...startOf('demoflow/a.demo.json'), requestId: id },
+      reply,
+      current,
+    );
+    expect(await answered()).toMatchObject({ type: 'run.started' });
+    expect(target.running()).toEqual([]);
+    expect(logger.text()).toMatch(
+      /not announced, the request id is not a UUID v4/,
+    );
+  });
+
+  it('sends one run.finished cancelled for two run.cancel frames', async () => {
+    const target = launcher();
+    const call = await started(target);
+    send(target, { type: 'run.cancel', requestId: REQUEST });
+    send(target, { type: 'run.cancel', requestId: REQUEST });
+    await finished();
+    await clock.advance(0);
+    expect(current.sent).toEqual([
+      {
+        type: 'run.finished',
+        requestId: REQUEST,
+        outcome: 'cancelled',
+        runId: null,
+      },
+    ]);
+    expect(call.killed).toBeGreaterThanOrEqual(1);
+  });
+
   it('is cancelled by close(), which resolves once the child is gone', async () => {
     const target = launcher();
     const call = await started(target);

@@ -173,6 +173,14 @@ export class RunnerConnection {
     this.openedAt = this.deps.clock.now();
     this.deps.logger.log('info', 'connected');
     this.deps.onState('connected');
+    // Spec 285, Decision 1: the first frame on every socket, before anything
+    // is handled, so the API can reattach the launches this machine still runs.
+    const running = this.deps.launches?.running() ?? [];
+    this.send({ type: 'launches.sync', running });
+    this.deps.logger.log(
+      'info',
+      `announced ${running.length} running launch${running.length === 1 ? '' : 'es'}`,
+    );
     this.resetIdle();
     this.schedulePing();
   }
