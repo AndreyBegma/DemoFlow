@@ -6,6 +6,7 @@ import {
   isActive,
   isStartableScenario,
   launchErrorKey,
+  launchProgress,
 } from './launch.ts';
 
 const scenarioPath = 'demoflow/checkout/buy.demo.json';
@@ -109,6 +110,48 @@ test('terminal and lost states are not active', () => {
   for (const state of ['passed', 'failed', 'cancelled', 'timed-out', 'lost']) {
     assert.equal(isActive(state), false);
   }
+});
+
+test('progress shows the phase of a running launch', () => {
+  const running = (progress) => ({ state: 'running', progress });
+  assert.deepEqual(
+    launchProgress(running({ phase: 'app', step: null, steps: null })),
+    { key: 'projects.launch.progress.app' },
+  );
+  assert.deepEqual(
+    launchProgress(running({ phase: 'rendering', step: null, steps: null })),
+    { key: 'projects.launch.progress.rendering' },
+  );
+  assert.deepEqual(
+    launchProgress(running({ phase: 'steps', step: 3, steps: 7 })),
+    { key: 'projects.launch.progress.steps', step: 3, steps: 7 },
+  );
+});
+
+test('progress is null unless the launch is running with a known phase', () => {
+  const steps = { phase: 'steps', step: 3, steps: 7 };
+  assert.equal(launchProgress({ state: 'starting', progress: steps }), null);
+  assert.equal(launchProgress({ state: 'passed', progress: steps }), null);
+  assert.equal(launchProgress({ state: 'running', progress: null }), null);
+  assert.equal(launchProgress({ state: 'running' }), null);
+  assert.equal(
+    launchProgress({
+      state: 'running',
+      progress: { phase: 'warming-up', step: null, steps: null },
+    }),
+    null,
+  );
+});
+
+test('progress steps with inconsistent numbers is null', () => {
+  const steps = (step, total) => ({
+    state: 'running',
+    progress: { phase: 'steps', step, steps: total },
+  });
+  assert.equal(launchProgress(steps(8, 7)), null);
+  assert.equal(launchProgress(steps(0, 7)), null);
+  assert.equal(launchProgress(steps(null, 7)), null);
+  assert.equal(launchProgress(steps(3, null)), null);
 });
 
 test('elapsed time reads as minutes and seconds', () => {
