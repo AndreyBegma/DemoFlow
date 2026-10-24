@@ -239,3 +239,38 @@ describe('launch messages (spec #247)', () => {
     expect(parse(message).ok).toBe(false);
   });
 });
+
+describe('launches.sync (spec #284)', () => {
+  function sync(fields: Record<string, unknown>) {
+    return parseClientMessage(
+      Buffer.from(JSON.stringify({ type: 'launches.sync', ...fields })),
+      false,
+    );
+  }
+
+  function ids(count: number): string[] {
+    return Array.from({ length: count }, () => randomUUID());
+  }
+
+  it.each([0, 1, 16])('reads %i launch ids', (count) => {
+    const running = ids(count);
+    expect(sync({ running })).toEqual({
+      ok: true,
+      message: expect.objectContaining({ type: 'launches.sync', running }),
+    });
+  });
+
+  it.each([
+    ['17 entries', { running: ids(17) }],
+    ['an entry that is not a UUID', { running: [randomUUID(), 'x'] }],
+    [
+      'an entry that is not a UUID v4',
+      { running: ['6ba7b810-9dad-11d1-80b4-00c04fd430c8'] },
+    ],
+    ['an entry that is not a string', { running: [7] }],
+    ['running that is not an array', { running: randomUUID() }],
+    ['no running', {}],
+  ])('refuses %s', (_label, fields) => {
+    expect(sync(fields).ok).toBe(false);
+  });
+});

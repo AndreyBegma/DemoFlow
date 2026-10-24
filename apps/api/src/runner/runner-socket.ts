@@ -108,16 +108,22 @@ export type ArtifactsMessage = ArtifactsDeletedMessage | ArtifactsErrorMessage;
 export const ARTIFACTS_ERROR_CODES = ['not-found', 'io'] as const;
 export type ArtifactsErrorCode = (typeof ARTIFACTS_ERROR_CODES)[number];
 
-/** A Runner's answers to `scenarios.list` and `run.*` (spec #247). */
+/**
+ * A Runner's answers to `scenarios.list` and `run.*` (spec #247), and the
+ * launches it still runs on a new socket (spec #284).
+ */
 export type LaunchMessage =
   | ScenariosListedMessage
   | ScenariosErrorMessage
   | RunStartedMessage
   | RunErrorMessage
-  | RunFinishedMessage;
+  | RunFinishedMessage
+  | LaunchesSyncMessage;
 
 /** `scenarios.listed` carries this many entries at most. */
 export const MAX_LISTED_SCENARIOS = 100;
+/** `launches.sync` carries this many launch ids at most. */
+export const MAX_SYNCED_LAUNCHES = 16;
 export const RUN_OUTCOMES = [
   'passed',
   'failed',
@@ -321,6 +327,20 @@ class RunFinishedMessage {
   runId!: string | null;
 }
 
+/**
+ * The daemon's first frame on every socket (spec #284, Decision 1): the
+ * launch ids whose child it still has, possibly none.
+ */
+class LaunchesSyncMessage {
+  @IsIn(['launches.sync'])
+  type!: 'launches.sync';
+
+  @IsArray()
+  @ArrayMaxSize(MAX_SYNCED_LAUNCHES)
+  @IsUUID('4', { each: true })
+  running!: string[];
+}
+
 const CLIENT_MESSAGES: Record<
   ClientMessage['type'],
   ClassConstructor<ClientMessage>
@@ -339,6 +359,7 @@ const CLIENT_MESSAGES: Record<
   'run.started': RunStartedMessage,
   'run.error': RunErrorMessage,
   'run.finished': RunFinishedMessage,
+  'launches.sync': LaunchesSyncMessage,
 };
 
 /** A binary frame: part of a stream's file, in order. */
