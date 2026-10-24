@@ -174,6 +174,44 @@ describe('parseScenario — waitForReady', () => {
   });
 });
 
+describe('parseScenario — device', () => {
+  const step = { action: 'navigate', path: '/' };
+  const input = (extra: Record<string, unknown>) => ({
+    ...scenario(step),
+    ...extra,
+  });
+  const parse = (extra: Record<string, unknown>) => parseScenario(input(extra));
+
+  it('defaults to a desktop at 1920x1080', () => {
+    expect(parse({})).toMatchObject({
+      ok: true,
+      value: { device: 'desktop', viewport: { width: 1920, height: 1080 } },
+    });
+  });
+
+  it('gives a phone 412x915 when it sets no viewport', () => {
+    expect(parse({ device: 'phone' })).toMatchObject({
+      ok: true,
+      value: { device: 'phone', viewport: { width: 412, height: 915 } },
+    });
+  });
+
+  it('keeps an explicit viewport on a phone', () => {
+    expect(
+      parse({ device: 'phone', viewport: { width: 1280, height: 720 } }),
+    ).toMatchObject({
+      ok: true,
+      value: { device: 'phone', viewport: { width: 1280, height: 720 } },
+    });
+  });
+
+  it.each(['tablet', 'Phone', 1])('rejects device %j at device', (device) => {
+    expect(errorsOf(input({ device })).map((issue) => issue.path)).toEqual([
+      'device',
+    ]);
+  });
+});
+
 describe('parseScenario — press', () => {
   const press = (extra: Record<string, unknown>) =>
     parseScenario(scenario({ action: 'press', ...extra }));

@@ -24,6 +24,20 @@ export const ScenarioDataSchema = z.record(
 );
 export type ScenarioData = z.infer<typeof ScenarioDataSchema>;
 
+/** What the browser records as: a desktop (the default) or a phone (spec 305). */
+export const DEVICES = ['desktop', 'phone'] as const;
+export const DeviceSchema = z.enum(DEVICES);
+export type Device = z.infer<typeof DeviceSchema>;
+
+/** The viewport a scenario gets when it sets none, by device. */
+export const DEFAULT_VIEWPORTS: Record<
+  Device,
+  { width: number; height: number }
+> = {
+  desktop: { width: 1920, height: 1080 },
+  phone: { width: 412, height: 915 },
+};
+
 /** A scenario file, `demoflow/**\/*.demo.json` (ADR-0003). */
 export const ScenarioSchema = z
   .strictObject({
@@ -33,13 +47,21 @@ export const ScenarioSchema = z
     description: z.string().optional(),
     browser: z.literal('chromium').default('chromium'),
     baseUrl: HttpUrlSchema.optional(),
-    viewport: ViewportSchema.default({ width: 1920, height: 1080 }),
+    device: DeviceSchema.default('desktop').meta({
+      description:
+        'What the browser records as. "phone" is a touch device with a mobile user agent and a 412x915 viewport unless `viewport` says otherwise.',
+    }),
+    viewport: ViewportSchema.optional(),
     data: ScenarioDataSchema.optional(),
     steps: z
       .array(ScenarioStepSchema)
       .min(1, 'expected at least one step')
       .max(200, 'expected at most 200 steps'),
   })
+  .transform((scenario) => ({
+    ...scenario,
+    viewport: scenario.viewport ?? DEFAULT_VIEWPORTS[scenario.device],
+  }))
   .meta({
     title: 'DemoFlow scenario',
     description: 'A scenario DemoFlow runs, records and renders.',

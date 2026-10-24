@@ -1,5 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DemoFlow scenario",
+  "description": "A scenario DemoFlow runs, records and renders.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -26,11 +28,13 @@
       "format": "uri",
       "pattern": "^[hH][tT][tT][pP][sS]?://"
     },
+    "device": {
+      "default": "desktop",
+      "description": "What the browser records as. \"phone\" is a touch device with a mobile user agent and a 412x915 viewport unless `viewport` says otherwise.",
+      "type": "string",
+      "enum": ["desktop", "phone"]
+    },
     "viewport": {
-      "default": {
-        "width": 1920,
-        "height": 1080
-      },
       "type": "object",
       "properties": {
         "width": {
@@ -2873,7 +2877,5 @@
     }
   },
   "required": ["schemaVersion", "name", "steps"],
-  "additionalProperties": false,
-  "title": "DemoFlow scenario",
-  "description": "A scenario DemoFlow runs, records and renders."
+  "additionalProperties": false
 }

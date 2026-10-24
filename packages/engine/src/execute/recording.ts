@@ -1,4 +1,4 @@
-import type { Scenario, Viewport } from '@demoflow/core';
+import type { Device, Scenario, Viewport } from '@demoflow/core';
 import type { BrowserContextOptions } from 'playwright';
 
 /** ADR-0004 §1: twice the CSS pixels, so the renderer has pixels to zoom into. */
@@ -6,6 +6,7 @@ export const DEVICE_SCALE_FACTOR = 2;
 
 /** How the browser context records the run. */
 export interface RecordingOptions {
+  device: Device;
   viewport: Viewport;
   deviceScaleFactor: number;
   /** Playwright writes `<guid>.webm` here; capture names the file. */
@@ -25,6 +26,7 @@ export function recordingOptions(
   runDir: string,
 ): RecordingOptions {
   return {
+    device: scenario.device,
     viewport: scenario.viewport,
     deviceScaleFactor: DEVICE_SCALE_FACTOR,
     videoDir: runDir,
@@ -32,12 +34,25 @@ export function recordingOptions(
   };
 }
 
+/** Chrome for Android, with the launched browser's own version (spec 305 Decision 3). */
+function phoneUserAgent(browserVersion: string): string {
+  return `Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${browserVersion} Mobile Safari/537.36`;
+}
+
 export function toContextOptions(
   recording: RecordingOptions,
+  browserVersion: string,
 ): BrowserContextOptions {
   return {
     viewport: recording.viewport,
     deviceScaleFactor: recording.deviceScaleFactor,
     recordVideo: { dir: recording.videoDir, size: recording.videoSize },
+    ...(recording.device === 'phone'
+      ? {
+          isMobile: true,
+          hasTouch: true,
+          userAgent: phoneUserAgent(browserVersion),
+        }
+      : {}),
   };
 }
