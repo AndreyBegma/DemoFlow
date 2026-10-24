@@ -86,10 +86,13 @@ export function useLaunch(projectId: string, enabled: boolean) {
   }, [active]);
 
   /** Starts the scenario; true when the machine accepted it. */
-  async function start(scenarioId: string): Promise<boolean> {
+  async function start(
+    scenarioId: string,
+    formats?: string[],
+  ): Promise<boolean> {
     setStarting(true);
     setError(undefined);
-    const result = await startLaunch(projectId, scenarioId);
+    const result = await startLaunch(projectId, scenarioId, formats);
     setStarting(false);
     if (result.ok) {
       apply(result.data.launch);

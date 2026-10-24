@@ -290,6 +290,16 @@ export const en = {
       removed: 'The machine of this project was removed.',
       loading: 'Loading scenarios',
       scenario: 'Scenario',
+      formats: {
+        label: 'Output formats',
+        project: "The project's formats",
+        choose: 'Choose formats',
+        pickOne: 'Pick at least one format.',
+        outdated: 'Update the demoflow CLI on this machine to choose formats.',
+        confirmChosen: 'Files: {list}.',
+        confirmDefault: "Files: the project's formats.",
+        row: '{list}',
+      },
       refresh: 'Refresh',
       run: 'Run',
       empty: 'No scenarios in demoflow/',
@@ -341,6 +351,10 @@ export const en = {
         runnerTimeout:
           'The machine did not answer. Make sure it runs the latest demoflow, then try again.',
         runnerError: 'The machine could not do it. Try again.',
+        runnerOutdated:
+          "This machine's demoflow CLI is too old to choose formats. Update it, or run with the project's formats.",
+        optionsInvalid:
+          'This machine cannot render one of the chosen formats. Update its demoflow CLI.',
       },
     },
   },

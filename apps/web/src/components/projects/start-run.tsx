@@ -10,8 +10,10 @@ import { Spinner } from '@andrewbehma/glass-ui/spinner';
 import { useCallback, useEffect, useState } from 'react';
 import { t } from '@/i18n';
 import { listScenarios, type ScenarioList } from '@/lib/api';
-import { launchErrorKey } from '@/lib/launch';
+import { canChooseFormats, launchErrorKey } from '@/lib/launch';
+import type { PlayableFormat } from '@/lib/playback';
 import { useLaunch } from '@/lib/use-launch';
+import { FormatChoice, formatList } from './format-choice';
 import { LaunchStatus } from './launch-status';
 
 /**
@@ -33,6 +35,8 @@ export function StartRun({
   const [loading, setLoading] = useState(enabled);
   const [selected, setSelected] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [choosing, setChoosing] = useState(false);
+  const [ticked, setTicked] = useState<PlayableFormat[]>(['mp4']);
   const {
     launch,
     active,
@@ -67,8 +71,12 @@ export function StartRun({
     if (enabled) void loadScenarios();
   }, [enabled, loadScenarios]);
 
+  // Nothing is sent unless the machine takes formats and the person chose some.
+  const canChoose = canChooseFormats(list?.runOptions);
+  const formats = canChoose && choosing ? ticked : undefined;
+
   async function confirmStart() {
-    await start(selected);
+    await start(selected, formats);
     setConfirming(false);
   }
 
@@ -119,12 +127,26 @@ export function StartRun({
             <Button
               type="button"
               variant="solid"
-              disabled={locked || !chosen}
+              disabled={locked || !chosen || formats?.length === 0}
               onClick={() => setConfirming(true)}
             >
               {t('projects.launch.run')}
             </Button>
           </div>
+        ) : null}
+        {scenarios.length > 0 && canChoose ? (
+          <FormatChoice
+            choosing={choosing}
+            ticked={ticked}
+            disabled={locked}
+            onChoosingChange={setChoosing}
+            onTickedChange={setTicked}
+          />
+        ) : null}
+        {scenarios.length > 0 && !canChoose ? (
+          <p className="text-sm text-ink-2">
+            {t('projects.launch.formats.outdated')}
+          </p>
         ) : null}
         <div>
           <Button
@@ -162,7 +184,13 @@ export function StartRun({
           name: chosen?.name ?? '',
           machine: machine?.name ?? '',
         })}
-        consequence={t('projects.launch.confirm.body')}
+        consequence={`${t('projects.launch.confirm.body')} ${
+          formats
+            ? t('projects.launch.formats.confirmChosen', {
+                list: formatList(formats),
+              })
+            : t('projects.launch.formats.confirmDefault')
+        }`}
         verb={t('projects.launch.confirm.verb')}
         cancelLabel={t('projects.launch.confirm.cancel')}
         busy={starting}
