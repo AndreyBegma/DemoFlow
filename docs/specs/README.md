@@ -153,3 +153,11 @@ Work traced to an ADR, the vision or spec 179 that no phase had picked up.
 | [#266](https://github.com/AndreyBegma/DemoFlow/issues/266) | [`demoflow list` and `demoflow check`](266-list-and-check-commands.md) — vision §3.4 | — |
 | [#272](https://github.com/AndreyBegma/DemoFlow/issues/272) | [Docs: `demoflow list` and `check`, and what the run report sends](272-docs-list-check.md) — spec 266 follow-up | — |
 | [#273](https://github.com/AndreyBegma/DemoFlow/issues/273) | [`demoflow init`: write a config and a first scenario](273-init-command.md) — vision §3.4 | #272 (merge order) |
+| [#279](https://github.com/AndreyBegma/DemoFlow/issues/279) | [Docs: starting, cancelling and deleting runs from the website](279-docs-website-runs.md) — specs 235, 247-249 follow-up | — |
+| [#280](https://github.com/AndreyBegma/DemoFlow/issues/280) | [Delete a run's metadata (API)](280-delete-run-api.md) — specs 233/235 follow-up | — |
+| [#281](https://github.com/AndreyBegma/DemoFlow/issues/281) | [Delete a run from the run page](281-run-page-delete-run.md) | #280 |
+| [#282](https://github.com/AndreyBegma/DemoFlow/issues/282) | [Run a scenario again from the run page](282-run-page-run-again.md) — spec 249 follow-up | — |
+| [#283](https://github.com/AndreyBegma/DemoFlow/issues/283) | [`demoflow runs`: list, delete and prune local runs](283-local-runs-command.md) — spec 234 follow-up | — |
+| [#284](https://github.com/AndreyBegma/DemoFlow/issues/284) | [Re-sync a running launch after the runner reconnects (API)](284-launch-resync-api.md) — spec 247 Decision 7 | — |
+| [#285](https://github.com/AndreyBegma/DemoFlow/issues/285) | [The daemon re-announces running launches after a reconnect](285-launch-resync-daemon.md) | #284 |
+| [#286](https://github.com/AndreyBegma/DemoFlow/issues/286) | [Delete several runs at once from the project library](286-bulk-delete-runs.md) | #280, #281 |
