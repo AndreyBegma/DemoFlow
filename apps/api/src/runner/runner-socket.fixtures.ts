@@ -144,6 +144,16 @@ export class TestSocket {
     this.send({ type: 'launches.sync', running });
   }
 
+  /** `run.progress` (spec #301): `step` of `steps` for `steps`, both null otherwise. */
+  progress(
+    requestId: string,
+    phase: string,
+    step: number | null = null,
+    steps: number | null = null,
+  ): void {
+    this.send({ type: 'run.progress', requestId, phase, step, steps });
+  }
+
   /**
    * Plays the daemon for one stream of `file`: the head for `start`–`end`,
    * the bytes in chunks of `chunkSize`, then `video.end`.

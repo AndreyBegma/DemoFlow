@@ -43,7 +43,7 @@ interface Connection {
   warnedStrayChunk: boolean;
   /** An `artifacts.*` answer for no pending request was logged on this socket. */
   warnedStrayArtifacts: boolean;
-  /** A `scenarios.*` or `run.*` answer for no pending request was logged on this socket. */
+  /** A `scenarios.*`, `run.*` or `launches.sync` frame for no pending request or launch was logged on this socket. */
   warnedStrayLaunch: boolean;
 }
 
@@ -346,6 +346,7 @@ export class RunnerConnections
       case 'run.started':
       case 'run.error':
       case 'run.finished':
+      case 'run.progress':
       case 'launches.sync':
         this.relayLaunch(connection, message);
         return;

@@ -253,6 +253,7 @@ describe('starting and cancelling a run from the website (integration)', () => {
         startedAt: t.clock.now().toISOString(),
         finishedAt: null,
         runId: null,
+        progress: null,
       };
       expect(res.body).toEqual({ launch });
       expect((await latest()).body).toEqual({ launch });
@@ -859,6 +860,171 @@ describe('starting and cancelling a run from the website (integration)', () => {
       expect(await launchState()).toBe('passed');
       sweep(LAUNCH_RETENTION_MS - 9 * 60 * 1000);
       expect((await latest()).body).toEqual({ launch: null });
+    });
+  });
+
+  describe('progress (spec #301)', () => {
+    async function progress(): Promise<unknown> {
+      return (await latest()).body.launch?.progress;
+    }
+
+    it('returns null before the first frame, then the latest phase and step', async () => {
+      const socket = await daemon();
+      const { ask, res } = await running(socket);
+      expect(res.body.launch.progress).toBeNull();
+      expect(await progress()).toBeNull();
+
+      socket.progress(ask.requestId, 'app');
+      await socket.roundTrip();
+      expect(await progress()).toEqual({
+        phase: 'app',
+        step: null,
+        steps: null,
+      });
+
+      socket.progress(ask.requestId, 'steps', 3, 7);
+      await socket.roundTrip();
+      expect(await progress()).toEqual({ phase: 'steps', step: 3, steps: 7 });
+
+      socket.progress(ask.requestId, 'rendering');
+      await socket.roundTrip();
+      expect(await progress()).toEqual({
+        phase: 'rendering',
+        step: null,
+        steps: null,
+      });
+    });
+
+    it('drops an inconsistent or invalid frame, keeps the previous progress and the socket', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      socket.progress(ask.requestId, 'steps', 2, 5);
+      socket.progress(ask.requestId, 'steps', 6, 5);
+      socket.progress(ask.requestId, 'app', 1, 5);
+      socket.progress(ask.requestId, 'steps', null, null);
+      socket.progress(ask.requestId, 'steps', 0, 5);
+      socket.progress(ask.requestId, 'verifying');
+      await socket.roundTrip();
+      expect(online()).toBe(true);
+      expect(await progress()).toEqual({ phase: 'steps', step: 2, steps: 5 });
+    });
+
+    it('keeps a frame that arrives while starting and shows it once running', async () => {
+      const socket = await daemon();
+      const pending = start();
+      const ask = await socket.nextLaunch('run.start');
+      socket.progress(ask.requestId, 'app');
+      await socket.roundTrip();
+      socket.send({
+        type: 'run.started',
+        requestId: ask.requestId,
+        scenarioName: 'Checkout',
+      });
+      const res = await pending;
+      expect(res.body.launch.progress).toEqual({
+        phase: 'app',
+        step: null,
+        steps: null,
+      });
+      expect(await progress()).toEqual({
+        phase: 'app',
+        step: null,
+        steps: null,
+      });
+    });
+
+    it('shows null while cancelling and once finished', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      socket.progress(ask.requestId, 'steps', 4, 9);
+      await socket.roundTrip();
+
+      const cancelled = await cancel();
+      expect(cancelled.body.launch).toMatchObject({
+        state: 'cancelling',
+        progress: null,
+      });
+      socket.progress(ask.requestId, 'steps', 5, 9);
+      await socket.roundTrip();
+      expect(await progress()).toBeNull();
+
+      socket.send({
+        type: 'run.finished',
+        requestId: ask.requestId,
+        outcome: 'cancelled',
+        runId: null,
+      });
+      await eventually(async () => (await launchState()) === 'cancelled');
+      expect(await progress()).toBeNull();
+    });
+
+    it('shows null after run.finished', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      socket.progress(ask.requestId, 'rendering');
+      socket.send({
+        type: 'run.finished',
+        requestId: ask.requestId,
+        outcome: 'passed',
+        runId: null,
+      });
+      await eventually(async () => (await launchState()) === 'passed');
+      expect(await progress()).toBeNull();
+      // A late frame after the end changes nothing.
+      socket.progress(ask.requestId, 'steps', 1, 2);
+      await socket.roundTrip();
+      expect(online()).toBe(true);
+      expect(await progress()).toBeNull();
+    });
+
+    it("ignores an unknown launch id and another machine's frame, and keeps both sockets", async () => {
+      const other = await pair(http, alice, 'Desktop');
+      const intruder = await daemon(other);
+      const socket = await daemon();
+      const { ask } = await running(socket);
+
+      socket.progress(randomUUID(), 'app');
+      intruder.progress(ask.requestId, 'steps', 1, 3);
+      await socket.roundTrip();
+      await intruder.roundTrip();
+      expect(online()).toBe(true);
+      expect(t.app.get(RunnerConnections).isOnline(other.runnerId)).toBe(true);
+      expect(await progress()).toBeNull();
+    });
+
+    it('does not reset the 20-minute run timeout', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      for (let second = 1; second < RUN_TIMEOUT_MS / 1000; second += 1) {
+        t.clock.advance(1000);
+        socket.progress(ask.requestId, 'steps', 1, 2);
+        // Well inside the idle timeout the real-time heartbeat checks.
+        if (second % 30 === 0) {
+          await socket.roundTrip();
+        }
+        service().tick();
+      }
+      await socket.roundTrip();
+      expect(await launchState()).toBe('running');
+      sweep(1000);
+      expect(await launchState()).toBe('lost');
+    });
+
+    it('keeps the last progress of a detached launch, and a frame after the re-sync replaces it', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      socket.progress(ask.requestId, 'steps', 2, 6);
+      await socket.roundTrip();
+      await drop(socket);
+      expect(await progress()).toEqual({ phase: 'steps', step: 2, steps: 6 });
+
+      const later = await daemon();
+      later.sync([ask.requestId]);
+      await later.roundTrip();
+      expect(await progress()).toEqual({ phase: 'steps', step: 2, steps: 6 });
+      later.progress(ask.requestId, 'steps', 5, 6);
+      await later.roundTrip();
+      expect(await progress()).toEqual({ phase: 'steps', step: 5, steps: 6 });
     });
   });
 
