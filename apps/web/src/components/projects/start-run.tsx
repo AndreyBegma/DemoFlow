@@ -7,50 +7,12 @@ import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
 import { Select } from '@andrewbehma/glass-ui/select';
 import { Spinner } from '@andrewbehma/glass-ui/spinner';
-import { StatusPill } from '@andrewbehma/glass-ui/status-pill';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { t } from '@/i18n';
-import {
-  cancelLaunch,
-  getLaunch,
-  type LaunchState,
-  type LaunchView,
-  listScenarios,
-  type ScenarioList,
-  startLaunch,
-} from '@/lib/api';
-import {
-  formatElapsed,
-  isActive,
-  type LaunchErrorKey,
-  launchErrorKey,
-} from '@/lib/launch';
-
-const POLL_MS = 2000;
-
-const PILL: Record<LaunchState, Parameters<typeof StatusPill>[0]['status']> = {
-  starting: 'waiting',
-  running: 'running',
-  cancelling: 'paused',
-  passed: 'done',
-  failed: 'error',
-  cancelled: 'idle',
-  'timed-out': 'error',
-  lost: 'blocked',
-};
-
-function stateLabel(state: LaunchState): string {
-  switch (state) {
-    case 'timed-out':
-      return t('projects.launch.state.timedOut');
-    case 'lost':
-      return t('projects.launch.state.lostLabel');
-    default:
-      return t(`projects.launch.state.${state}`);
-  }
-}
+import { listScenarios, type ScenarioList } from '@/lib/api';
+import { launchErrorKey } from '@/lib/launch';
+import { useLaunch } from '@/lib/use-launch';
+import { LaunchStatus } from './launch-status';
 
 /**
  * The "Run a scenario" card: pick a scenario of the project's machine, start
@@ -66,30 +28,22 @@ export function StartRun({
   rootPath: string | null;
   machine: { name: string } | null;
 }) {
-  const router = useRouter();
   const enabled = rootPath !== null && machine !== null;
   const [list, setList] = useState<ScenarioList | null>(null);
   const [loading, setLoading] = useState(enabled);
-  const [launch, setLaunch] = useState<LaunchView | null>(null);
   const [selected, setSelected] = useState('');
   const [confirming, setConfirming] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
-  const [error, setError] = useState<LaunchErrorKey | undefined>();
-  const [now, setNow] = useState(() => Date.now());
-  const wasActive = useRef(false);
-
-  const active = launch !== null && isActive(launch.state);
-
-  const apply = useCallback(
-    (next: LaunchView | null) => {
-      const nowActive = next !== null && isActive(next.state);
-      if (wasActive.current && !nowActive) router.refresh();
-      wasActive.current = nowActive;
-      setLaunch(next);
-    },
-    [router],
-  );
+  const {
+    launch,
+    active,
+    starting,
+    cancelling,
+    error,
+    setError,
+    now,
+    start,
+    cancel,
+  } = useLaunch(projectId, enabled);
 
   const loadScenarios = useCallback(async () => {
     setLoading(true);
@@ -106,86 +60,16 @@ export function StartRun({
         ? current
         : (result.data.scenarios[0]?.id ?? ''),
     );
-  }, [projectId]);
+  }, [projectId, setError]);
 
-  // On mount: the running launch (a reload keeps following it) and the list.
+  // On mount: the scenario list.
   useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    void getLaunch(projectId).then((result) => {
-      if (!cancelled && result.ok) apply(result.data.launch);
-    });
-    void loadScenarios();
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, projectId, apply, loadScenarios]);
-
-  // Poll while the launch is active, and not while the tab is hidden.
-  useEffect(() => {
-    if (!active) return;
-    let timer: ReturnType<typeof setInterval> | undefined;
-    const poll = async () => {
-      const result = await getLaunch(projectId);
-      if (result.ok) apply(result.data.launch);
-    };
-    const start = () => {
-      if (timer === undefined) timer = setInterval(() => void poll(), POLL_MS);
-    };
-    const stop = () => {
-      clearInterval(timer);
-      timer = undefined;
-    };
-    const onVisibility = () => {
-      if (document.hidden) {
-        stop();
-      } else {
-        void poll();
-        start();
-      }
-    };
-    if (!document.hidden) start();
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [active, projectId, apply]);
-
-  // The elapsed-time clock.
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [active]);
+    if (enabled) void loadScenarios();
+  }, [enabled, loadScenarios]);
 
   async function confirmStart() {
-    setStarting(true);
-    setError(undefined);
-    const result = await startLaunch(projectId, selected);
-    setStarting(false);
+    await start(selected);
     setConfirming(false);
-    if (result.ok) {
-      apply(result.data.launch);
-    } else {
-      setError(launchErrorKey(result.code));
-    }
-  }
-
-  async function cancel() {
-    setCancelling(true);
-    setError(undefined);
-    const result = await cancelLaunch(projectId);
-    if (result.ok) {
-      apply(result.data.launch);
-    } else if (result.code === 'not-running') {
-      const latest = await getLaunch(projectId);
-      if (latest.ok) apply(latest.data.launch);
-    } else {
-      setError(launchErrorKey(result.code));
-    }
-    setCancelling(false);
   }
 
   if (!enabled) {
@@ -261,54 +145,13 @@ export function StartRun({
           <p className="text-sm text-ink-2">{t('projects.launch.truncated')}</p>
         ) : null}
         {launch ? (
-          <div className="flex flex-col gap-2 border-t border-line pt-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="min-w-0 break-words font-medium">
-                {launch.scenarioName ?? launch.scenarioId}
-              </span>
-              <StatusPill
-                status={PILL[launch.state]}
-                label={stateLabel(launch.state)}
-              />
-              {active ? (
-                <span className="text-sm text-ink-2">
-                  {t('projects.launch.elapsed', {
-                    time: formatElapsed(now - Date.parse(launch.startedAt)),
-                  })}
-                </span>
-              ) : null}
-              {launch.state === 'running' ? (
-                <Button
-                  type="button"
-                  variant="danger"
-                  disabled={cancelling}
-                  onClick={() => void cancel()}
-                >
-                  {t('projects.launch.cancelRun')}
-                </Button>
-              ) : null}
-            </div>
-            {launch.state === 'lost' ? (
-              <p className="text-sm text-ink-2">
-                {t('projects.launch.state.lost')}
-              </p>
-            ) : null}
-            {!active && launch.runId ? (
-              <Link
-                href={`/app/projects/${projectId}/runs/${launch.runId}`}
-                className="text-sm underline"
-              >
-                {t('projects.launch.openRun')}
-              </Link>
-            ) : null}
-            {!active &&
-            !launch.runId &&
-            (launch.state === 'passed' || launch.state === 'failed') ? (
-              <p className="text-sm text-ink-2">
-                {t('projects.launch.noReport')}
-              </p>
-            ) : null}
-          </div>
+          <LaunchStatus
+            projectId={projectId}
+            launch={launch}
+            now={now}
+            cancelling={cancelling}
+            onCancel={() => void cancel()}
+          />
         ) : null}
       </div>
       <ConfirmDialog

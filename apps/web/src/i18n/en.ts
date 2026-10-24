@@ -324,6 +324,11 @@ export const en = {
   },
   runPage: {
     title: 'Run of {name}',
+    again: {
+      title: 'Run this scenario again',
+      button: 'Run again',
+      offlineHint: 'The machine is offline.',
+    },
     breadcrumbs: {
       label: 'Path',
       overflow: 'Show the path',

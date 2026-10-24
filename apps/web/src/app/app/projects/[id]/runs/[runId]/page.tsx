@@ -3,6 +3,7 @@ import { Card } from '@andrewbehma/glass-ui/card';
 import { KeyValueList } from '@andrewbehma/glass-ui/key-value-list';
 import { notFound } from 'next/navigation';
 import { RunPlayback } from '@/components/player/run-playback';
+import { RunAgain } from '@/components/projects/run-again';
 import { RunBreadcrumbs } from '@/components/projects/run-breadcrumbs';
 import {
   RunDetails,
@@ -13,7 +14,8 @@ import { t } from '@/i18n';
 import { formatDate } from '@/lib/format-date';
 import { formatDuration } from '@/lib/format-duration';
 import { formatRelative } from '@/lib/format-relative';
-import { getRunDetail } from '../../../_data';
+import { canRunAgain } from '@/lib/launch';
+import { getProjects, getRunDetail } from '../../../_data';
 
 export default async function RunPage({
   params,
@@ -33,6 +35,13 @@ export default async function RunPage({
   const { run, project, machine } = detail;
   if (project.id !== id) notFound();
   const relative = formatRelative(run.startedAt, Date.now());
+  const currentProject =
+    (await getProjects())?.find((p) => p.id === id) ?? null;
+  const againState = canRunAgain({
+    project: currentProject,
+    machine,
+    scenarioPath: run.scenarioPath,
+  });
   return (
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 p-6">
       <RunBreadcrumbs
@@ -103,6 +112,15 @@ export default async function RunPage({
         </div>
       </Card>
       <RunFailureBanner failure={run.failure} />
+      {machine !== null && againState !== 'hidden' ? (
+        <RunAgain
+          projectId={project.id}
+          scenarioId={run.scenarioPath}
+          scenarioName={run.scenarioName}
+          machineName={machine.name}
+          offline={againState === 'offline'}
+        />
+      ) : null}
       <Card pad="lg">
         <RunPlayback
           runId={run.id}
