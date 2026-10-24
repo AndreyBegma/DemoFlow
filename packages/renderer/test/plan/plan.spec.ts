@@ -655,6 +655,44 @@ describe('cursor and clicks', () => {
   });
 });
 
+describe('phone recordings', () => {
+  const events = [
+    event({ action: 'navigate', startMs: 0, endMs: 500 }),
+    click(500, 1500, { x: 300, y: 200 }),
+  ];
+  const withDevice = (device?: 'phone' | 'desktop'): RenderPlan => {
+    const base = timeline(events);
+    return planRender(
+      {
+        timeline: device === undefined ? base : { ...base, device },
+        result: result(),
+        source: {
+          width: 1280,
+          height: 720,
+          fps: 25,
+          durationMs: 20_000,
+          codec: 'vp9',
+          freezes: [],
+        },
+      },
+      { offsetMs: 0, frame: { enabled: false } },
+    );
+  };
+
+  it('draws no cursor and keeps the tap rings', () => {
+    const phone = withDevice('phone');
+    expect(phone.cursor).toEqual([]);
+    expect(frameAt(phone, 30).cursor).toBeUndefined();
+    expect(phone.clicks).toEqual(withDevice('desktop').clicks);
+    expect(phone.clicks).toHaveLength(1);
+  });
+
+  it('treats a missing device as desktop', () => {
+    expect(withDevice().cursor).toEqual(withDevice('desktop').cursor);
+    expect(withDevice().cursor).toHaveLength(1);
+  });
+});
+
 describe('masks', () => {
   const password = { x: 264, y: 230, width: 384, height: 28 };
   const masked = event({

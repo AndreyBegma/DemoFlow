@@ -250,36 +250,43 @@ const VERTICAL_SIZE = { width: 1080, height: 1920 } as const;
  * Spec 306: a phone-sized page, 412×915, with the vertical output. The click
  * on the button near the bottom moves the crop down to it, with no zoom.
  */
-const PORTRAIT = planRender(
-  {
-    timeline: {
-      schemaVersion: 1,
-      viewport: { width: 412, height: 915 },
-      deviceScaleFactor: 1,
-      videoFile: 'source.webm',
-      events: [
-        {
-          stepIndex: 0,
-          action: 'click',
-          startMs: 600,
-          endMs: 1600,
-          target: { box: { x: 96, y: 820, width: 220, height: 60 } },
-          pointer: { from: { x: 206, y: 457 }, to: { x: 206, y: 850 } },
-        },
-      ],
+function portraitPlan(device?: 'phone'): RenderPlan {
+  return planRender(
+    {
+      timeline: {
+        schemaVersion: 1,
+        ...(device === undefined ? {} : { device }),
+        viewport: { width: 412, height: 915 },
+        deviceScaleFactor: 1,
+        videoFile: 'source.webm',
+        events: [
+          {
+            stepIndex: 0,
+            action: 'click',
+            startMs: 600,
+            endMs: 1600,
+            target: { box: { x: 96, y: 820, width: 220, height: 60 } },
+            pointer: { from: { x: 206, y: 457 }, to: { x: 206, y: 850 } },
+          },
+        ],
+      },
+      result: RESULT,
+      source: {
+        width: 412,
+        height: 915,
+        fps: 25,
+        durationMs: 4000,
+        codec: 'vp9',
+        freezes: [],
+      },
     },
-    result: RESULT,
-    source: {
-      width: 412,
-      height: 915,
-      fps: 25,
-      durationMs: 4000,
-      codec: 'vp9',
-      freezes: [],
-    },
-  },
-  { offsetMs: 0, frame: {}, formats: ['mp4', 'mp4-vertical'] },
-);
+    { offsetMs: 0, frame: {}, formats: ['mp4', 'mp4-vertical'] },
+  );
+}
+
+const PORTRAIT = portraitPlan();
+/** Spec 307: the same run recorded as a phone — the tap ring, no arrow. */
+const PHONE = portraitPlan('phone');
 /** The crop has reached the button by the press, 100 ms before the click ends. */
 const PORTRAIT_FRAME = Math.round((PORTRAIT.clicks[0].atMs * 30) / 1000);
 
@@ -437,6 +444,15 @@ export const SCENES: readonly Scene[] = [
     frame: frameAt(PORTRAIT, PORTRAIT_FRAME, 'vertical'),
     region: { x: 0, y: 0, ...VERTICAL_SIZE },
     plan: PORTRAIT,
+    vertical: true,
+    source: portraitSource(),
+  },
+  {
+    // Spec 307: a phone recording at the tap — the ring, no arrow.
+    name: 'phone-tap',
+    frame: frameAt(PHONE, PORTRAIT_FRAME, 'vertical'),
+    region: { x: 0, y: 0, ...VERTICAL_SIZE },
+    plan: PHONE,
     vertical: true,
     source: portraitSource(),
   },
