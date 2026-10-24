@@ -78,6 +78,8 @@ export function deriveRunStatus(
  * The files a run can render (spec 133); `mp4` is the default.
  * `mp4-vertical` is a 9:16 MP4 cropped from the same page (spec 176);
  * `gif-vertical` and `webm-vertical` are its GIF and WebM (spec 236).
+ * `mp4-square`, `gif-square` and `webm-square` are the same for a 1:1 crop
+ * (spec 304).
  */
 export const RENDER_FORMATS = [
   'mp4',
@@ -86,6 +88,9 @@ export const RENDER_FORMATS = [
   'mp4-vertical',
   'gif-vertical',
   'webm-vertical',
+  'mp4-square',
+  'gif-square',
+  'webm-square',
 ] as const;
 export type RenderFormat = (typeof RENDER_FORMATS)[number];
 

@@ -148,6 +148,9 @@ describe('RunResultSchema', () => {
       'mp4-vertical',
       'gif-vertical',
       'webm-vertical',
+      'mp4-square',
+      'gif-square',
+      'webm-square',
     ] as const;
     const renders = formats.map((format) => ({
       ...render,
