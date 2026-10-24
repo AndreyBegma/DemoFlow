@@ -9,8 +9,8 @@
     },
     "baseUrl": {
       "type": "string",
-      "format": "uri",
-      "pattern": "^[hH][tT][tT][pP][sS]?://"
+      "pattern": "^[hH][tT][tT][pP][sS]?://",
+      "description": "Where the app runs. ${PORT} is the port of the run: --port, else PORT from the environment, else the default in ${PORT:-3000}. $${ is a literal ${."
     },
     "allowedOrigins": {
       "type": "array",
@@ -25,9 +25,11 @@
       "properties": {
         "command": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The program that starts the app, run without a shell. ${PORT} is the port of the run: --port, else PORT from the environment, else the default in ${PORT:-3000}. $${ is a literal ${. ${BASE_URL} is --base-url, else baseUrl after substitution."
         },
         "args": {
+          "description": "Its arguments, one string each. ${PORT} is the port of the run: --port, else PORT from the environment, else the default in ${PORT:-3000}. $${ is a literal ${. ${BASE_URL} is --base-url, else baseUrl after substitution.",
           "type": "array",
           "items": {
             "type": "string"
@@ -35,8 +37,8 @@
         },
         "readyUrl": {
           "type": "string",
-          "format": "uri",
-          "pattern": "^[hH][tT][tT][pP][sS]?://"
+          "pattern": "^[hH][tT][tT][pP][sS]?://",
+          "description": "The app is up once this URL answers. ${PORT} is the port of the run: --port, else PORT from the environment, else the default in ${PORT:-3000}. $${ is a literal ${. ${BASE_URL} is --base-url, else baseUrl after substitution."
         },
         "timeoutMs": {
           "type": "integer",
