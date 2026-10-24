@@ -274,8 +274,8 @@ describe('the square output (spec 304)', () => {
   });
 
   it('refuses a square frame of a plan without the square output', () => {
-    expect(() =>
-      frameAt(plan([], { formats: ['mp4'] }), 0, 'square'),
-    ).toThrow(/square format/);
+    expect(() => frameAt(plan([], { formats: ['mp4'] }), 0, 'square')).toThrow(
+      /square format/,
+    );
   });
 });
