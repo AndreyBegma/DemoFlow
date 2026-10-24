@@ -265,6 +265,23 @@ export const en = {
       loadingMore: 'Loading…',
       loadFailed: 'We could not load more runs. Try again.',
       pageFailed: 'We could not load the runs. Try again in a moment.',
+      select: {
+        row: 'Select {name}',
+        all: 'Select all loaded runs',
+        count: '{count} selected',
+        countMax: '{count} selected (at most {max} at once)',
+        clear: 'Clear',
+      },
+      bulkDelete: {
+        action: 'Delete selected',
+        title: 'Delete {count} runs?',
+        titleOne: 'Delete 1 run?',
+        consequence:
+          'They are removed from your library. Their video files stay on the machine; to remove them, open a run and use Delete video files first. This cannot be undone.',
+        confirm: 'Delete runs',
+        cancel: 'Keep',
+        partlyGone: '{count} of the selected runs were already gone.',
+      },
     },
     launch: {
       title: 'Run a scenario',

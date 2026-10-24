@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type Run, type Runner, type RunStatus } from '@prisma/client';
@@ -206,6 +207,8 @@ function lastActivity(project: ProjectView): number {
  */
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /** Upserts the folder's project and adds the run (Decision 3). */
@@ -392,6 +395,32 @@ export class ProjectsService {
           ? (page[page.length - 1]?.id ?? null)
           : null,
     };
+  }
+
+  /**
+   * Deletes the project's runs among `runIds` in one statement (spec #286).
+   * Ids that are not runs of this project are skipped; only the rows go, the
+   * video files on the machine stay.
+   */
+  async removeRuns(
+    userId: string,
+    id: string,
+    runIds: string[],
+  ): Promise<{ deleted: number }> {
+    const project = await this.prisma.project.findFirst({
+      where: { id, userId },
+      select: { id: true },
+    });
+    if (!project) {
+      throw new NotFoundException();
+    }
+    const { count } = await this.prisma.run.deleteMany({
+      where: { projectId: id, id: { in: runIds } },
+    });
+    this.logger.log(
+      `runs.delete project=${id} asked=${runIds.length} deleted=${count}`,
+    );
+    return { deleted: count };
   }
 
   private async get(userId: string, id: string): Promise<ProjectView> {
