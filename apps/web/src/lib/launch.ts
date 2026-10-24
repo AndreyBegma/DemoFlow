@@ -53,6 +53,32 @@ export function launchErrorKey(code: string | undefined): LaunchErrorKey {
   }
 }
 
+/**
+ * Whether a recorded scenario path is one a launch can start: a scenario file
+ * of the project. A scenario staged inline by `demoflow mcp` (`inline/...`)
+ * never exists as a file.
+ */
+export function isStartableScenario(path: string): boolean {
+  return path.startsWith('demoflow/') && path.endsWith('.demo.json');
+}
+
+/**
+ * What the run page offers (spec #282): nothing, a disabled action (the run's
+ * machine is offline), or the action. A launch goes to the project's current
+ * machine, so anything but "the machine that recorded the run" hides it.
+ */
+export function canRunAgain(input: {
+  project: { rootPath: string | null; runner: { id: string } | null } | null;
+  machine: { id: string; online: boolean } | null;
+  scenarioPath: string;
+}): 'hidden' | 'offline' | 'ready' {
+  const { project, machine, scenarioPath } = input;
+  if (project === null || project.rootPath === null) return 'hidden';
+  if (machine === null || project.runner?.id !== machine.id) return 'hidden';
+  if (!isStartableScenario(scenarioPath)) return 'hidden';
+  return machine.online ? 'ready' : 'offline';
+}
+
 /** 0:07, 12:03: the time a launch has been active. */
 export function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));

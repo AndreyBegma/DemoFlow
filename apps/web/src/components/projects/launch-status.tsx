@@ -1,0 +1,97 @@
+'use client';
+
+import { Button } from '@andrewbehma/glass-ui/button';
+import { StatusPill } from '@andrewbehma/glass-ui/status-pill';
+import Link from 'next/link';
+import { t } from '@/i18n';
+import type { LaunchState, LaunchView } from '@/lib/api';
+import { formatElapsed, isActive } from '@/lib/launch';
+
+const PILL: Record<LaunchState, Parameters<typeof StatusPill>[0]['status']> = {
+  starting: 'waiting',
+  running: 'running',
+  cancelling: 'paused',
+  passed: 'done',
+  failed: 'error',
+  cancelled: 'idle',
+  'timed-out': 'error',
+  lost: 'blocked',
+};
+
+function stateLabel(state: LaunchState): string {
+  switch (state) {
+    case 'timed-out':
+      return t('projects.launch.state.timedOut');
+    case 'lost':
+      return t('projects.launch.state.lostLabel');
+    default:
+      return t(`projects.launch.state.${state}`);
+  }
+}
+
+/** The row of a launch: name, state, elapsed time, cancel, and the new run. */
+export function LaunchStatus({
+  projectId,
+  launch,
+  now,
+  cancelling,
+  onCancel,
+  bordered = true,
+}: {
+  projectId: string;
+  launch: LaunchView;
+  now: number;
+  cancelling: boolean;
+  onCancel: () => void;
+  bordered?: boolean;
+}) {
+  const active = isActive(launch.state);
+  return (
+    <div
+      className={`flex flex-col gap-2 ${bordered ? 'border-t border-line pt-3' : ''}`}
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="min-w-0 break-words font-medium">
+          {launch.scenarioName ?? launch.scenarioId}
+        </span>
+        <StatusPill
+          status={PILL[launch.state]}
+          label={stateLabel(launch.state)}
+        />
+        {active ? (
+          <span className="text-sm text-ink-2">
+            {t('projects.launch.elapsed', {
+              time: formatElapsed(now - Date.parse(launch.startedAt)),
+            })}
+          </span>
+        ) : null}
+        {launch.state === 'running' ? (
+          <Button
+            type="button"
+            variant="danger"
+            disabled={cancelling}
+            onClick={onCancel}
+          >
+            {t('projects.launch.cancelRun')}
+          </Button>
+        ) : null}
+      </div>
+      {launch.state === 'lost' ? (
+        <p className="text-sm text-ink-2">{t('projects.launch.state.lost')}</p>
+      ) : null}
+      {!active && launch.runId ? (
+        <Link
+          href={`/app/projects/${projectId}/runs/${launch.runId}`}
+          className="text-sm underline"
+        >
+          {t('projects.launch.openRun')}
+        </Link>
+      ) : null}
+      {!active &&
+      !launch.runId &&
+      (launch.state === 'passed' || launch.state === 'failed') ? (
+        <p className="text-sm text-ink-2">{t('projects.launch.noReport')}</p>
+      ) : null}
+    </div>
+  );
+}
