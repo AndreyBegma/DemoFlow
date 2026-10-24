@@ -4,6 +4,7 @@ import { CLI_ENTRY } from '../entry.ts';
 /** How long a run gets to close its browser after SIGTERM before SIGKILL. */
 const KILL_GRACE_MS = 5_000;
 const STDERR_TAIL = 8 * 1024;
+const STDOUT_LINE_MAX = 8 * 1024;
 
 export interface ChildExit {
   code: number | null;
@@ -26,6 +27,12 @@ export interface SpawnRunOptions {
    * The runner daemon passes more, so the dev server stops too (spec 248).
    */
   killGraceMs?: number;
+  /**
+   * Called with each line the child prints on stdout (UTF-8, `\n` or `\r\n`
+   * stripped; a line over 8 KiB is dropped). Without it stdout is discarded.
+   * A throwing callback is ignored.
+   */
+  onStdoutLine?: (line: string) => void;
 }
 
 export type SpawnRun = (
@@ -59,7 +66,12 @@ export function spawnNode(
     windowsHide: true,
   });
   let stderr = '';
-  child.stdout?.resume();
+  if (options.onStdoutLine === undefined) {
+    child.stdout?.resume();
+  } else {
+    child.stdout?.setEncoding('utf8');
+    child.stdout?.on('data', lineReader(options.onStdoutLine));
+  }
   child.stderr?.setEncoding('utf8');
   child.stderr?.on('data', (chunk: string) => {
     stderr = (stderr + chunk).slice(-STDERR_TAIL);
@@ -91,6 +103,41 @@ export function spawnNode(
       // on Windows `taskkill /T` already took the whole tree.
       if (process.platform !== 'win32') killTree(child, 'SIGKILL');
     },
+  };
+}
+
+/**
+ * Splits chunks into lines. A line over `STDOUT_LINE_MAX` is dropped up to its
+ * next newline, so the final `--json` result cannot grow the buffer.
+ */
+function lineReader(onLine: (line: string) => void): (chunk: string) => void {
+  let pending = '';
+  let dropping = false;
+  const deliver = (line: string): void => {
+    if (line.length > STDOUT_LINE_MAX) return;
+    try {
+      onLine(line.endsWith('\r') ? line.slice(0, -1) : line);
+    } catch {
+      // A callback's failure must not stop the child's output being read.
+    }
+  };
+  return (chunk) => {
+    let rest = chunk;
+    for (;;) {
+      const newline = rest.indexOf('\n');
+      if (newline === -1) break;
+      const head = rest.slice(0, newline);
+      rest = rest.slice(newline + 1);
+      if (dropping) dropping = false;
+      else deliver(pending + head);
+      pending = '';
+    }
+    if (dropping) return;
+    pending += rest;
+    if (pending.length > STDOUT_LINE_MAX) {
+      pending = '';
+      dropping = true;
+    }
   };
 }
 

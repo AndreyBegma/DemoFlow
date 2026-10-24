@@ -31,6 +31,7 @@ import { CommandError, EXIT_STAGE_FAILED } from './errors.ts';
 import { exitCodeFor } from './exit.ts';
 import type { Io } from './io.ts';
 import { formatJson, formatSummary } from './output.ts';
+import { emitProgress, progressObserver } from './progress.ts';
 import { renderPlanOptions } from './render.ts';
 import { assertSafeRunId, generateRunId } from './run-id.ts';
 import { loadScenario } from './scenario-file.ts';
@@ -47,6 +48,8 @@ export interface RunFlags {
   runId?: string;
   /** Hidden: the project root, for a scenario file kept outside it (`demoflow mcp`). */
   project?: string;
+  /** Hidden: one JSON progress line on stdout per phase change and step (spec 302). */
+  progress?: boolean;
 }
 
 export interface RunDeps {
@@ -105,6 +108,8 @@ export async function runCommand(
   // After every input check: a bad scenario never costs a browser download
   // or an app start. The start overlaps with the download; the app's output
   // is kept and shown only if the start fails.
+  const progress = flags.progress === true;
+  if (progress) emitProgress(io, { phase: 'app' });
   const tail = outputTail();
   const starting: Promise<Started> = startApp(config, root, {
     log: (text) => tail.push(text),
@@ -159,6 +164,7 @@ export async function runCommand(
       headless: flags.headed !== true,
       observers: [
         createCaptureObserver({ scenarioId: scenarioId(root, file), runId }),
+        ...(progress ? [progressObserver(io)] : []),
       ],
     });
 
@@ -167,6 +173,7 @@ export async function runCommand(
     let renderError: unknown;
     if (existsSync(path.join(runDir, RUN_FILES.video))) {
       io.stderr('Rendering\n');
+      if (progress) emitProgress(io, { phase: 'rendering' });
       try {
         const plan = await buildRenderPlan(
           runDir,
