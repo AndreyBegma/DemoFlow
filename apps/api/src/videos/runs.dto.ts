@@ -1,4 +1,4 @@
-import { IsIn, IsString, Length } from 'class-validator';
+import { IsIn, IsOptional, IsString, Length } from 'class-validator';
 import { RUN_FORMATS, type RunFormat } from '../projects/projects.dto';
 
 /** `DELETE /runs/:id` (spec #280, Decision 1). */
@@ -15,4 +15,11 @@ export class RunVideoParamsDto {
 
   @IsIn(RUN_FORMATS)
   format!: RunFormat;
+}
+
+/** `?download=1` saves the file instead of playing it (spec #299, Decision 2). */
+export class RunVideoQueryDto {
+  @IsOptional()
+  @IsIn(['1'])
+  download?: '1';
 }

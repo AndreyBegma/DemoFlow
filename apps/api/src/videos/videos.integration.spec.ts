@@ -276,6 +276,88 @@ describe('run video through the runner relay (integration)', () => {
     });
   });
 
+  describe('download', () => {
+    const attachment = () =>
+      `attachment; filename="checkout-${t.clock.now().toISOString().slice(0, 10)}.mp4"`;
+
+    it('answers 200 with an attachment and the whole file', async () => {
+      const socket = await daemon();
+      const pending = play('mp4?download=1');
+      const open = await socket.nextOpen();
+      expect(open.range).toBeNull();
+      socket.serve(open.streamId, FILE);
+
+      const played = await pending.done;
+      expect(played.status).toBe(200);
+      expect(played.complete).toBe(true);
+      expect(played.body.equals(FILE)).toBe(true);
+      expect(played.headers).toMatchObject({
+        'content-type': 'video/mp4',
+        'content-length': String(FILE.length),
+        'accept-ranges': 'bytes',
+        'cache-control': 'private, no-store',
+        'content-disposition': attachment(),
+      });
+    });
+
+    it('answers a Range with 206 and the same attachment header', async () => {
+      const socket = await daemon();
+      const pending = play('mp4?download=1', { Range: 'bytes=10-' });
+      const open = await socket.nextOpen();
+      expect(open.range).toEqual({ start: 10 });
+      socket.serve(open.streamId, FILE, { start: 10, end: 2499 });
+
+      const played = await pending.done;
+      expect(played.status).toBe(206);
+      expect(played.headers['content-disposition']).toBe(attachment());
+      expect(played.headers['content-range']).toBe(
+        `bytes 10-2499/${FILE.length}`,
+      );
+      expect(played.body.equals(FILE.subarray(10))).toBe(true);
+    });
+
+    it.each([
+      'mp4?download=0',
+      'mp4?download=true',
+      'mp4?download=yes',
+      'mp4?foo=1',
+    ])('400s %s and sends nothing to the runner', async (path) => {
+      const socket = await daemon();
+      expect((await play(path).done).status).toBe(400);
+      expect(socket.received.filter((m) => m.type === 'video.open')).toEqual(
+        [],
+      );
+    });
+
+    it('answers the same errors as playback', async () => {
+      const foreign = await play('mp4?download=1', {}, bob.cookie).done;
+      expect(foreign.status).toBe(404);
+      const offline = await play('mp4?download=1').done;
+      expect(offline.status).toBe(503);
+      expect(errorOf(offline)).toBe('runner-offline');
+
+      const socket = await daemon();
+      for (let i = 0; i < 4; i += 1) {
+        play();
+        await socket.nextOpen();
+      }
+      const busy = await play('mp4?download=1').done;
+      expect(busy.status).toBe(503);
+      expect(errorOf(busy)).toBe('runner-busy');
+    });
+
+    it('answers 410 artifacts-deleted', async () => {
+      await daemon();
+      await t.prisma.run.update({
+        where: { id: runId },
+        data: { artifactsDeletedAt: t.clock.now() },
+      });
+      const played = await play('mp4?download=1').done;
+      expect(played.status).toBe(410);
+      expect(errorOf(played)).toBe('artifacts-deleted');
+    });
+  });
+
   describe('who may play it', () => {
     it("404s another account's run, an unknown run and a format not rendered", async () => {
       await daemon();
