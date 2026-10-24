@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   availability,
   deleteFailureKey,
+  downloadUrl,
   isGifFormat,
   orderFormats,
   playerShape,
@@ -101,6 +102,25 @@ test('the url goes through the same-origin relay', () => {
     '/api/runs/run_1/video/gif-square',
   );
   assert.equal(videoUrl('a/b', 'gif'), '/api/runs/a%2Fb/video/gif');
+});
+
+test('the download url is the relay url with the attachment flag', () => {
+  assert.equal(
+    downloadUrl('run_1', 'mp4'),
+    '/api/runs/run_1/video/mp4?download=1',
+  );
+  assert.equal(
+    downloadUrl('run_1', 'webm-vertical'),
+    '/api/runs/run_1/video/webm-vertical?download=1',
+  );
+  assert.equal(
+    downloadUrl('run_1', 'gif-square'),
+    '/api/runs/run_1/video/gif-square?download=1',
+  );
+  assert.equal(
+    downloadUrl('a/b', 'gif'),
+    '/api/runs/a%2Fb/video/gif?download=1',
+  );
 });
 
 test('a removed machine is removed whatever the player did', () => {

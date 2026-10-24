@@ -428,6 +428,11 @@ export const en = {
     retry: 'Retry',
     retrying: 'Checking…',
     pageFailed: 'We could not load this run. Try again in a moment.',
+    download: {
+      button: 'Download',
+      checking: 'Checking…',
+      offlineHint: 'The machine is offline.',
+    },
     delete: {
       open: 'Delete video files',
       offlineHint: 'The machine is offline.',

@@ -51,6 +51,11 @@ export function videoUrl(runId: string, format: PlayableFormat): string {
   return `/api/runs/${encodeURIComponent(runId)}/video/${format}`;
 }
 
+/** The same relay URL as an attachment: the server names the file (spec #300). */
+export function downloadUrl(runId: string, format: PlayableFormat): string {
+  return `${videoUrl(runId, format)}?download=1`;
+}
+
 export type DeleteFailureKey =
   | 'runPage.delete.errors.offline'
   | 'runPage.delete.errors.failed'
