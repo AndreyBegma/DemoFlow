@@ -58,7 +58,7 @@
     },
     "apps/cli": {
       "name": "@demoflow/cli",
-      "version": "0.2.0",
+      "version": "0.5.0",
       "bin": {
         "demoflow": "./dist/main.js",
       },
@@ -130,6 +130,7 @@
         "@radix-ui/react-slider": "1.6.1",
         "@radix-ui/react-tooltip": "1.4.1",
         "lucide-react": "1.59.0",
+        "luna-player": "0.2.0",
         "motion": "14.3.0",
         "next": "16.2.3",
         "react": "19.2.5",
@@ -1710,6 +1711,8 @@
     "lru.min": ["lru.min@1.1.5", "", {}, "sha512-5J9ysMYUpYIg9RF2vJpy9SinEmSviFSe0GyPpCQ4L5QSkLAgeLXlTAOu2ZwWUU5m+0SBl6gUU1R1ZQB3aKypfA=="],
 
     "lucide-react": ["lucide-react@1.59.0", "", { "peerDependencies": { "@types/react": "*", "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-5qgMyyCPU6OvnKpLS2t693+ZtiqA8oaSweWoUows0BLFKFf6V75m4+CptpmohZHpD5IuOVIBXHBBiv2vpLJmtw=="],
+
+    "luna-player": ["luna-player@0.2.0", "", { "peerDependencies": { "@andrewbehma/glass-ui": ">=0.20.0", "hls.js": "^1.5.0", "lucide-react": ">=0.400.0", "motion": ">=12.0.0", "react": "^19.0.0", "react-dom": "^19.0.0", "tailwindcss": "^4.0.0" }, "optionalPeers": ["hls.js"] }, "sha512-sybXaSHf0aOG4AVx4GPvYE4T8O1fArZuzzh0mgp5IE6TZqnR2ee7eEhufQ0920tf/q5s313Pj/nXW7rnBxqsSw=="],
 
     "magic-string": ["magic-string@1.4.3", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.6.0" } }, "sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ=="],
 
