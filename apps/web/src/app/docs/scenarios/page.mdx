@@ -23,9 +23,34 @@ schema and reports problems by path, such as `steps[1].target`.
 | `name` | Required. Shown on the intro card. |
 | `description` | Optional. Shown under the name on the intro card. |
 | `baseUrl` | Optional. Overrides the project config for this scenario. |
-| `viewport` | The browser size. Default 1920×1080. |
+| `device` | `"desktop"` (default) or `"phone"`. See [Record as a phone](#record-as-a-phone). |
+| `viewport` | The browser size. Default 1920×1080, or 412×914 for a phone. |
 | `data` | Lists a `repeat` step runs over. See [Repeat over data](#repeat-over-data). |
 | `steps` | 1 to 200 steps. |
+
+## Record as a phone
+
+`"device": "phone"` records the scenario as a phone instead of a desktop:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "Sign in on a phone",
+  "device": "phone",
+  "steps": [{ "action": "click", "target": { "role": "button", "name": "Sign in" } }]
+}
+```
+
+- The viewport is 412×914 unless the scenario sets `viewport`.
+- The browser is a touch device with a mobile user agent, and the page gets its
+  mobile `<meta name="viewport">`.
+- The steps are the same; `click` taps.
+- The video shows each tap as the click ring and draws no cursor arrow.
+- The vertical and square crops follow targets up and down the page.
+
+The page is recorded at its CSS size, so a 412-wide page is upscaled about 2.6×
+to fill a 1080-wide vertical or square frame. Those crops look softer than a
+desktop one; this is expected, not a bug. The landscape video stays sharp.
 
 ## Locators
 
