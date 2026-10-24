@@ -277,7 +277,10 @@
               "webm",
               "mp4-vertical",
               "gif-vertical",
-              "webm-vertical"
+              "webm-vertical",
+              "mp4-square",
+              "gif-square",
+              "webm-square"
             ]
           }
         },
@@ -301,6 +304,34 @@
           "additionalProperties": false
         },
         "vertical": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "followMs": {
+              "default": 400,
+              "description": "Milliseconds the crop takes to move to the next target, eased in and out.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2000
+            },
+            "deadZone": {
+              "default": 0.1,
+              "description": "A move shorter than this share of the crop width is skipped, so the camera does not jitter.",
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 0.5
+            },
+            "captionBand": {
+              "default": 0.22,
+              "description": "The share of the frame height, at the bottom, that captions sit in.",
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 0.5
+            }
+          },
+          "additionalProperties": false
+        },
+        "square": {
           "default": {},
           "type": "object",
           "properties": {

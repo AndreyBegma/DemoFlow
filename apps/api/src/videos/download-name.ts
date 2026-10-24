@@ -31,12 +31,12 @@ function pathStem(path: string): string {
 
 /**
  * The file name a download is saved under (spec #299, Decision 4):
- * `<scenario>-<YYYY-MM-DD>[-vertical].<ext>`.
+ * `<scenario>-<YYYY-MM-DD>[-vertical|-square].<ext>`.
  */
 export function downloadName(run: DownloadNameRun, format: RunFormat): string {
   const base = slug(run.scenarioName) || slug(pathStem(run.scenarioPath));
   const date = run.startedAt.toISOString().slice(0, 10);
-  const vertical = format.endsWith('-vertical') ? '-vertical' : '';
-  const extension = format.replace('-vertical', '');
-  return `${base || 'demo'}-${date}${vertical}.${extension}`;
+  const [extension, shape] = format.split('-');
+  const suffix = shape === undefined ? '' : `-${shape}`;
+  return `${base || 'demo'}-${date}${suffix}.${extension}`;
 }

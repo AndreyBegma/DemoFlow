@@ -17,8 +17,10 @@ import {
   availability,
   type DeleteFailureKey,
   deleteFailureKey,
+  isGifFormat,
   orderFormats,
   type PlayableFormat,
+  playerShape,
   videoUrl,
 } from '@/lib/playback';
 import { choosePlayer } from './video-player';
@@ -111,7 +113,7 @@ export function RunPlayback({
   const online = machine?.online === true;
   const Player = choosePlayer();
   const src = videoUrl(runId, format);
-  const isGif = format === 'gif' || format === 'gif-vertical';
+  const isGif = isGifFormat(format);
 
   return (
     <div className="flex flex-col gap-4">
@@ -152,7 +154,7 @@ export function RunPlayback({
         <Player
           key={`${src}-${attempt}`}
           src={src}
-          vertical={format === 'mp4-vertical' || format === 'webm-vertical'}
+          shape={playerShape(format)}
           onError={handlePlayerError}
         />
       ) : null}

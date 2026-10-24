@@ -1,11 +1,12 @@
 import type { ComponentType } from 'react';
+import type { PlayerShape } from '@/lib/playback';
 import { NativeVideoPlayer } from './native-video-player';
 
 /** What the run page needs from a player, whichever implementation plays. */
 export interface VideoPlayerProps {
   src: string;
-  /** 9:16 instead of 16:9. */
-  vertical: boolean;
+  /** The picture's aspect ratio: 16:9, 9:16 or 1:1. */
+  shape: PlayerShape;
   /** The player could not load or play `src`. */
   onError(): void;
 }

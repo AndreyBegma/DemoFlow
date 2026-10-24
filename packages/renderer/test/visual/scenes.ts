@@ -102,6 +102,8 @@ export interface Scene {
   heldSourceMs?: number;
   /** Drawn as the vertical output of `plan` (spec 176), at its size. */
   vertical?: true;
+  /** Drawn as the square output of `plan` (spec 304), at its size. */
+  square?: true;
 }
 
 const PASSED_STAGES: Stages = {
@@ -217,6 +219,10 @@ const HELD_SOURCE_MS = TRANSITIONED.transitions?.holds[1]?.sourceMs;
 /** Spec 176: the framed run with the vertical output; the frame is not used there. */
 const VERTICAL = framedPlan({ formats: ['mp4', 'mp4-vertical'] });
 const VERTICAL_SIZE = { width: 1080, height: 1920 } as const;
+
+/** Spec 304: the same run with the square output. */
+const SQUARE = framedPlan({ formats: ['mp4', 'mp4-square'] });
+const SQUARE_SIZE = { width: 1080, height: 1080 } as const;
 
 export const SCENES: readonly Scene[] = [
   {
@@ -348,6 +354,19 @@ export const SCENES: readonly Scene[] = [
     plan: VERTICAL,
     vertical: true,
   },
+  {
+    // Spec 304: the square crop on the red block at the press, zoomed, with
+    // the cursor, the ring and a caption long enough to need a third line.
+    name: 'square-zoomed',
+    frame: {
+      ...frameAt(SQUARE, PRESS_FRAME, 'square'),
+      caption:
+        'Open the invoice, check the total and the due date, then send it to the customer — Создать клиента',
+    },
+    region: { x: 0, y: 0, ...SQUARE_SIZE },
+    plan: SQUARE,
+    square: true,
+  },
 ];
 
 function transitioned(name: string, atMs: number): Scene {
@@ -424,19 +443,24 @@ const PREVIOUS_PAGE = previousPageSource();
 
 /** Draws `scene` and returns the region it keeps. */
 export function renderScene(scene: Scene, source: Picture): Picture {
-  const vertical = scene.vertical === true ? scene.plan?.vertical : undefined;
+  const crop =
+    scene.vertical === true
+      ? scene.plan?.vertical
+      : scene.square === true
+        ? scene.plan?.square
+        : undefined;
   const output =
-    vertical === undefined
+    crop === undefined
       ? OUTPUT
-      : { ...OUTPUT, width: vertical.width, height: vertical.height };
+      : { ...OUTPUT, width: crop.width, height: crop.height };
   const target = createPicture(output.width, output.height);
   const compositor =
-    vertical === undefined
+    crop === undefined
       ? createCompositor(
           output,
           scene.plan === undefined ? undefined : renderStage(scene.plan),
         )
-      : createCompositor(output, undefined, vertical.caption);
+      : createCompositor(output, undefined, crop.caption);
   drawLayers(compositor, target, scene.frame, (ms) =>
     ms === scene.heldSourceMs ? PREVIOUS_PAGE : source,
   );

@@ -34,7 +34,7 @@ export async function drawPlan(
   const source = openSource(sourceFile, plan.source, kept);
   const lanes: Lane[] = [];
   try {
-    for (const layout of ['landscape', 'vertical'] as const) {
+    for (const layout of ['landscape', 'vertical', 'square'] as const) {
       const lane = openLane(binary, plan, out, layout);
       if (lane !== undefined) lanes.push(lane);
     }
@@ -120,9 +120,10 @@ interface Lane {
 }
 
 /**
- * The lane of `layout`: the landscape one writes every file but the vertical
- * MP4, at the output's size; the vertical one only that, at its own.
- * `undefined` when the plan has no file of that layout.
+ * The lane of `layout`: the landscape one writes every file that is neither
+ * vertical nor square, at the output's size; the vertical and square ones
+ * only theirs, each at its own. `undefined` when the plan has no file of that
+ * layout.
  */
 function openLane(
   binary: string,
@@ -132,15 +133,11 @@ function openLane(
 ): Lane | undefined {
   const { output } = plan;
   const chosen = output.files.flatMap((file, i) =>
-    file.format.endsWith('-vertical') === (layout === 'vertical')
-      ? [{ file, path: out[i] }]
-      : [],
+    layoutOf(file) === layout ? [{ file, path: out[i] }] : [],
   );
   if (chosen.length === 0) return undefined;
-  const size =
-    layout === 'vertical' && plan.vertical !== undefined
-      ? plan.vertical
-      : output;
+  const crop = layout === 'vertical' ? plan.vertical : plan.square;
+  const size = layout === 'landscape' || crop === undefined ? output : crop;
   const spec: OutputSpec = {
     width: size.width,
     height: size.height,
@@ -148,9 +145,9 @@ function openLane(
     files: chosen.map(({ file }) => file),
   };
   const compositor =
-    layout === 'vertical'
-      ? createCompositor(spec, undefined, plan.vertical?.caption)
-      : createCompositor(spec, renderStage(plan));
+    layout === 'landscape'
+      ? createCompositor(spec, renderStage(plan))
+      : createCompositor(spec, undefined, crop?.caption);
   return {
     layout,
     compositor,
@@ -163,6 +160,13 @@ function openLane(
     pending: [undefined, undefined],
     scratch: [],
   };
+}
+
+/** The picture a file is encoded from: its format's suffix names the crop. */
+function layoutOf(file: OutputFile): Layout {
+  if (file.format.endsWith('-vertical')) return 'vertical';
+  if (file.format.endsWith('-square')) return 'square';
+  return 'landscape';
 }
 
 /** The source frame on screen at `sourceMs`. */
@@ -409,13 +413,16 @@ function branch(file: OutputFile, i: number): string {
   switch (file.format) {
     case 'mp4':
     case 'mp4-vertical':
+    case 'mp4-square':
     case 'webm':
     case 'webm-vertical':
+    case 'webm-square':
       // BT.709, limited range, tagged in the stream: FFmpeg's
       // default RGB → YUV conversion is BT.601 and leaves the file untagged.
       return `scale=in_range=pc:out_range=tv:out_color_matrix=bt709,format=${file.pixelFormat}[v${i}]`;
     case 'gif':
     case 'gif-vertical':
+    case 'gif-square':
       // A palette per frame (spec 133, Decision 3). One palette for the
       // whole video comes only at the end, and until then FFmpeg queues the
       // full-size frames of this branch: 13 GB for a 60 s render beside
@@ -444,6 +451,7 @@ function fileArgs(file: OutputFile): string[] {
   switch (file.format) {
     case 'mp4':
     case 'mp4-vertical':
+    case 'mp4-square':
       return [
         ...BT709_TAGS,
         '-c:v',
@@ -458,6 +466,7 @@ function fileArgs(file: OutputFile): string[] {
       ];
     case 'webm':
     case 'webm-vertical':
+    case 'webm-square':
       return [
         ...BT709_TAGS,
         '-c:v',
@@ -477,6 +486,7 @@ function fileArgs(file: OutputFile): string[] {
       ];
     case 'gif':
     case 'gif-vertical':
+    case 'gif-square':
       return ['-c:v', ENCODERS.gif, '-loop', '0'];
   }
 }

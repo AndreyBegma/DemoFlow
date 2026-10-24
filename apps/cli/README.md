@@ -44,8 +44,9 @@ as well, all encoded in one pass; the GIF is 800 px wide at 12 fps unless
 `demoflow run --format gif --format mp4` replaces `render.formats` for one
 run; `generate_demo` takes the same list as `formats`. The files are
 `render/ffmpeg.mp4`, `render/ffmpeg.gif`, `render/ffmpeg.webm` and
-`render/ffmpeg.vertical.mp4`, `render/ffmpeg.vertical.webm` and
-`render/ffmpeg.vertical.gif`.
+`render/ffmpeg.vertical.mp4`, `render/ffmpeg.vertical.webm`,
+`render/ffmpeg.vertical.gif`, `render/ffmpeg.square.mp4`,
+`render/ffmpeg.square.webm` and `render/ffmpeg.square.gif`.
 
 `mp4-vertical` is a 1080×1920 MP4 for phones, rendered from the same run.
 `webm-vertical` is the same frames as a 1080×1920 VP9 WebM, and `gif-vertical`
@@ -69,6 +70,23 @@ optional:
 shorter than `deadZone` (a share of the crop width) is skipped, so the camera
 does not jitter. `captionBand` is the share of the frame height, at the
 bottom, that captions sit in.
+
+`mp4-square`, `webm-square` and `gif-square` are the same for a 1:1 crop, the
+size of feed posts: a 1080×1080 MP4, a 1080×1080 VP9 WebM, and a GIF whose side
+is three quarters of `render.gif.width` (600×600 by default, again the pixels of
+the landscape GIF). The square crop has its own camera, so `render.square`
+takes the same three fields as `render.vertical` and tunes it alone; captions
+are cut to two lines. Ask for any mix of landscape, vertical and square files
+in one run:
+
+```json
+{
+  "render": {
+    "formats": ["mp4", "mp4-vertical", "mp4-square", "gif-square"],
+    "square": { "followMs": 400, "deadZone": 0.1, "captionBand": 0.22 }
+  }
+}
+```
 
 `demoflow render <runId>` renders a finished run again from
 `<home>/runs/<runId>/` with the current `render.*` config, without the app or

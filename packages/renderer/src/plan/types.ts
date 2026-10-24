@@ -5,6 +5,7 @@ import type {
   FrameConfig,
   GifConfig,
   RenderFormat,
+  SquareConfig,
   TransitionsConfig,
   VerticalConfig,
   Viewport,
@@ -70,6 +71,8 @@ export interface RenderPlanOptions {
   scenario?: { description?: string };
   /** The 9:16 output's camera and captions (spec 176). Default: as in `VerticalConfigSchema`. */
   vertical?: Partial<VerticalConfig>;
+  /** The 1:1 output's camera and captions (spec 304). Default: as in `SquareConfigSchema`. */
+  square?: Partial<SquareConfig>;
 }
 
 /** A two-stop linear gradient; a solid colour has `from` equal to `to`. */
@@ -105,11 +108,14 @@ export interface OutputSpec {
   files: OutputFile[];
 }
 
-export type OutputFile = Mp4Spec | WebmSpec | GifSpec | Mp4VerticalSpec;
+export type OutputFile = Mp4Spec | WebmSpec | GifSpec | Mp4CropSpec;
 
-/** The 9:16 MP4 (spec 176): H.264 like `mp4`, drawn at `RenderPlan.vertical`'s size. */
-export interface Mp4VerticalSpec {
-  format: 'mp4-vertical';
+/**
+ * The 9:16 and 1:1 MP4s (specs 176, 304): H.264 like `mp4`, drawn at
+ * `RenderPlan.vertical`'s or `RenderPlan.square`'s size.
+ */
+export interface Mp4CropSpec {
+  format: 'mp4-vertical' | 'mp4-square';
   codec: 'h264';
   pixelFormat: 'yuv420p';
   faststart: true;
@@ -126,8 +132,8 @@ export interface Mp4Spec {
 
 /** VP9 at constant quality, BT.709. */
 export interface WebmSpec {
-  /** `webm-vertical` is drawn at `RenderPlan.vertical`'s size (spec 236). */
-  format: 'webm' | 'webm-vertical';
+  /** `webm-vertical` and `webm-square` are drawn at `RenderPlan.vertical`'s and `.square`'s size (specs 236, 304). */
+  format: 'webm' | 'webm-vertical' | 'webm-square';
   codec: 'vp9';
   pixelFormat: 'yuv420p';
   /** `-crf`, with `-b:v 0`: 0 (best) to 63. */
@@ -138,9 +144,9 @@ export interface WebmSpec {
 
 /** A looping GIF with a palette per frame, scaled down and slowed. */
 export interface GifSpec {
-  format: 'gif' | 'gif-vertical';
+  format: 'gif' | 'gif-vertical' | 'gif-square';
   width: number;
-  /** Follows the output's aspect ratio, rounded to an even number; for `gif-vertical`, `gif.width` (spec 236). */
+  /** Follows the output's aspect ratio, rounded to an even number; for `gif-vertical`, `gif.width` (spec 236); for `gif-square`, `width` (spec 304). */
   height: number;
   fps: number;
 }
@@ -258,11 +264,11 @@ export interface FollowKey {
 }
 
 /**
- * The 9:16 output (spec 176): a crop of the page, the full viewport height at
+ * The 9:16 and 1:1 outputs (specs 176, 304): a crop of the page, the full viewport height at
  * zoom 1, whose horizontal centre follows `follow` and which the steps' zoom
  * (`RenderPlan.camera`) narrows. It fills the frame: no window, no background.
  */
-export interface VerticalSpec {
+export interface CropSpec {
   width: number;
   height: number;
   /** Starts at the page centre; the crop is clamped to the page wherever it is. */
@@ -322,8 +328,10 @@ export interface RenderPlan {
   /** Absent when transitions are off: the cuts are hard, as before spec 114. */
   transitions?: TransitionsSpec;
   failure?: FailureSpec;
-  /** Present when `output.files` has `mp4-vertical`. */
-  vertical?: VerticalSpec;
+  /** Present when `output.files` has a `*-vertical` format. */
+  vertical?: CropSpec;
+  /** Present when `output.files` has a `*-square` format (spec 304). */
+  square?: CropSpec;
 }
 
 /** Everything a renderer draws on one output frame; geometry in output pixels. */

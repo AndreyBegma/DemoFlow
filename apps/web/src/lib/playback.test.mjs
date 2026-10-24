@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import {
   availability,
   deleteFailureKey,
+  isGifFormat,
   orderFormats,
+  playerShape,
   videoUrl,
 } from './playback.ts';
 
@@ -35,15 +37,46 @@ test('any other failure falls back to the generic message', () => {
 test('formats come back in display order', () => {
   assert.deepEqual(
     orderFormats([
+      'gif-square',
       'gif-vertical',
       'gif',
+      'webm-square',
+      'mp4-square',
       'webm-vertical',
       'mp4-vertical',
       'webm',
       'mp4',
     ]),
-    ['mp4', 'webm', 'mp4-vertical', 'webm-vertical', 'gif', 'gif-vertical'],
+    [
+      'mp4',
+      'webm',
+      'mp4-vertical',
+      'webm-vertical',
+      'mp4-square',
+      'webm-square',
+      'gif',
+      'gif-vertical',
+      'gif-square',
+    ],
   );
+});
+
+test('each format plays in the box of its picture: 16:9, 9:16 or 1:1', () => {
+  assert.equal(playerShape('mp4'), 'landscape');
+  assert.equal(playerShape('webm'), 'landscape');
+  assert.equal(playerShape('mp4-vertical'), 'vertical');
+  assert.equal(playerShape('webm-vertical'), 'vertical');
+  assert.equal(playerShape('mp4-square'), 'square');
+  assert.equal(playerShape('webm-square'), 'square');
+});
+
+test('every GIF plays as an image, nothing else does', () => {
+  for (const format of ['gif', 'gif-vertical', 'gif-square']) {
+    assert.equal(isGifFormat(format), true);
+  }
+  for (const format of ['mp4', 'webm', 'mp4-square', 'webm-square']) {
+    assert.equal(isGifFormat(format), false);
+  }
 });
 
 test('unknown and duplicate formats are ignored', () => {
@@ -62,6 +95,10 @@ test('the url goes through the same-origin relay', () => {
   assert.equal(
     videoUrl('run_1', 'mp4-vertical'),
     '/api/runs/run_1/video/mp4-vertical',
+  );
+  assert.equal(
+    videoUrl('run_1', 'gif-square'),
+    '/api/runs/run_1/video/gif-square',
   );
   assert.equal(videoUrl('a/b', 'gif'), '/api/runs/a%2Fb/video/gif');
 });

@@ -99,6 +99,8 @@ export interface Overlays {
   camera: CameraKeyframe[];
   /** The vertical output's follow camera (spec 176). */
   follow: FollowKey[];
+  /** The square output's follow camera (spec 304): its own crop width and dead zone. */
+  squareFollow: FollowKey[];
   masks: MaskSpan[];
   captions: Caption[];
   keys: KeyBadge[];
@@ -139,6 +141,15 @@ export function shiftOverlays(
       atMs,
       x: followAt(overlays.follow, pageMs) ?? 0,
     })),
+    squareFollow: holdAcross(
+      overlays.squareFollow,
+      cards,
+      at,
+      (pageMs, atMs) => ({
+        atMs,
+        x: followAt(overlays.squareFollow, pageMs) ?? 0,
+      }),
+    ),
     masks: overlays.masks.map((mask) => ({
       ...span(mask),
       keys: holdAcross(mask.keys, cards, at, (pageMs, atMs) => ({

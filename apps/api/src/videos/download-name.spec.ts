@@ -8,6 +8,9 @@ const RUN_FORMATS: RunFormat[] = [
   'mp4-vertical',
   'gif-vertical',
   'webm-vertical',
+  'mp4-square',
+  'gif-square',
+  'webm-square',
 ];
 
 const startedAt = new Date('2026-10-24T23:59:59.000Z');
@@ -61,6 +64,9 @@ describe('downloadName', () => {
     ['mp4-vertical', 'x-2026-10-24-vertical.mp4'],
     ['webm-vertical', 'x-2026-10-24-vertical.webm'],
     ['gif-vertical', 'x-2026-10-24-vertical.gif'],
+    ['mp4-square', 'x-2026-10-24-square.mp4'],
+    ['webm-square', 'x-2026-10-24-square.webm'],
+    ['gif-square', 'x-2026-10-24-square.gif'],
   ] as const)('suffixes %s', (format, expected) => {
     expect(downloadName(run('x'), format)).toBe(expected);
   });
@@ -69,7 +75,7 @@ describe('downloadName', () => {
     for (const format of RUN_FORMATS) {
       for (const name of ['"; rm\r\nX: y', '../../etc/passwd', '  ', 'a/b']) {
         expect(downloadName(run(name, name), format)).toMatch(
-          /^[a-z0-9-]+-\d{4}-\d{2}-\d{2}(-vertical)?\.(mp4|webm|gif)$/,
+          /^[a-z0-9-]+-\d{4}-\d{2}-\d{2}(-vertical|-square)?\.(mp4|webm|gif)$/,
         );
       }
     }

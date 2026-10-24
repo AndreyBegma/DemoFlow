@@ -173,6 +173,14 @@ export const VerticalConfigSchema = z
   .prefault({});
 export type VerticalConfig = z.infer<typeof VerticalConfigSchema>;
 
+/**
+ * The 1:1 output (spec 304): the same fields, ranges and defaults as
+ * `render.vertical`, tuned on its own. Used only when `formats` has a
+ * `*-square` format.
+ */
+export const SquareConfigSchema = VerticalConfigSchema;
+export type SquareConfig = VerticalConfig;
+
 /** The durations of the cards that are on (spec 108): an outro only with a title. */
 function cardsOn(cards: CardsConfig): number[] {
   return [
@@ -209,6 +217,7 @@ export const RenderConfigSchema = z
       .default(() => ['mp4' as const]),
     gif: GifConfigSchema,
     vertical: VerticalConfigSchema,
+    square: SquareConfigSchema,
   })
   .superRefine(({ width, fps, cards, transitions, gif }, ctx) => {
     if (gif.width !== undefined && gif.width > width) {

@@ -20,8 +20,11 @@ const FORMAT_LABELS = [
   'webm',
   'mp4-vertical',
   'webm-vertical',
+  'mp4-square',
+  'webm-square',
   'gif',
   'gif-vertical',
+  'gif-square',
 ] as const;
 
 function formatLabel(format: string): string {
