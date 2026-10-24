@@ -139,7 +139,7 @@ export function shiftOverlays(
     })),
     follow: holdAcross(overlays.follow, cards, at, (pageMs, atMs) => ({
       atMs,
-      x: followAt(overlays.follow, pageMs) ?? 0,
+      ...(followAt(overlays.follow, pageMs) ?? { x: 0, y: 0 }),
     })),
     squareFollow: holdAcross(
       overlays.squareFollow,
@@ -147,7 +147,7 @@ export function shiftOverlays(
       at,
       (pageMs, atMs) => ({
         atMs,
-        x: followAt(overlays.squareFollow, pageMs) ?? 0,
+        ...(followAt(overlays.squareFollow, pageMs) ?? { x: 0, y: 0 }),
       }),
     ),
     masks: overlays.masks.map((mask) => ({
