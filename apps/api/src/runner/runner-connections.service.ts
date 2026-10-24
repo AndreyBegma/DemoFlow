@@ -22,6 +22,8 @@ import {
   type LaunchMessage,
   PING_INTERVAL_MS,
   parseClientMessage,
+  RUN_OPTIONS,
+  type RunOption,
   type ServerMessage,
   type VideoChunk,
   type VideoMessage,
@@ -45,6 +47,8 @@ interface Connection {
   warnedStrayArtifacts: boolean;
   /** A `scenarios.*`, `run.*` or `launches.sync` frame for no pending request or launch was logged on this socket. */
   warnedStrayLaunch: boolean;
+  /** The known `run.start` options this socket's `launches.sync` announced (spec #325, Decision 4). */
+  runOptions: RunOption[];
 }
 
 /**
@@ -145,6 +149,11 @@ export class RunnerConnections
     return this.open.has(runnerId);
   }
 
+  /** What the machine's current socket accepts on `run.start`; none offline or before its sync. */
+  runOptions(runnerId: string): readonly RunOption[] {
+    return this.open.get(runnerId)?.runOptions ?? [];
+  }
+
   /** To the machine's current socket; false when it is not online. */
   sendTo(runnerId: string, message: ServerMessage): boolean {
     const connection = this.open.get(runnerId);
@@ -186,6 +195,7 @@ export class RunnerConnections
       warnedStrayChunk: false,
       warnedStrayArtifacts: false,
       warnedStrayLaunch: false,
+      runOptions: [],
     };
     // Listeners first: a frame that arrives during the writes below counts.
     socket.on('message', (data, isBinary) =>
@@ -347,7 +357,13 @@ export class RunnerConnections
       case 'run.error':
       case 'run.finished':
       case 'run.progress':
+        this.relayLaunch(connection, message);
+        return;
       case 'launches.sync':
+        // Unknown options are dropped without a log (spec #325).
+        connection.runOptions = RUN_OPTIONS.filter((option) =>
+          message.runOptions?.includes(option),
+        );
         this.relayLaunch(connection, message);
         return;
     }

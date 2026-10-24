@@ -23,7 +23,7 @@ code. Only `baseUrl` is required.
 | Key | Meaning |
 |---|---|
 | `baseUrl` | Where your app runs. Scenario paths are relative to it. |
-| `allowedOrigins` | The origins a run may visit, as bare origins such as `https://example.com`. Defaults to the origin of `baseUrl`. |
+| `allowedOrigins` | The origins a run may visit, as bare origins such as `https://example.com`. The origin of the run's base URL is always one of them. |
 | `devCommand` | How to start your app. See below. |
 | `artifactsDir` | Where runs are written, relative to the project root. |
 | `render` | How the video looks. See below. |
@@ -36,6 +36,56 @@ With a `devCommand`, `demoflow run` and `demoflow record` start your app
 themselves, wait until `readyUrl` answers, and stop it when they finish. Any
 HTTP answer below 500 counts as up. If the app exits early, or does not answer
 within `timeoutMs`, the command fails and tells you which.
+
+If `readyUrl` already answers, that app is used as is and never stopped.
+`demoflow run --fresh-app` refuses instead, with exit 2 and
+`app-already-running:` on stderr, whatever the status of the answer.
+
+### Ports: `${PORT}` and `${BASE_URL}`
+
+To run several copies of an app at once, each on its own port, let the
+config follow the port of the run:
+
+```json
+{
+  "baseUrl": "http://127.0.0.1:${PORT:-3000}",
+  "devCommand": {
+    "command": "npx",
+    "args": ["vite", "--port", "${PORT}", "--strictPort"],
+    "readyUrl": "${BASE_URL}/"
+  }
+}
+```
+
+| Template | Allowed in | Value |
+|---|---|---|
+| `${PORT}` | `baseUrl`, `devCommand.command`, each `devCommand.args` entry, `devCommand.readyUrl` | `--port`, else `PORT` from the environment, else the default. |
+| `${PORT:-3000}` | the same | `3000` when neither `--port` nor `PORT` gives a port. |
+| `${BASE_URL}` | `devCommand.command`, `args`, `readyUrl` | `--base-url`, else `baseUrl` once filled. Never read from the environment. |
+| `$${` | anywhere | A literal `${`, e.g. `"sh", "-c", "echo $${HOME}"`. |
+
+Any other name, such as `${HOME}`, is an error, and so is `${` in
+`allowedOrigins` or `artifactsDir`. `demoflow run` and `demoflow record` need
+a port for every `${PORT}`; `check`, `list`, `runs` and `render` load the
+config without one. Whenever a port is used, it is also set as `PORT` in the
+app's environment, which Next.js, Vite-based and Express apps read.
+
+Two checkouts of the same app, started at the same time:
+
+```sh
+(cd checkout-a && npx demoflow run demoflow/tour.demo.json --port 4101 --fresh-app)
+(cd checkout-b && npx demoflow run demoflow/tour.demo.json --port 4102 --fresh-app)
+```
+
+Each starts its own app on its own port and records it. Prefer a dev command
+that fails when its port is taken, like `vite --strictPort`: an app that grabs
+the port after the `--fresh-app` check then fails the start instead of being
+recorded.
+
+`devCommand` runs without a shell on every OS, and DemoFlow fills each
+argument itself, so the same config works on Linux, macOS and Windows. A
+filled value stays one argument. `%PORT%` and `$PORT` are passed as literal
+text: write `${PORT}`.
 
 ## Artifacts
 

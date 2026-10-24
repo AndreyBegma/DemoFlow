@@ -9,12 +9,14 @@ import {
 } from '@nestjs/common';
 import { Clock } from '../common/clock';
 import { PrismaService } from '../database/prisma.service';
+import type { RunFormat } from '../projects/projects.dto';
 import {
   type LaunchSink,
   RunnerConnections,
 } from '../runner/runner-connections.service';
 import type {
   LaunchMessage,
+  RunOption,
   RunOutcome,
   RunPhase,
 } from '../runner/runner-socket';
@@ -68,12 +70,16 @@ export interface LaunchView {
   runId: string | null;
   /** Only while `running`; null before the first frame (spec #301, Decision 7). */
   progress: RunProgress | null;
+  /** The formats the browser chose; null for the project's own (spec #325, Decision 5). */
+  formats: RunFormat[] | null;
 }
 
 export interface ScenarioList {
   scenarios: { id: string; name: string }[];
   truncated: boolean;
   skipped: number;
+  /** What the machine accepts on a start (spec #325, Decision 7). */
+  runOptions: RunOption[];
 }
 
 /** The project a request is for, once every check of Decision 3 passed. */
@@ -107,6 +113,10 @@ const RUNNER_ERRORS: Record<string, Failure> = {
   },
   busy: { status: HttpStatus.CONFLICT, error: 'runner-busy' },
   'reporting-off': { status: HttpStatus.CONFLICT, error: 'reporting-off' },
+  'options-invalid': {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    error: 'options-invalid',
+  },
 };
 const RUNNER_ERROR: Failure = {
   status: HttpStatus.BAD_GATEWAY,
@@ -142,6 +152,8 @@ interface Launch {
   runnerId: string;
   scenarioId: string;
   scenarioName: string | null;
+  /** Set at start, never changed. */
+  formats: RunFormat[] | null;
   state: LaunchState;
   /** Clock ms. */
   startedAt: number;
@@ -233,7 +245,11 @@ export class LaunchesService
    * active launch per Runner (Decision 3): checked here, synchronously, so
    * two concurrent starts cannot both pass.
    */
-  async start(target: LaunchTarget, scenarioId: string): Promise<LaunchView> {
+  async start(
+    target: LaunchTarget,
+    scenarioId: string,
+    formats?: RunFormat[],
+  ): Promise<LaunchView> {
     if (this.busy(target.runnerId)) {
       throw runError(HttpStatus.CONFLICT, 'runner-busy');
     }
@@ -245,6 +261,7 @@ export class LaunchesService
         runnerId: target.runnerId,
         scenarioId,
         scenarioName: null,
+        formats: formats ?? null,
         state: 'starting',
         startedAt: now,
         since: now,
@@ -261,6 +278,8 @@ export class LaunchesService
         requestId: launch.id,
         rootPath: target.rootPath,
         scenarioId,
+        // Spec #325: no `options` key at all without formats.
+        ...(formats && { options: { formats } }),
       });
       if (!sent) {
         this.failStart(launch, OFFLINE, OFFLINE.error);
@@ -319,6 +338,7 @@ export class LaunchesService
                 })),
                 truncated: message.truncated,
                 skipped: message.skipped,
+                runOptions: [...this.connections.runOptions(runnerId)],
               },
             },
             'listed',
@@ -653,6 +673,8 @@ export class LaunchesService
         runnerId: launch.runnerId,
         outcome: label,
         durationMs: this.now() - launch.startedAt,
+        // Spec #325, Decision 8: a count, no names.
+        formats: launch.formats?.length ?? 'default',
       }),
     );
   }
@@ -675,6 +697,7 @@ function toView(launch: Launch): LaunchView {
         : new Date(launch.finishedAt).toISOString(),
     runId: launch.runId,
     progress: launch.state === 'running' ? launch.progress : null,
+    formats: launch.formats,
   };
 }
 

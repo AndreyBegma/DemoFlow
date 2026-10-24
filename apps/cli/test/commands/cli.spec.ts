@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: `${PORT}` is the config's own syntax, written as plain text on purpose.
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { cp, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
@@ -642,23 +643,33 @@ describe('demoflow run', () => {
     expect(result.stdout).not.toContain('correct horse');
   });
 
-  it('--base-url outside allowedOrigins exits 2 with origin-not-allowed', async () => {
-    const result = await demoflow(
-      [
-        'run',
-        scenario('customers'),
-        '--json',
-        '--base-url',
-        'https://example.com',
-        '--out',
-        out,
-      ],
-      project,
-    );
-    expect(result.code).toBe(2);
-    expect(JSON.parse(result.stdout).stages.readiness.error.message).toContain(
-      'origin-not-allowed',
-    );
+  it('--base-url on another origin than baseUrl passes readiness: allowedOrigins follows it (spec 337)', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-base-url-'));
+    try {
+      await writeFile(
+        path.join(dir, 'demoflow.config.json'),
+        JSON.stringify({ baseUrl: 'http://localhost:3000' }),
+      );
+      await cp(FIXTURE_SCENARIOS, path.join(dir, 'demoflow'), {
+        recursive: true,
+      });
+      const result = await demoflow(
+        [
+          'run',
+          path.join(dir, 'demoflow/customers.demo.json'),
+          '--json',
+          '--base-url',
+          fixture.origin,
+          '--out',
+          out,
+        ],
+        dir,
+      );
+      expect(result.code, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).status).toBe('completed');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('--run-id writes to <home>/runs/<id>/ and a reused id exits 2', async () => {
@@ -891,5 +902,211 @@ describe('demoflow run starts the app from devCommand', () => {
     expect(json.stages.execution.status).toBe('skipped');
     expect(json.stages.rendering.status).toBe('skipped');
     expect(alive(Number(await readFile(marker, 'utf8')))).toBe(false);
+  });
+
+  it('--port without ${PORT} in the config warns once and still sets PORT for the app', async () => {
+    const port = await freePort();
+    const marker = path.join(out, `app-env-${port}.txt`);
+    const dir = await track({
+      command: process.execPath,
+      args: [
+        '-e',
+        `require('node:fs').writeFileSync(${JSON.stringify(marker)}, String(process.env.PORT));
+         require('node:http').createServer((q, s) => s.end('ok')).listen(Number(process.env.PORT), '127.0.0.1')`,
+      ],
+      readyUrl: `http://127.0.0.1:${port}/`,
+    });
+    const result = await demoflow(
+      [
+        'run',
+        path.join(dir, 'demoflow/customers.demo.json'),
+        '--json',
+        '--port',
+        String(port),
+        '--out',
+        out,
+      ],
+      dir,
+    );
+    expect(result.code, result.stderr).toBe(0);
+    const warning = `warning: --port ${port} is given but demoflow.config.json uses no \${PORT}; baseUrl and readyUrl are unchanged`;
+    expect(result.stderr.split(warning)).toHaveLength(2);
+    expect(await readFile(marker, 'utf8')).toBe(String(port));
+  });
+
+  it('--fresh-app exits 2 fast when readyUrl already answers, with nothing started or written', async () => {
+    const holder = createServer((_, response) => response.end('someone else'));
+    await new Promise<void>((resolve) =>
+      holder.listen(0, '127.0.0.1', resolve),
+    );
+    const { port } = holder.address() as AddressInfo;
+    try {
+      const dir = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-fresh-'));
+      dirs.push(dir);
+      await writeFile(
+        path.join(dir, 'demoflow.config.json'),
+        JSON.stringify({
+          baseUrl: 'http://127.0.0.1:${PORT}',
+          devCommand: {
+            command: 'demoflow-no-such-command',
+            readyUrl: '${BASE_URL}/',
+          },
+        }),
+      );
+      // No scenario warning: stderr is the refusal alone.
+      await writeFile(
+        path.join(dir, 'a.demo.json'),
+        JSON.stringify({
+          schemaVersion: 1,
+          name: 'A',
+          steps: [{ action: 'navigate', path: '/' }],
+        }),
+      );
+      const started = performance.now();
+      const result = await demoflow(
+        [
+          'run',
+          path.join(dir, 'a.demo.json'),
+          '--json',
+          '--port',
+          String(port),
+          '--fresh-app',
+          '--run-id',
+          'fresh-refused',
+          '--out',
+          out,
+        ],
+        dir,
+      );
+      expect(performance.now() - started).toBeLessThan(5_000);
+      expect(result.code).toBe(2);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toMatch(
+        new RegExp(
+          `^app-already-running: --fresh-app: http://127\\.0\\.0\\.1:${port}/ already answers`,
+        ),
+      );
+      expect(await exists(path.join(out, 'runs', 'fresh-refused'))).toBe(false);
+    } finally {
+      await new Promise<void>((resolve) => holder.close(() => resolve()));
+    }
+  });
+});
+
+describe('two runs in parallel, each on its own port (spec 337)', () => {
+  // Listens on the port of its --port argument and names its checkout, so a
+  // video of the wrong app cannot pass the scenario.
+  const SERVER = `import { readFileSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+const here = new URL('.', import.meta.url);
+const name = readFileSync(new URL('name.txt', here), 'utf8').trim();
+const port = process.argv[process.argv.indexOf('--port') + 1];
+writeFileSync(new URL('server.pid', here), String(process.pid));
+createServer((request, response) => {
+  response.setHeader('content-type', 'text/html');
+  response.end('<!doctype html><title>' + name + '</title><h1>checkout ' + name + ' port ' + port + ' env ' + process.env.PORT + '</h1>');
+}).listen(Number(port), '127.0.0.1');
+`;
+
+  async function freePort(): Promise<number> {
+    const server = createServer();
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    return port;
+  }
+
+  async function checkout(name: string, port: number): Promise<string> {
+    const dir = await mkdtemp(path.join(tmpdir(), `demoflow-cli-${name}-`));
+    await writeFile(path.join(dir, 'server.mjs'), SERVER);
+    await writeFile(path.join(dir, 'name.txt'), name);
+    await writeFile(
+      path.join(dir, 'demoflow.config.json'),
+      JSON.stringify({
+        baseUrl: 'http://127.0.0.1:${PORT}',
+        devCommand: {
+          command: process.execPath,
+          args: ['server.mjs', '--port', '${PORT}'],
+          readyUrl: '${BASE_URL}/',
+        },
+      }),
+    );
+    const heading = { role: 'heading' };
+    await writeFile(
+      path.join(dir, 'own.demo.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: `Checkout ${name}`,
+        steps: [
+          { action: 'navigate', path: '/' },
+          {
+            action: 'assertText',
+            target: heading,
+            text: `checkout ${name} port ${port}`,
+          },
+          { action: 'assertText', target: heading, text: `env ${port}` },
+        ],
+      }),
+    );
+    return dir;
+  }
+
+  const alive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const dirs: string[] = [];
+  afterAll(async () => {
+    await Promise.all(
+      dirs.map((dir) => rm(dir, { recursive: true, force: true })),
+    );
+  });
+
+  it('--port A and --port B in two checkouts start their own app and record their own page', async () => {
+    const portA = await freePort();
+    let portB = await freePort();
+    while (portB === portA) portB = await freePort();
+    const a = await checkout('A', portA);
+    const b = await checkout('B', portB);
+    dirs.push(a, b);
+    const run = (dir: string, port: number) =>
+      demoflow(
+        [
+          'run',
+          path.join(dir, 'own.demo.json'),
+          '--json',
+          '--port',
+          String(port),
+          '--out',
+          path.join(dir, 'out'),
+        ],
+        dir,
+      );
+    const [resultA, resultB] = await Promise.all([
+      run(a, portA),
+      run(b, portB),
+    ]);
+    for (const [dir, result] of [
+      [a, resultA],
+      [b, resultB],
+    ] as const) {
+      expect(result.code, result.stderr).toBe(0);
+      const json = JSON.parse(result.stdout);
+      expect(json.status).toBe('completed');
+      const mp4 = json.renders.find(
+        (render: { format: string }) => render.format === 'mp4',
+      );
+      expect(mp4).toBeDefined();
+      expect(await exists(path.join(json.runDir, mp4.file))).toBe(true);
+      const pid = Number(await readFile(path.join(dir, 'server.pid'), 'utf8'));
+      expect(alive(pid)).toBe(false);
+    }
   });
 });

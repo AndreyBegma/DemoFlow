@@ -180,9 +180,13 @@ const startOf = (scenarioId: string, rootPath = root) => ({
   scenarioId,
 });
 
-async function answered(count = 1): Promise<Record<string, unknown>> {
-  await vi.waitFor(() =>
-    expect(reply.sent.length).toBeGreaterThanOrEqual(count),
+async function answered(
+  count = 1,
+  timeout?: number,
+): Promise<Record<string, unknown>> {
+  await vi.waitFor(
+    () => expect(reply.sent.length).toBeGreaterThanOrEqual(count),
+    timeout === undefined ? undefined : { timeout },
   );
   return reply.sent[count - 1] as Record<string, unknown>;
 }
@@ -281,13 +285,14 @@ describe('scenarios.list', () => {
       );
     }
     send(launcher(), listOf());
-    const frame = await answered();
+    // Listing and parsing 105 files outlasts the 1 s default on the Windows runner.
+    const frame = await answered(1, 10_000);
     const scenarios = frame.scenarios as Array<{ id: string }>;
     expect(scenarios).toHaveLength(LIST_MAX_SCENARIOS);
     expect(scenarios[0]?.id).toBe('demoflow/s000.demo.json');
     expect(scenarios.at(-1)?.id).toBe('demoflow/s099.demo.json');
     expect(frame.truncated).toBe(true);
-  });
+  }, 15_000);
 
   it('cuts names to 200 characters', async () => {
     register();
@@ -573,6 +578,95 @@ describe('run.start', () => {
     send(launcher(), startOf('demoflow/nested/a.demo.json'));
     expect(await answered()).toMatchObject({ code: 'reporting-off' });
     expect(spawned.calls).toEqual([]);
+  });
+
+  it('appends --format once per chosen format, in order, after --project', async () => {
+    send(launcher(), {
+      ...startOf('demoflow/nested/a.demo.json'),
+      options: { formats: ['gif', 'mp4-vertical'] },
+    });
+    await answered();
+    expect(spawned.calls[0]?.args).toEqual([
+      'run',
+      path.join(root, 'demoflow', 'nested', 'a.demo.json'),
+      '--json',
+      '--progress',
+      '--run-id',
+      'local-1',
+      '--project',
+      root,
+      '--format',
+      'gif',
+      '--format',
+      'mp4-vertical',
+    ]);
+    expect(logger.text()).toContain('started run local-1, formats 2');
+  });
+
+  it.each([
+    ['null', null],
+    ['an array', []],
+    ['a string', 'mp4'],
+    ['an unknown key', { formats: ['mp4'], headed: true }],
+    ['a base url', { formats: ['mp4'], baseUrl: 'https://x' }],
+    ['no formats', {}],
+    ['empty formats', { formats: [] }],
+    ['a repeat', { formats: ['mp4', 'mp4'] }],
+    ['an unknown format', { formats: ['mov'] }],
+  ])('answers options-invalid to %s, spawns nothing and leaves no launch', async (_why, options) => {
+    const target = launcher();
+    send(target, { ...startOf('demoflow/nested/a.demo.json'), options });
+    expect(await answered()).toEqual({
+      type: 'run.error',
+      requestId: REQUEST,
+      code: 'options-invalid',
+    });
+    expect(spawned.calls).toEqual([]);
+    expect(logger.text()).toContain('refused options-invalid');
+    send(target, startOf('demoflow/nested/a.demo.json'));
+    expect(await answered(2)).toMatchObject({ type: 'run.started' });
+  });
+
+  it('reads no project file for invalid options', async () => {
+    const loads: string[] = [];
+    send(
+      launcher({
+        loadProject: (rootPath) => {
+          loads.push(rootPath);
+          return { ok: true, home };
+        },
+      }),
+      {
+        ...startOf('demoflow/nested/a.demo.json'),
+        options: { headed: true },
+      },
+    );
+    await answered();
+    expect(loads).toEqual([]);
+  });
+
+  it('answers reporting-off and busy before options-invalid', async () => {
+    env = { CI: 'true' };
+    const bad = { formats: ['mov'] };
+    send(launcher(), {
+      ...startOf('demoflow/nested/a.demo.json'),
+      options: bad,
+    });
+    expect(await answered()).toMatchObject({ code: 'reporting-off' });
+
+    env = {};
+    const target = launcher();
+    send(target, startOf('demoflow/nested/a.demo.json'));
+    send(target, {
+      ...startOf('demoflow/nested/a.demo.json'),
+      requestId: 'second',
+      options: bad,
+    });
+    // The busy refusal is synchronous; run.started follows the first start's checks.
+    expect(await answered(2)).toMatchObject({
+      requestId: 'second',
+      code: 'busy',
+    });
   });
 
   it('answers io when the child cannot be spawned', async () => {

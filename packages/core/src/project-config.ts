@@ -264,28 +264,52 @@ export const RenderConfigSchema = z
   .prefault({});
 export type RenderConfig = z.infer<typeof RenderConfigSchema>;
 
+const PORT_TEMPLATE =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: `${PORT}` is the config's own syntax.
+  '${PORT} is the port of the run: --port, else PORT from the environment, else the default in ${PORT:-3000}. $${ is a literal ${.';
+const DEV_TEMPLATE = `${PORT_TEMPLATE} \${BASE_URL} is --base-url, else baseUrl after substitution.`;
+
 /** `demoflow.config.json` at the project root — data, never code (ADR-0003 §6). */
 export const ProjectConfigSchema = z
   .strictObject({
     $schema: JsonSchemaRefSchema,
-    baseUrl: HttpUrlSchema,
-    // Defaults to the origin of `baseUrl`.
+    baseUrl: HttpUrlSchema.meta({
+      description: `Where the app runs. ${PORT_TEMPLATE}`,
+    }),
+    // The origin of `baseUrl` is always one of them.
     allowedOrigins: z.array(OriginSchema).optional(),
     devCommand: z
       .strictObject({
-        command: NonEmptyStringSchema,
-        args: z.array(z.string()).optional(),
-        readyUrl: HttpUrlSchema,
+        command: NonEmptyStringSchema.meta({
+          description: `The program that starts the app, run without a shell. ${DEV_TEMPLATE}`,
+        }),
+        args: z
+          .array(z.string())
+          .optional()
+          .meta({
+            description: `Its arguments, one string each. ${DEV_TEMPLATE}`,
+          }),
+        readyUrl: HttpUrlSchema.meta({
+          description: `The app is up once this URL answers. ${DEV_TEMPLATE}`,
+        }),
         timeoutMs: z.number().int().positive().optional(),
       })
       .optional(),
     artifactsDir: NonEmptyStringSchema.optional(),
     render: RenderConfigSchema,
   })
-  .transform(({ allowedOrigins, ...config }) => ({
-    ...config,
-    allowedOrigins: allowedOrigins ?? [new URL(config.baseUrl).origin],
-  }))
+  .transform(({ allowedOrigins, ...config }) => {
+    const origin = new URL(config.baseUrl).origin;
+    return {
+      ...config,
+      allowedOrigins:
+        allowedOrigins === undefined
+          ? [origin]
+          : allowedOrigins.includes(origin)
+            ? allowedOrigins
+            : [...allowedOrigins, origin],
+    };
+  })
   .meta({
     title: 'DemoFlow project config',
     description: 'demoflow.config.json at the project root.',

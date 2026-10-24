@@ -15,7 +15,7 @@ import { t } from '@/i18n';
 import { formatDate } from '@/lib/format-date';
 import { formatDuration } from '@/lib/format-duration';
 import { formatRelative } from '@/lib/format-relative';
-import { canRunAgain } from '@/lib/launch';
+import { canRunAgain, runAgainFormats } from '@/lib/launch';
 import { getProjects, getRunDetail } from '../../../_data';
 
 export default async function RunPage({
@@ -127,6 +127,7 @@ export default async function RunPage({
           scenarioName={run.scenarioName}
           machineName={machine.name}
           offline={againState === 'offline'}
+          formats={runAgainFormats(run.formats, machine.runOptions)}
         />
       ) : null}
       <Card pad="lg">

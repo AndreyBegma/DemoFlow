@@ -318,7 +318,13 @@ export interface RunDetail {
   run: RunDetailView;
   project: { id: string; name: string };
   /** Null when the machine was removed. */
-  machine: { id: string; name: string; online: boolean } | null;
+  machine: {
+    id: string;
+    name: string;
+    online: boolean;
+    /** What the machine accepts on a start; absent on an older API. */
+    runOptions?: string[];
+  } | null;
 }
 
 export function getRun(id: string, target?: Target) {
@@ -365,6 +371,8 @@ export interface ScenarioList {
   truncated: boolean;
   /** `*.demo.json` files that could not be read as scenarios. */
   skipped: number;
+  /** What the machine accepts on a start; absent on an API older than #325. */
+  runOptions?: string[];
 }
 
 export type LaunchState =
@@ -396,6 +404,8 @@ export interface LaunchView {
   finishedAt: string | null;
   runId: string | null;
   progress?: LaunchProgress | null;
+  /** The formats the start asked for; null for the project's own. */
+  formats?: string[] | null;
 }
 
 export function listScenarios(projectId: string) {
@@ -405,11 +415,21 @@ export function listScenarios(projectId: string) {
   );
 }
 
-/** Sends the scenario id only; the machine owns everything else. */
-export function startLaunch(projectId: string, scenarioId: string) {
+/**
+ * Sends the scenario id and, only when given, the output formats (ADR-0017);
+ * the machine owns everything else.
+ */
+export function startLaunch(
+  projectId: string,
+  scenarioId: string,
+  formats?: string[],
+) {
   return request<{ launch: LaunchView }>(
     `/projects/${encodeURIComponent(projectId)}/launch`,
-    { method: 'POST', body: { scenarioId } },
+    {
+      method: 'POST',
+      body: formats ? { scenarioId, formats } : { scenarioId },
+    },
   );
 }
 

@@ -57,11 +57,16 @@ npx demoflow run demoflow/first.demo.json
 
 | Flag | Meaning |
 |---|---|
-| `--base-url <url>` | Override `baseUrl` from `demoflow.config.json`. |
+| `--base-url <url>` | Override `baseUrl` from `demoflow.config.json`. `allowedOrigins` follows it. |
+| `--port <n>` | Fill `${PORT}` in the config and set `PORT` for the app. An integer from 1 to 65535. See [Starting your app](/docs/config#starting-your-app). |
+| `--fresh-app` | Refuse to run when `readyUrl` already answers, instead of reusing that app. Needs `devCommand`. |
 | `--out <dir>` | The artifacts home, which holds `runs/`. |
 | `--headed` | Show the browser window. |
 | `--json` | Print the result as one JSON object on stdout. |
 | `--format <format>` | A file to render: `mp4`, `gif`, `webm`, `mp4-vertical`, `gif-vertical`, `webm-vertical`, `mp4-square`, `gif-square` or `webm-square`. Repeat it for several. Replaces `render.formats`. |
+
+`--port` with a config that uses no `${PORT}` still sets `PORT` for the app,
+and prints a warning that `baseUrl` and `readyUrl` are unchanged.
 
 Exit codes:
 
@@ -69,8 +74,14 @@ Exit codes:
 |---|---|
 | `0` | The run completed, with or without warnings. |
 | `1` | A step failed or an assertion did not hold. |
-| `2` | The input was invalid: the scenario, the config, or a missing secret. |
+| `2` | The input was invalid: the scenario, the config, a missing secret, or a `--port` that is not a port. Also when the app was not ready, and with `--fresh-app` when another app already answers on `readyUrl`. |
 | `3` | Recording, rendering or storage failed. |
+
+With `--fresh-app`, a taken port is reported on stderr as
+`app-already-running: --fresh-app: <readyUrl> already answers; another app
+holds this port. Stop it or pass another --port.` Nothing is printed on
+stdout, even with `--json`, no run directory is created and the browser is
+not checked, so a caller can retry at once on another port.
 
 ## render
 
