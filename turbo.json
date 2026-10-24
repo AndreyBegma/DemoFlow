@@ -19,7 +19,8 @@
     "start:dev": {
       "cache": false,
       "persistent": true,
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "passThroughEnv": ["PORT"]
     },
     "db:migrate": {
       "cache": false

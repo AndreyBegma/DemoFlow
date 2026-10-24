@@ -5,7 +5,7 @@
   "scripts": {
     "build": "next build",
     "start": "next start -p 3670",
-    "start:dev": "next dev --turbopack -p 3670",
+    "start:dev": "node scripts/dev.mjs",
     "lint": "biome lint src",
     "test": "node --test src/lib/docs-nav.test.mjs src/lib/playback.test.mjs src/lib/launch.test.mjs src/lib/format-bytes.test.mjs src/lib/run-delete.test.mjs"
   },

@@ -1,0 +1,10 @@
+{
+  "baseUrl": "http://127.0.0.1:3670",
+  "allowedOrigins": ["http://127.0.0.1:3670", "http://localhost:3670"],
+  "devCommand": {
+    "command": "bun",
+    "args": ["run", "turbo", "run", "start:dev", "--filter=@demoflow/web"],
+    "readyUrl": "http://127.0.0.1:3670/",
+    "timeoutMs": 180000
+  }
+}
