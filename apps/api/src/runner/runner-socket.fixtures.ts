@@ -139,6 +139,11 @@ export class TestSocket {
     return ask as LaunchRequest;
   }
 
+  /** `launches.sync` (spec #284): the launch ids this daemon still runs. */
+  sync(running: string[]): void {
+    this.send({ type: 'launches.sync', running });
+  }
+
   /**
    * Plays the daemon for one stream of `file`: the head for `start`–`end`,
    * the bytes in chunks of `chunkSize`, then `video.end`.

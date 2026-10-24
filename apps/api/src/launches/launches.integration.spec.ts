@@ -20,8 +20,10 @@ import {
   LAUNCH_RETENTION_MS,
   LaunchesService,
   LIST_TIMEOUT_MS,
+  RECONNECT_GRACE_MS,
   RUN_TIMEOUT_MS,
   START_TIMEOUT_MS,
+  SYNC_TIMEOUT_MS,
 } from './launches.service';
 
 const UUID_V4 =
@@ -164,6 +166,12 @@ describe('starting and cancelling a run from the website (integration)', () => {
 
   function online(): boolean {
     return t.app.get(RunnerConnections).isOnline(machine.runnerId);
+  }
+
+  /** The socket drops without a goodbye, and the server has noticed. */
+  async function drop(socket: TestSocket): Promise<void> {
+    socket.ws.terminate();
+    await eventually(() => !online());
   }
 
   /** True once `promise` settled; for "not yet" checks. */
@@ -583,29 +591,229 @@ describe('starting and cancelling a run from the website (integration)', () => {
       expect((await latest()).body).toEqual({ launch: null });
     });
 
-    it('marks a running launch lost, and drops its run.finished on a later socket', async () => {
+    it('keeps a running launch running, and marks it lost 90 s after the close without a reconnect', async () => {
+      const socket = await daemon();
+      await running(socket);
+      await drop(socket);
+      expect(await launchState()).toBe('running');
+
+      sweep(RECONNECT_GRACE_MS - 1);
+      expect(await launchState()).toBe('running');
+      sweep(1);
+      const { launch } = (await latest()).body;
+      expect(launch).toMatchObject({ state: 'lost', runId: null });
+      expect(launch.finishedAt).toBe(t.clock.now().toISOString());
+    });
+
+    it('marks a cancelling launch lost when a socket replaces it and never syncs', async () => {
+      const socket = await daemon();
+      await running(socket);
+      await cancel();
+      await daemon();
+      expect(await launchState()).toBe('cancelling');
+      sweep(SYNC_TIMEOUT_MS);
+      expect(await launchState()).toBe('lost');
+    });
+  });
+
+  describe('reconnect (spec #284)', () => {
+    it('reattaches a running launch the new socket syncs, and run.finished ends it', async () => {
       const socket = await daemon();
       const { ask } = await running(socket);
-      socket.ws.terminate();
-      await eventually(async () => (await launchState()) === 'lost');
+      await drop(socket);
 
       const later = await daemon();
+      later.sync([ask.requestId]);
+      await later.roundTrip();
+      sweep(RECONNECT_GRACE_MS);
+      expect(await launchState()).toBe('running');
+      await expectNothingSent(later);
+
       later.send({
         type: 'run.finished',
         requestId: ask.requestId,
         outcome: 'passed',
         runId,
       });
+      await eventually(async () => (await launchState()) === 'passed');
+      expect((await latest()).body.launch.runId).toBe(runId);
+    });
+
+    it('keeps the 20-minute run timeout counting from run.started', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      sweep(RUN_TIMEOUT_MS - 60_000);
+      await drop(socket);
+      const later = await daemon();
+      later.sync([ask.requestId]);
       await later.roundTrip();
+      sweep(60_000);
       expect(await launchState()).toBe('lost');
     });
 
-    it('marks a cancelling launch lost when another socket replaces it', async () => {
+    it('marks a launch lost when the new socket syncs without it', async () => {
       const socket = await daemon();
       await running(socket);
-      await cancel();
+      await drop(socket);
+
+      const later = await daemon();
+      later.sync([]);
+      await later.roundTrip();
+      expect((await latest()).body.launch).toMatchObject({
+        state: 'lost',
+        runId: null,
+      });
+    });
+
+    it('marks a launch lost 10 s after a new socket that never syncs, and keeps the socket', async () => {
+      const socket = await daemon();
+      await running(socket);
+      await drop(socket);
+
       await daemon();
+      sweep(SYNC_TIMEOUT_MS - 1);
+      expect(await launchState()).toBe('running');
+      sweep(1);
       expect(await launchState()).toBe('lost');
+      expect(online()).toBe(true);
+    });
+
+    it('keeps the grace from the first close across a reconnect that drops again', async () => {
+      const socket = await daemon();
+      await running(socket);
+      await drop(socket);
+      sweep(RECONNECT_GRACE_MS - 5000);
+      await drop(await daemon());
+      sweep(4999);
+      expect(await launchState()).toBe('running');
+      sweep(1);
+      expect(await launchState()).toBe('lost');
+    });
+
+    it('sends run.cancel again for a cancelling launch it reattaches, and restarts its timeout', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      await cancel();
+      await socket.nextLaunch('run.cancel');
+      await drop(socket);
+
+      const later = await daemon();
+      later.sync([ask.requestId]);
+      expect(await later.nextLaunch('run.cancel')).toEqual({
+        type: 'run.cancel',
+        requestId: ask.requestId,
+      });
+      sweep(CANCEL_TIMEOUT_MS - 1);
+      expect(await launchState()).toBe('cancelling');
+      sweep(1);
+      expect(await launchState()).toBe('lost');
+    });
+
+    it('cancels a detached launch without sending, and sends run.cancel once it is synced', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      await drop(socket);
+
+      const res = await cancel();
+      expect(res.status).toBe(202);
+      expect(res.body.launch.state).toBe('cancelling');
+      // The cancel timeout waits for the machine; the grace does not.
+      sweep(CANCEL_TIMEOUT_MS);
+      expect(await launchState()).toBe('cancelling');
+
+      const later = await daemon();
+      await expectNothingSent(later);
+      later.sync([ask.requestId]);
+      await later.nextLaunch('run.cancel');
+      later.send({
+        type: 'run.finished',
+        requestId: ask.requestId,
+        outcome: 'cancelled',
+        runId: null,
+      });
+      await eventually(async () => (await launchState()) === 'cancelled');
+    });
+
+    it('accepts run.finished from the new socket before its sync', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      await drop(socket);
+
+      const later = await daemon();
+      later.send({
+        type: 'run.finished',
+        requestId: ask.requestId,
+        outcome: 'failed',
+        runId,
+      });
+      await eventually(async () => (await launchState()) === 'failed');
+      later.sync([]);
+      await later.roundTrip();
+      sweep(SYNC_TIMEOUT_MS);
+      expect((await latest()).body.launch).toMatchObject({
+        state: 'failed',
+        runId,
+      });
+    });
+
+    it("ignores an unknown id and another machine's launch, and sends nothing", async () => {
+      const desktop = await pair(http, alice, 'Desktop');
+      const blog = await report(desktop, '/home/alice/blog');
+      const other = await daemon(desktop);
+      const pending = start(
+        { scenarioId: SCENARIO },
+        alice.cookie,
+        blog.projectId,
+      );
+      const ask = await other.nextLaunch('run.start');
+      other.send({
+        type: 'run.started',
+        requestId: ask.requestId,
+        scenarioName: 'Checkout',
+      });
+      expect((await pending).status).toBe(202);
+
+      const socket = await daemon();
+      socket.sync([randomUUID(), ask.requestId]);
+      await expectNothingSent(socket);
+      await expectNothingSent(other);
+      expect(online()).toBe(true);
+      expect((await latest()).body).toEqual({ launch: null });
+      expect(
+        (await latest(alice.cookie, blog.projectId)).body.launch.state,
+      ).toBe('running');
+    });
+
+    it('drops a second sync on the same socket', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      await drop(socket);
+
+      const later = await daemon();
+      later.sync([ask.requestId]);
+      later.sync([]);
+      await later.roundTrip();
+      expect(online()).toBe(true);
+      expect(await launchState()).toBe('running');
+    });
+
+    it('409s runner-busy while a detached launch awaits its sync and once reattached', async () => {
+      const socket = await daemon();
+      const { ask } = await running(socket);
+      await drop(socket);
+      expect((await start()).body).toEqual({ error: 'runner-offline' });
+
+      const later = await daemon();
+      const awaiting = await start();
+      expect(awaiting.status).toBe(409);
+      expect(awaiting.body).toEqual({ error: 'runner-busy' });
+
+      later.sync([ask.requestId]);
+      await later.roundTrip();
+      const reattached = await start();
+      expect(reattached.status).toBe(409);
+      expect(reattached.body).toEqual({ error: 'runner-busy' });
+      await expectNothingSent(later);
     });
   });
 
