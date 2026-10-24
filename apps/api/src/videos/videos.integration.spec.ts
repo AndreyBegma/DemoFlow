@@ -65,6 +65,9 @@ describe('run video through the runner relay (integration)', () => {
       'mp4-vertical',
       'webm-vertical',
       'gif-vertical',
+      'mp4-square',
+      'webm-square',
+      'gif-square',
     ]);
   });
 
@@ -197,6 +200,9 @@ describe('run video through the runner relay (integration)', () => {
       ['mp4-vertical', 'video/mp4'],
       ['webm-vertical', 'video/webm'],
       ['gif-vertical', 'image/gif'],
+      ['mp4-square', 'video/mp4'],
+      ['webm-square', 'video/webm'],
+      ['gif-square', 'image/gif'],
     ])('serves %s as %s', async (format, type) => {
       const socket = await daemon();
       const pending = play(format);
@@ -677,6 +683,9 @@ describe('run video through the runner relay (integration)', () => {
             'mp4-vertical',
             'webm-vertical',
             'gif-vertical',
+            'mp4-square',
+            'webm-square',
+            'gif-square',
           ],
           failedStep: null,
           cliVersion: '0.4.0',

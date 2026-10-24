@@ -34,6 +34,9 @@ export const VIDEO_CONTENT_TYPES: Record<RunFormat, string> = {
   gif: 'image/gif',
   'gif-vertical': 'image/gif',
   'webm-vertical': 'video/webm',
+  'mp4-square': 'video/mp4',
+  'gif-square': 'image/gif',
+  'webm-square': 'video/webm',
 };
 
 const COMMON_HEADERS = {
