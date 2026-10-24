@@ -329,6 +329,16 @@ export const en = {
       button: 'Run again',
       offlineHint: 'The machine is offline.',
     },
+    deleteRun: {
+      open: 'Delete run',
+      title: 'Delete this run?',
+      consequenceFiles:
+        'The run is removed from your library. Its video files stay on the machine; to remove them, use Delete video files first. This cannot be undone.',
+      consequence:
+        'The run is removed from your library. This cannot be undone.',
+      confirm: 'Delete run',
+      cancel: 'Keep',
+    },
     breadcrumbs: {
       label: 'Path',
       overflow: 'Show the path',
