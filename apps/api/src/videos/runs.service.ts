@@ -6,6 +6,7 @@ import {
   toRunDetailView,
 } from '../projects/projects.service';
 import { RunnerConnections } from '../runner/runner-connections.service';
+import type { RunOption } from '../runner/runner-socket';
 
 const RUN_INCLUDE = {
   project: { select: { id: true, name: true } },
@@ -18,8 +19,16 @@ export type OwnedRun = Prisma.RunGetPayload<{ include: typeof RUN_INCLUDE }>;
 export interface RunPage {
   run: RunDetailView;
   project: { id: string; name: string };
-  /** Null when the machine was removed: deleted or revoked. */
-  machine: { id: string; name: string; online: boolean } | null;
+  /**
+   * Null when the machine was removed: deleted or revoked. `runOptions` is
+   * what it accepts on a start, none while offline (spec #325, Decision 7).
+   */
+  machine: {
+    id: string;
+    name: string;
+    online: boolean;
+    runOptions: RunOption[];
+  } | null;
 }
 
 /** `{ error }` with a status, the API's error body. */
@@ -58,6 +67,7 @@ export class RunsService {
         id: machine.id,
         name: machine.name,
         online: this.connections.isOnline(machine.id),
+        runOptions: [...this.connections.runOptions(machine.id)],
       },
     };
   }

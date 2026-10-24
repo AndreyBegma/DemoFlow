@@ -139,9 +139,16 @@ export class TestSocket {
     return ask as LaunchRequest;
   }
 
-  /** `launches.sync` (spec #284): the launch ids this daemon still runs. */
-  sync(running: string[]): void {
-    this.send({ type: 'launches.sync', running });
+  /**
+   * `launches.sync` (spec #284): the launch ids this daemon still runs, and
+   * the `run.start` options it accepts (spec #325) — none sent when omitted.
+   */
+  sync(running: string[], runOptions?: unknown): void {
+    this.send(
+      runOptions === undefined
+        ? { type: 'launches.sync', running }
+        : { type: 'launches.sync', running, runOptions },
+    );
   }
 
   /** `run.progress` (spec #301): `step` of `steps` for `steps`, both null otherwise. */

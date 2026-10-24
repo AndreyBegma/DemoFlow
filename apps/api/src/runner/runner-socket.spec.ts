@@ -324,4 +324,43 @@ describe('launches.sync (spec #284)', () => {
   ])('refuses %s', (_label, fields) => {
     expect(sync(fields).ok).toBe(false);
   });
+
+  describe('runOptions (spec #325)', () => {
+    it('reads a sync without it', () => {
+      expect(sync({ running: [] })).toEqual({
+        ok: true,
+        message: expect.not.objectContaining({ runOptions: expect.anything() }),
+      });
+    });
+
+    it('keeps an option it does not know, for routing to drop', () => {
+      expect(sync({ running: [], runOptions: ['formats', 'later'] })).toEqual({
+        ok: true,
+        message: expect.objectContaining({
+          runOptions: ['formats', 'later'],
+        }),
+      });
+    });
+
+    it.each([0, 8])('reads %i options', (count) => {
+      const runOptions = Array.from({ length: count }, (_, i) => `o${i}`);
+      expect(sync({ running: [], runOptions }).ok).toBe(true);
+    });
+
+    it('reads a 32-character option', () => {
+      expect(sync({ running: [], runOptions: ['x'.repeat(32)] }).ok).toBe(true);
+    });
+
+    it.each([
+      ['nine entries', Array.from({ length: 9 }, (_, i) => `o${i}`)],
+      ['a 33-character entry', ['x'.repeat(33)]],
+      ['an entry that is not a string', [7]],
+      ['a non-array', 'formats'],
+    ])('refuses %s', (_label, runOptions) => {
+      expect(sync({ running: [], runOptions })).toEqual({
+        ok: false,
+        problem: 'invalid launches.sync',
+      });
+    });
+  });
 });

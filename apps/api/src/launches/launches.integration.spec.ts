@@ -207,7 +207,12 @@ describe('starting and cancelling a run from the website (integration)', () => {
 
       const res = await pending;
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ scenarios, truncated: true, skipped: 2 });
+      expect(res.body).toEqual({
+        scenarios,
+        truncated: true,
+        skipped: 2,
+        runOptions: [],
+      });
     });
 
     it.each([
@@ -254,6 +259,7 @@ describe('starting and cancelling a run from the website (integration)', () => {
         finishedAt: null,
         runId: null,
         progress: null,
+        formats: null,
       };
       expect(res.body).toEqual({ launch });
       expect((await latest()).body).toEqual({ launch });
@@ -293,6 +299,7 @@ describe('starting and cancelling a run from the website (integration)', () => {
       ['project-unknown', 409, 'project-unknown'],
       ['busy', 409, 'runner-busy'],
       ['reporting-off', 409, 'reporting-off'],
+      ['options-invalid', 422, 'options-invalid'],
       ['io', 502, 'runner-error'],
       ['something-new', 502, 'runner-error'],
       ['constructor', 502, 'runner-error'],
@@ -1125,6 +1132,224 @@ describe('starting and cancelling a run from the website (integration)', () => {
       expect(online()).toBe(true);
       sweep(LIST_TIMEOUT_MS);
       expect((await pending).status).toBe(504);
+    });
+  });
+
+  describe('output formats (spec #325)', () => {
+    const FORMATS = ['gif', 'mp4-vertical'];
+
+    /** A daemon whose sync carried `runOptions` (none when undefined), once the server has it. */
+    async function announcing(runOptions: unknown) {
+      const socket = await daemon();
+      socket.sync([], runOptions);
+      await socket.roundTrip();
+      return socket;
+    }
+
+    async function listed(socket: TestSocket): Promise<Response> {
+      const pending = list();
+      const ask = await socket.nextLaunch('scenarios.list');
+      socket.send({
+        type: 'scenarios.listed',
+        requestId: ask.requestId,
+        scenarios: [],
+        truncated: false,
+        skipped: 0,
+      });
+      return pending;
+    }
+
+    it('sends run.start without an options key when no formats were chosen', async () => {
+      const socket = await announcing(['formats']);
+      const pending = start();
+      const ask = await socket.nextLaunch('run.start');
+      expect(Object.keys(ask).sort()).toEqual([
+        'requestId',
+        'rootPath',
+        'scenarioId',
+        'type',
+      ]);
+      socket.send({
+        type: 'run.started',
+        requestId: ask.requestId,
+        scenarioName: 'Checkout',
+      });
+      expect((await pending).body.launch.formats).toBeNull();
+    });
+
+    it('sends the chosen formats in their order and shows them on the launch', async () => {
+      const socket = await announcing(['formats']);
+      const pending = start({ scenarioId: SCENARIO, formats: FORMATS });
+      const ask = await socket.nextLaunch('run.start');
+      expect(ask).toEqual({
+        type: 'run.start',
+        requestId: expect.stringMatching(UUID_V4),
+        rootPath: ROOT,
+        scenarioId: SCENARIO,
+        options: { formats: FORMATS },
+      });
+      socket.send({
+        type: 'run.started',
+        requestId: ask.requestId,
+        scenarioName: 'Checkout',
+      });
+
+      const res = await pending;
+      expect(res.status).toBe(202);
+      expect(res.body.launch.formats).toEqual(FORMATS);
+      expect((await latest()).body.launch.formats).toEqual(FORMATS);
+    });
+
+    it('keeps the formats on a launch reattached by launches.sync', async () => {
+      const socket = await announcing(['formats']);
+      const pending = start({ scenarioId: SCENARIO, formats: FORMATS });
+      const ask = await socket.nextLaunch('run.start');
+      socket.send({
+        type: 'run.started',
+        requestId: ask.requestId,
+        scenarioName: 'Checkout',
+      });
+      expect((await pending).status).toBe(202);
+      await drop(socket);
+      const later = await daemon();
+      later.sync([ask.requestId], ['formats']);
+      await later.roundTrip();
+      expect((await latest()).body.launch).toMatchObject({
+        state: 'running',
+        formats: FORMATS,
+      });
+    });
+
+    it.each([
+      ['an empty list', []],
+      ['an unknown format', ['mov']],
+      ['a repeated format', ['mp4', 'mp4']],
+      [
+        'ten entries',
+        [
+          'mp4',
+          'gif',
+          'webm',
+          'mp4-vertical',
+          'gif-vertical',
+          'webm-vertical',
+          'mp4-square',
+          'gif-square',
+          'webm-square',
+          'mp4',
+        ],
+      ],
+      ['a string', 'mp4'],
+      ['null', null],
+    ])('400s formats as %s and sends nothing', async (_label, formats) => {
+      const socket = await announcing(['formats']);
+      const res = await start({ scenarioId: SCENARIO, formats });
+      expect(res.status).toBe(400);
+      await expectNothingSent(socket);
+    });
+
+    it('400s another run option and sends nothing', async () => {
+      const socket = await announcing(['formats']);
+      const res = await start({ scenarioId: SCENARIO, headed: true });
+      expect(res.status).toBe(400);
+      await expectNothingSent(socket);
+    });
+
+    it('accepts all nine formats', async () => {
+      const socket = await announcing(['formats']);
+      const all = [
+        'webm-square',
+        'mp4',
+        'gif',
+        'webm',
+        'mp4-vertical',
+        'gif-vertical',
+        'webm-vertical',
+        'mp4-square',
+        'gif-square',
+      ];
+      const pending = start({ scenarioId: SCENARIO, formats: all });
+      const ask = await socket.nextLaunch('run.start');
+      expect(ask.options).toEqual({ formats: all });
+      socket.send({ type: 'run.error', requestId: ask.requestId, code: 'io' });
+      expect((await pending).status).toBe(502);
+    });
+
+    it.each([
+      ['a sync without runOptions', undefined],
+      ['a sync with only unknown options', ['later']],
+      ['a sync with no options', []],
+    ])('409s runner-outdated after %s, sends nothing, and starts without formats', async (_label, runOptions) => {
+      const socket = await announcing(runOptions);
+      const res = await start({ scenarioId: SCENARIO, formats: FORMATS });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: 'runner-outdated' });
+      await expectNothingSent(socket);
+      expect((await latest()).body).toEqual({ launch: null });
+      await running(socket);
+    });
+
+    it('409s runner-outdated to a daemon that sent no sync at all', async () => {
+      const socket = await daemon();
+      const res = await start({ scenarioId: SCENARIO, formats: FORMATS });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: 'runner-outdated' });
+      await expectNothingSent(socket);
+      await running(socket);
+    });
+
+    it('forgets the options of a replaced socket', async () => {
+      await announcing(['formats']);
+      // No sync on the new socket: only the connection could have kept them.
+      const later = await daemon();
+      const res = await start({ scenarioId: SCENARIO, formats: FORMATS });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: 'runner-outdated' });
+      await expectNothingSent(later);
+    });
+
+    it('answers runner-offline before runner-outdated', async () => {
+      const res = await start({ scenarioId: SCENARIO, formats: FORMATS });
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({ error: 'runner-offline' });
+    });
+
+    it('answers runner-outdated before runner-busy', async () => {
+      const socket = await announcing(undefined);
+      await running(socket);
+      const res = await start({ scenarioId: SCENARIO, formats: FORMATS });
+      expect(res.body).toEqual({ error: 'runner-outdated' });
+    });
+
+    it('answers run.error options-invalid with 422 and leaves no launch', async () => {
+      const socket = await announcing(['formats']);
+      const pending = start({ scenarioId: SCENARIO, formats: FORMATS });
+      const ask = await socket.nextLaunch('run.start');
+      socket.send({
+        type: 'run.error',
+        requestId: ask.requestId,
+        code: 'options-invalid',
+      });
+
+      const res = await pending;
+      expect(res.status).toBe(422);
+      expect(res.body).toEqual({ error: 'options-invalid' });
+      expect((await latest()).body).toEqual({ launch: null });
+    });
+
+    it('lists the options the machine accepts, without the ones the API does not know', async () => {
+      const socket = await announcing(['later', 'formats']);
+      const res = await listed(socket);
+      expect(res.status).toBe(200);
+      expect(res.body.runOptions).toEqual(['formats']);
+    });
+
+    it.each([
+      ['nine', Array.from({ length: 9 }, () => 'formats')],
+      ['a 33-character one', ['formats', 'x'.repeat(33)]],
+    ])('drops a sync with %s options as invalid', async (_label, runOptions) => {
+      const socket = await announcing(runOptions);
+      expect((await listed(socket)).body.runOptions).toEqual([]);
     });
   });
 });
