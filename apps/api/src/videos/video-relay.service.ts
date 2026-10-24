@@ -55,6 +55,8 @@ interface Stream {
   runId: string;
   format: RunFormat;
   range: VideoRange | null;
+  /** Set for `?download=1`: the head says `attachment` (spec #299). */
+  download: { fileName: string } | undefined;
   res: Response;
   /** Clock ms. */
   openedAt: number;
@@ -71,6 +73,7 @@ export interface OpenVideo {
   runId: string;
   format: RunFormat;
   range: VideoRange | null;
+  download?: { fileName: string };
   res: Response;
 }
 
@@ -121,7 +124,7 @@ export class VideoRelay
   }
 
   /** Sends `video.open`; the response is answered from here on. */
-  open({ runnerId, runId, format, range, res }: OpenVideo): void {
+  open({ runnerId, runId, format, range, download, res }: OpenVideo): void {
     const now = this.clock.now().getTime();
     const stream: Stream = {
       id: randomUUID(),
@@ -129,6 +132,7 @@ export class VideoRelay
       runId,
       format,
       range,
+      download,
       res,
       openedAt: now,
       lastChunkAt: now,
@@ -252,7 +256,9 @@ export class VideoRelay
       ...COMMON_HEADERS,
       'Content-Type': VIDEO_CONTENT_TYPES[stream.format],
       'Content-Length': String(stream.expected),
-      'Content-Disposition': 'inline',
+      'Content-Disposition': stream.download
+        ? `attachment; filename="${stream.download.fileName}"`
+        : 'inline',
       ...(partial
         ? { 'Content-Range': `bytes ${head.start}-${head.end}/${head.size}` }
         : {}),
@@ -347,6 +353,7 @@ export class VideoRelay
         event: 'video.stream',
         runId: stream.runId,
         format: stream.format,
+        download: stream.download !== undefined,
         bytes: stream.relayed,
         outcome,
         durationMs: this.clock.now().getTime() - stream.openedAt,

@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -17,7 +18,12 @@ import { RunnerConnections } from '../runner/runner-connections.service';
 import { MAX_STREAMS_PER_RUNNER } from '../runner/runner-socket';
 import { ArtifactsService } from './artifacts.service';
 import { parseRange } from './byte-range';
-import { RunIdParamsDto, RunVideoParamsDto } from './runs.dto';
+import { downloadName } from './download-name';
+import {
+  RunIdParamsDto,
+  RunVideoParamsDto,
+  RunVideoQueryDto,
+} from './runs.dto';
 import {
   liveMachine,
   type RunPage,
@@ -60,6 +66,7 @@ export class RunsController {
   async video(
     @CurrentUser() user: User,
     @Param() { id, format }: RunVideoParamsDto,
+    @Query() { download }: RunVideoQueryDto,
     @Headers('range') range: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
@@ -86,6 +93,7 @@ export class RunsController {
       runId: run.id,
       format,
       range: parseRange(range),
+      download: download ? { fileName: downloadName(run, format) } : undefined,
       res,
     });
   }
