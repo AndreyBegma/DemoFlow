@@ -3,6 +3,7 @@ import { Card } from '@andrewbehma/glass-ui/card';
 import { KeyValueList } from '@andrewbehma/glass-ui/key-value-list';
 import { notFound } from 'next/navigation';
 import { RunPlayback } from '@/components/player/run-playback';
+import { DeleteRun } from '@/components/projects/delete-run';
 import { RunAgain } from '@/components/projects/run-again';
 import { RunBreadcrumbs } from '@/components/projects/run-breadcrumbs';
 import {
@@ -110,6 +111,13 @@ export default async function RunPage({
             ]}
           />
         </div>
+        <DeleteRun
+          runId={run.id}
+          projectId={project.id}
+          filesRemain={
+            run.formats.length > 0 && run.artifactsDeletedAt === null
+          }
+        />
       </Card>
       <RunFailureBanner failure={run.failure} />
       {machine !== null && againState !== 'hidden' ? (
