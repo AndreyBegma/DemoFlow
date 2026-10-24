@@ -1,11 +1,12 @@
 'use client';
 
 import { Button } from '@andrewbehma/glass-ui/button';
+import { Progress } from '@andrewbehma/glass-ui/progress';
 import { StatusPill } from '@andrewbehma/glass-ui/status-pill';
 import Link from 'next/link';
 import { t } from '@/i18n';
 import type { LaunchState, LaunchView } from '@/lib/api';
-import { formatElapsed, isActive } from '@/lib/launch';
+import { formatElapsed, isActive, launchProgress } from '@/lib/launch';
 
 const PILL: Record<LaunchState, Parameters<typeof StatusPill>[0]['status']> = {
   starting: 'waiting',
@@ -46,6 +47,7 @@ export function LaunchStatus({
   bordered?: boolean;
 }) {
   const active = isActive(launch.state);
+  const progress = launchProgress(launch);
   return (
     <div
       className={`flex flex-col gap-2 ${bordered ? 'border-t border-line pt-3' : ''}`}
@@ -76,6 +78,19 @@ export function LaunchStatus({
           </Button>
         ) : null}
       </div>
+      {progress?.key === 'projects.launch.progress.steps' ? (
+        <Progress
+          value={progress.step}
+          max={progress.steps}
+          tone="neutral"
+          label={t(progress.key, {
+            step: progress.step,
+            steps: progress.steps,
+          })}
+        />
+      ) : progress ? (
+        <p className="text-sm text-ink-2">{t(progress.key)}</p>
+      ) : null}
       {launch.state === 'lost' ? (
         <p className="text-sm text-ink-2">{t('projects.launch.state.lost')}</p>
       ) : null}
