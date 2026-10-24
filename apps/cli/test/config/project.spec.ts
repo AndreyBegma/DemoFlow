@@ -182,8 +182,7 @@ describe('a config with ${PORT}', () => {
       codeOf(() => loadAppConfig(dir, { env: { PORT: '' } })).issues[0].code,
     ).toBe('missing-port');
     expect(
-      codeOf(() => loadAppConfig(dir, { env: { PORT: 'abc' } })).issues[0]
-        .code,
+      codeOf(() => loadAppConfig(dir, { env: { PORT: 'abc' } })).issues[0].code,
     ).toBe('invalid-port');
   });
 
