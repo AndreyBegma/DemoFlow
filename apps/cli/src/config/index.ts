@@ -11,7 +11,10 @@ export {
 } from './home.ts';
 export { currentHost, type HostEnvironment, pathFor } from './platform.ts';
 export {
+  type AppConfig,
+  type AppConfigOptions,
   findProjectRoot,
+  loadAppConfig,
   loadProjectConfig,
   PROJECT_CONFIG_FILE,
   projectRootAbove,

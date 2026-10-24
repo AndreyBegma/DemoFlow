@@ -1,6 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { type ProjectConfig, parseProjectConfig } from '@demoflow/core';
+import {
+  type ConfigVariables,
+  type ProjectConfig,
+  parsePort,
+  parseProjectConfig,
+  resolveConfigTemplates,
+} from '@demoflow/core';
 import { CliError } from './errors.ts';
 
 export const PROJECT_CONFIG_FILE = 'demoflow.config.json';
@@ -84,12 +90,81 @@ export function scenarioId(
   return relative.split(pathApi.sep).join('/');
 }
 
-/** Reads and validates `<root>/demoflow.config.json`. */
-export function loadProjectConfig(root: string): ProjectConfig {
+/**
+ * The port `${PORT}` takes in a command that never opens `baseUrl` or starts
+ * the app: the config is validated, the port is never used (spec 337).
+ */
+const STAND_IN_PORT = 3000;
+
+/** `PORT` from the environment; an empty value counts as unset. */
+function envPort(env: NodeJS.ProcessEnv): string | undefined {
+  const value = env.PORT;
+  return value === undefined || value === '' ? undefined : value;
+}
+
+/**
+ * Reads and validates `<root>/demoflow.config.json` for a command that never
+ * starts the app: `${PORT}` takes `PORT` from the environment when it is a
+ * valid port, else a stand-in, so a config written for parallel runs still
+ * loads where `PORT` is not set (spec 337, Decision 4).
+ */
+export function loadProjectConfig(
+  root: string,
+  env: NodeJS.ProcessEnv = process.env,
+): ProjectConfig {
+  const fromEnv = envPort(env);
+  const variables: ConfigVariables = {
+    envPort:
+      fromEnv !== undefined && parsePort(fromEnv) !== undefined
+        ? fromEnv
+        : undefined,
+    standInPort: STAND_IN_PORT,
+  };
+  return parseConfig(readConfig(root), variables);
+}
+
+export interface AppConfigOptions {
+  /** `--port`, already validated. */
+  port?: number;
+  /** `--base-url`: `${BASE_URL}` and `allowedOrigins` follow it. */
+  baseUrl?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+export interface AppConfig {
+  config: ProjectConfig;
+  /** The port the run uses, to set as `PORT` for the app (Decision 6). */
+  port?: number;
+  /** Whether any field uses `${PORT}`. */
+  usesPort: boolean;
+}
+
+/**
+ * The config of a command that starts the app (`run`, `record`): `${PORT}`
+ * is `--port`, else `PORT` from the environment, else the field's default,
+ * and a `${PORT}` with none of them is `invalid-config` (spec 337).
+ */
+export function loadAppConfig(
+  root: string,
+  options: AppConfigOptions = {},
+): AppConfig {
+  const raw = readConfig(root);
+  const variables: ConfigVariables = {
+    port: options.port,
+    envPort: envPort(options.env ?? process.env),
+    baseUrl: options.baseUrl,
+  };
+  const config = parseConfig(raw, variables);
+  const templated = resolveConfigTemplates(raw, variables);
+  const usesPort = templated.ok && templated.usesPort;
+  const port = options.port ?? (templated.ok ? templated.port : undefined);
+  return { config, port, usesPort };
+}
+
+function readConfig(root: string): unknown {
   const file = path.join(root, PROJECT_CONFIG_FILE);
-  let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(file, 'utf8'));
+    return JSON.parse(readFileSync(file, 'utf8'));
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new CliError(
@@ -97,7 +172,10 @@ export function loadProjectConfig(root: string): ProjectConfig {
       `cannot read ${PROJECT_CONFIG_FILE}: ${reason}`,
     );
   }
-  const parsed = parseProjectConfig(raw);
+}
+
+function parseConfig(raw: unknown, variables: ConfigVariables): ProjectConfig {
+  const parsed = parseProjectConfig(raw, variables);
   if (!parsed.ok) {
     throw new CliError(
       'invalid-config',

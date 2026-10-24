@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: `${PORT}` is the config's own syntax, written as plain text on purpose.
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   CliError,
   findProjectRoot,
+  loadAppConfig,
   loadProjectConfig,
   scenarioId,
 } from '../../src/config/index.ts';
@@ -123,5 +125,91 @@ describe('loadProjectConfig', () => {
   it('reports unparsable JSON as invalid-config', () => {
     write('demoflow.config.json', '{nope');
     expect(codeOf(() => loadProjectConfig(dir)).code).toBe('invalid-config');
+  });
+});
+
+describe('a config with ${PORT}', () => {
+  const templated = JSON.stringify({
+    baseUrl: 'http://127.0.0.1:${PORT}',
+    devCommand: {
+      command: 'node',
+      args: ['server.mjs', '--port', '${PORT}'],
+      readyUrl: '${BASE_URL}/',
+    },
+  });
+
+  beforeEach(() => {
+    write('demoflow.config.json', templated);
+  });
+
+  it('takes --port over PORT, PORT over the default', () => {
+    write(
+      'demoflow.config.json',
+      '{"baseUrl": "http://127.0.0.1:${PORT:-3000}"}',
+    );
+    const baseUrl = (options: Parameters<typeof loadAppConfig>[1]) =>
+      loadAppConfig(dir, options).config.baseUrl;
+    expect(baseUrl({ port: 4001, env: { PORT: '4002' } })).toBe(
+      'http://127.0.0.1:4001',
+    );
+    expect(baseUrl({ env: { PORT: '4002' } })).toBe('http://127.0.0.1:4002');
+    expect(baseUrl({ env: {} })).toBe('http://127.0.0.1:3000');
+    expect(loadAppConfig(dir, { env: {} }).port).toBe(3000);
+  });
+
+  it('fills every templated field and reports the port for the app', () => {
+    const app = loadAppConfig(dir, { port: 4123, env: {} });
+    expect(app).toMatchObject({ port: 4123, usesPort: true });
+    expect(app.config.devCommand).toEqual({
+      command: 'node',
+      args: ['server.mjs', '--port', '4123'],
+      readyUrl: 'http://127.0.0.1:4123/',
+    });
+  });
+
+  it('strict mode: no port from any source is invalid-config with missing-port', () => {
+    const error = codeOf(() => loadAppConfig(dir, { env: {} }));
+    expect(error.code).toBe('invalid-config');
+    expect(error.exitCode).toBe(2);
+    expect(error.issues.map(({ path, code }) => [path, code])).toEqual([
+      ['baseUrl', 'missing-port'],
+      ['devCommand.args[2]', 'missing-port'],
+    ]);
+  });
+
+  it('strict mode: an empty PORT counts as unset, an invalid one is invalid-port', () => {
+    expect(
+      codeOf(() => loadAppConfig(dir, { env: { PORT: '' } })).issues[0].code,
+    ).toBe('missing-port');
+    expect(
+      codeOf(() => loadAppConfig(dir, { env: { PORT: 'abc' } })).issues[0]
+        .code,
+    ).toBe('invalid-port');
+  });
+
+  it('--port without ${PORT} in the config still reaches the app', () => {
+    write('demoflow.config.json', '{"baseUrl": "http://localhost:3000"}');
+    expect(loadAppConfig(dir, { port: 4123, env: {} })).toMatchObject({
+      port: 4123,
+      usesPort: false,
+      config: { baseUrl: 'http://localhost:3000' },
+    });
+  });
+
+  it('stand-in mode loads the same config without a port, or with an invalid PORT', () => {
+    expect(loadProjectConfig(dir, {}).baseUrl).toBe('http://127.0.0.1:3000');
+    expect(loadProjectConfig(dir, { PORT: 'abc' }).baseUrl).toBe(
+      'http://127.0.0.1:3000',
+    );
+    expect(loadProjectConfig(dir, { PORT: '4500' }).baseUrl).toBe(
+      'http://127.0.0.1:4500',
+    );
+  });
+
+  it('stand-in mode still refuses a syntax error', () => {
+    write('demoflow.config.json', '{"baseUrl": "http://a:${PORT:-x}"}');
+    expect(codeOf(() => loadProjectConfig(dir, {})).issues[0].code).toBe(
+      'invalid-default',
+    );
   });
 });
