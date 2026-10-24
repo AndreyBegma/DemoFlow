@@ -180,9 +180,13 @@ const startOf = (scenarioId: string, rootPath = root) => ({
   scenarioId,
 });
 
-async function answered(count = 1): Promise<Record<string, unknown>> {
-  await vi.waitFor(() =>
-    expect(reply.sent.length).toBeGreaterThanOrEqual(count),
+async function answered(
+  count = 1,
+  timeout?: number,
+): Promise<Record<string, unknown>> {
+  await vi.waitFor(
+    () => expect(reply.sent.length).toBeGreaterThanOrEqual(count),
+    timeout === undefined ? undefined : { timeout },
   );
   return reply.sent[count - 1] as Record<string, unknown>;
 }
@@ -281,13 +285,14 @@ describe('scenarios.list', () => {
       );
     }
     send(launcher(), listOf());
-    const frame = await answered();
+    // Listing and parsing 105 files outlasts the 1 s default on the Windows runner.
+    const frame = await answered(1, 10_000);
     const scenarios = frame.scenarios as Array<{ id: string }>;
     expect(scenarios).toHaveLength(LIST_MAX_SCENARIOS);
     expect(scenarios[0]?.id).toBe('demoflow/s000.demo.json');
     expect(scenarios.at(-1)?.id).toBe('demoflow/s099.demo.json');
     expect(frame.truncated).toBe(true);
-  });
+  }, 15_000);
 
   it('cuts names to 200 characters', async () => {
     register();
