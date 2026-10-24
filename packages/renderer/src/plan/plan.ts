@@ -270,14 +270,14 @@ export function planRender(
         events,
         out,
         viewport,
-        cropSize(viewport, VERTICAL).width,
+        cropSize(viewport, VERTICAL),
         verticalConfig,
       ),
       squareFollow: followKeys(
         events,
         out,
         viewport,
-        cropSize(viewport, SQUARE).width,
+        cropSize(viewport, SQUARE),
         squareConfig,
       ),
       masks,
@@ -401,36 +401,51 @@ function cropCaption(
 }
 
 /**
- * The vertical crop's horizontal centre (spec 176, Decision 3): the page
+ * The crop's centre (spec 176, Decision 3; spec 306, Decision 1): the page
  * centre at the start, then the centre of each step's target, reached as the
  * step starts — or as soon as the previous move ends — over `followMs`. A
- * step without a target keeps it. A move under `deadZone` of the crop width,
- * measured where the clamped crop would actually go, is skipped. The keys
- * hold the target itself; the crop is clamped to the page when drawn, so a
- * zoom on an edge target still centres it as far as the page allows.
+ * step without a target keeps it. A move is skipped only when both axes move
+ * under `deadZone` of the crop's width (across) and height (down), measured
+ * where the clamped crop would actually go. The keys hold the target itself;
+ * the crop is clamped to the page when drawn, so a zoom on an edge target
+ * still centres it as far as the page allows.
  */
 function followKeys(
   events: readonly TimelineEvent[],
   out: (timelineMs: number) => number,
   viewport: { width: number; height: number },
-  cropWidth: number,
+  crop: { width: number; height: number },
   { followMs, deadZone }: { followMs: number; deadZone: number },
 ): FollowKey[] {
-  const half = cropWidth / 2;
-  const onPage = (x: number): number =>
-    clamp(x, half, Math.max(half, viewport.width - half));
-  let x = viewport.width / 2;
-  const keys: FollowKey[] = [{ atMs: 0, x }];
+  const onPage = (point: Point): Point => ({
+    x: clampAxis(point.x, crop.width, viewport.width),
+    y: clampAxis(point.y, crop.height, viewport.height),
+  });
+  let at: Point = { x: viewport.width / 2, y: viewport.height / 2 };
+  const keys: FollowKey[] = [{ atMs: 0, ...at }];
   for (const event of events) {
     if (event.target === undefined) continue;
-    const to = centreOf(event.target.box).x;
-    if (Math.abs(onPage(to) - onPage(x)) < deadZone * cropWidth) continue;
+    const to = centreOf(event.target.box);
+    const from = onPage(at);
+    const next = onPage(to);
+    if (
+      Math.abs(next.x - from.x) < deadZone * crop.width &&
+      Math.abs(next.y - from.y) < deadZone * crop.height
+    ) {
+      continue;
+    }
     const last = keys[keys.length - 1].atMs;
     const startMs = Math.max(last, out(event.startMs) - followMs);
-    keys.push({ atMs: startMs, x }, { atMs: startMs + followMs, x: to });
-    x = to;
+    keys.push({ atMs: startMs, ...at }, { atMs: startMs + followMs, ...to });
+    at = to;
   }
   return keys;
+}
+
+/** A crop centre on one axis, kept where a crop of `size` stays inside `extent`. */
+function clampAxis(value: number, size: number, extent: number): number {
+  const half = size / 2;
+  return clamp(value, half, Math.max(half, extent - half));
 }
 
 function clamp(value: number, min: number, max: number): number {
