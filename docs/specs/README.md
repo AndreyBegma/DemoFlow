@@ -172,3 +172,6 @@ Work traced to an ADR, the vision or spec 179 that no phase had picked up.
 | [#307](https://github.com/AndreyBegma/DemoFlow/issues/307) | [No mouse cursor on a phone recording, taps only](307-phone-tap-indicator.md) | #305 |
 | [#308](https://github.com/AndreyBegma/DemoFlow/issues/308) | [Docs: square formats, `render.square` and phone recording](308-docs-square-and-phone.md) | #304-#307 |
 | [#315](https://github.com/AndreyBegma/DemoFlow/issues/315) | [Woodpecker `test-pr` still runs out of memory when every package is affected](315-ci-test-memory.md) — spec 242 follow-up | — |
+| [#325](https://github.com/AndreyBegma/DemoFlow/issues/325) | [Run options (output formats) for a website-started run (API)](325-website-run-options-api.md) — ADR-0017 | — |
+| [#326](https://github.com/AndreyBegma/DemoFlow/issues/326) | [The daemon accepts output formats for a website-started run](326-website-run-options-daemon.md) — ADR-0017 | #325 |
+| [#327](https://github.com/AndreyBegma/DemoFlow/issues/327) | [Choose output formats when starting a run from the website](327-website-run-options-web.md) — ADR-0017 | #325 |

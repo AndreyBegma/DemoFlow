@@ -20,4 +20,5 @@ it is accepted: a later record supersedes it and says so.
 | [0013](0013-page-side-contract.md) | The page-side contract: `data-demoflow-mask` and `window.demoflow` (`ready`, `waitForReady`) | accepted; extended by 0014 |
 | [0014](0014-page-annotations.md) | Scenes and captions from the page: `window.demoflow.scene` and `caption` | accepted |
 | [0015](0015-playwright-tests-become-scenarios.md) | Playwright tests become scenarios: a `demoflow/playwright` fixture records a `.demo.json`, the engine replays it; new module `packages/playwright`, optional peer `@playwright/test` | accepted |
-| [0016](0016-website-started-runs.md) | Runs started from the website: scenario listing (ids and names), a registered project is a root the machine reported a run from | accepted |
+| [0016](0016-website-started-runs.md) | Runs started from the website: scenario listing (ids and names), a registered project is a root the machine reported a run from | accepted; §4 superseded by 0017 |
+| [0017](0017-website-run-options.md) | The website may choose the output formats of a run it starts (formats only; always headless) | accepted |
