@@ -16,6 +16,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { SessionGuard } from '../auth/session.guard';
 import {
   CreateProjectDto,
+  DeleteRunsDto,
   RunsPageQueryDto,
   UpdateProjectDto,
 } from './projects.dto';
@@ -66,5 +67,16 @@ export class ProjectsController {
     @Query() query: RunsPageQueryDto,
   ): Promise<RunsPage> {
     return this.projects.runs(user.id, id, query.cursor, query.status);
+  }
+
+  /** Deletes the project's runs among `runIds`; video files stay (spec #286). */
+  @Post(':id/runs/delete')
+  @HttpCode(HttpStatus.OK)
+  removeRuns(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() body: DeleteRunsDto,
+  ): Promise<{ deleted: number }> {
+    return this.projects.removeRuns(user.id, id, body.runIds);
   }
 }

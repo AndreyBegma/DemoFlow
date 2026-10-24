@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { NonEmptyStringSchema, ViewportSchema } from './common.ts';
+import { DeviceSchema } from './scenario.ts';
 import { MarkerKindSchema, StepActionSchema, ZoomSchema } from './step.ts';
 
 /** The value a masked `fill` writes to the timeline instead of the secret. */
@@ -222,6 +223,8 @@ export const TimelineSchema = z
     schemaVersion: z.literal(1),
     viewport: ViewportSchema,
     deviceScaleFactor: z.number().positive(),
+    // Absent in timelines written before spec 305: the renderer reads it as "desktop".
+    device: DeviceSchema.optional(),
     videoFile: NonEmptyStringSchema,
     events: z.array(TimelineEventSchema),
     // Painted at clock zero, cleared before step 0; the renderer measures the

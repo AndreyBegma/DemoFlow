@@ -480,3 +480,19 @@ describe('annotations', () => {
     ).toEqual(['annotations', 1, 'atMs']);
   });
 });
+
+describe('TimelineSchema — device', () => {
+  it('parses a timeline without a device', () => {
+    expect(TimelineSchema.parse(timeline).device).toBeUndefined();
+  });
+
+  it.each(['desktop', 'phone'])('parses device %s', (device) => {
+    expect(TimelineSchema.parse({ ...timeline, device }).device).toBe(device);
+  });
+
+  it('rejects an unknown device', () => {
+    expect(
+      TimelineSchema.safeParse({ ...timeline, device: 'tablet' }).success,
+    ).toBe(false);
+  });
+});

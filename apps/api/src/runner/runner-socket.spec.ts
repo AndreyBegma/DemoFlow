@@ -239,3 +239,89 @@ describe('launch messages (spec #247)', () => {
     expect(parse(message).ok).toBe(false);
   });
 });
+
+describe('run.progress (spec #301)', () => {
+  const requestId = randomUUID();
+
+  function progress(fields: Record<string, unknown>) {
+    return parseClientMessage(
+      Buffer.from(
+        JSON.stringify({
+          type: 'run.progress',
+          requestId,
+          phase: 'steps',
+          step: 1,
+          steps: 1,
+          ...fields,
+        }),
+      ),
+      false,
+    );
+  }
+
+  it.each([
+    ['app with null numbers', { phase: 'app', step: null, steps: null }],
+    [
+      'rendering with null numbers',
+      { phase: 'rendering', step: null, steps: null },
+    ],
+    ['steps 1/1', { step: 1, steps: 1 }],
+    ['steps 10000/10000', { step: 10_000, steps: 10_000 }],
+  ])('reads %s', (_label, fields) => {
+    expect(progress(fields)).toEqual({
+      ok: true,
+      message: expect.objectContaining({
+        type: 'run.progress',
+        requestId,
+        ...fields,
+      }),
+    });
+  });
+
+  it.each([
+    ['a missing requestId', { requestId: undefined }],
+    ['an unknown phase', { phase: 'verifying' }],
+    ['step 0', { step: 0 }],
+    ['a non-integer step', { step: 1.5, steps: 3 }],
+    ['steps 10001', { step: 1, steps: 10_001 }],
+    ['a missing step', { step: undefined }],
+    ['a step that is not a number', { step: '1' }],
+  ])('refuses %s', (_label, fields) => {
+    expect(progress(fields).ok).toBe(false);
+  });
+});
+
+describe('launches.sync (spec #284)', () => {
+  function sync(fields: Record<string, unknown>) {
+    return parseClientMessage(
+      Buffer.from(JSON.stringify({ type: 'launches.sync', ...fields })),
+      false,
+    );
+  }
+
+  function ids(count: number): string[] {
+    return Array.from({ length: count }, () => randomUUID());
+  }
+
+  it.each([0, 1, 16])('reads %i launch ids', (count) => {
+    const running = ids(count);
+    expect(sync({ running })).toEqual({
+      ok: true,
+      message: expect.objectContaining({ type: 'launches.sync', running }),
+    });
+  });
+
+  it.each([
+    ['17 entries', { running: ids(17) }],
+    ['an entry that is not a UUID', { running: [randomUUID(), 'x'] }],
+    [
+      'an entry that is not a UUID v4',
+      { running: ['6ba7b810-9dad-11d1-80b4-00c04fd430c8'] },
+    ],
+    ['an entry that is not a string', { running: [7] }],
+    ['running that is not an array', { running: randomUUID() }],
+    ['no running', {}],
+  ])('refuses %s', (_label, fields) => {
+    expect(sync(fields).ok).toBe(false);
+  });
+});

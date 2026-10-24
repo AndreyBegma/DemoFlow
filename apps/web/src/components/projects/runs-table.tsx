@@ -1,17 +1,22 @@
 'use client';
 
+import { SelectionBar } from '@andrewbehma/glass-ui';
 import { Badge } from '@andrewbehma/glass-ui/badge';
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button } from '@andrewbehma/glass-ui/button';
+import { Checkbox } from '@andrewbehma/glass-ui/checkbox';
+import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@andrewbehma/glass-ui/segmented-control';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { t } from '@/i18n';
 import {
+  deleteProjectRuns,
   listProjectRuns,
   type ProjectRun,
   type ProjectRunsPage,
@@ -19,6 +24,7 @@ import {
 } from '@/lib/api';
 import { formatDate } from '@/lib/format-date';
 import { formatDuration } from '@/lib/format-duration';
+import { bulkDeleteOutcome, DELETE_RUNS_MAX } from '@/lib/run-delete';
 import { RunStatus } from './run-status';
 
 const FILTERS: { status: RunStatusFilter | undefined; label: string }[] = [
@@ -40,8 +46,16 @@ export function RunsTable({
   const [cursor, setCursor] = useState<string | null>(first.nextCursor);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const router = useRouter();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [notice, setNotice] = useState<
+    'partlyGone' | 'notFound' | 'error' | null
+  >(null);
+  const [alreadyGone, setAlreadyGone] = useState(0);
 
-  if (runs.length === 0 && status === undefined) {
+  if (runs.length === 0 && cursor === null && status === undefined) {
     return (
       <EmptyState
         title={t('projects.library.empty.title')}
@@ -71,7 +85,7 @@ export function RunsTable({
     </SegmentedControl>
   );
 
-  if (runs.length === 0 && status !== undefined) {
+  if (runs.length === 0 && cursor === null && status !== undefined) {
     return (
       <div className="flex flex-col gap-4">
         <div>{filter}</div>
@@ -94,6 +108,42 @@ export function RunsTable({
     setCursor(result.data.nextCursor);
   }
 
+  const allSelected = runs.length > 0 && runs.every((r) => selected.has(r.id));
+
+  function toggle(id: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(runs.map((r) => r.id)));
+  }
+
+  async function deleteSelected() {
+    const ids = [...selected];
+    setDeleting(true);
+    setNotice(null);
+    const result = await deleteProjectRuns(projectId, ids);
+    setDeleting(false);
+    setConfirming(false);
+    const outcome = bulkDeleteOutcome(result, ids.length);
+    if (outcome.kind === 'deleted') {
+      const gone = new Set(ids);
+      setRuns((current) => current.filter((r) => !gone.has(r.id)));
+      setSelected(new Set());
+      if (outcome.alreadyGone > 0) {
+        setAlreadyGone(outcome.alreadyGone);
+        setNotice('partlyGone');
+      }
+      router.refresh();
+      return;
+    }
+    setNotice(outcome.kind);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div>{filter}</div>
@@ -101,6 +151,14 @@ export function RunsTable({
         <table className="w-full min-w-[44rem] text-left text-sm">
           <thead className="text-ink-2">
             <tr>
+              <th scope="col" className="w-10 py-2 pr-2 font-normal">
+                <Checkbox
+                  aria-label={t('projects.library.select.all')}
+                  checked={allSelected}
+                  indeterminate={selected.size > 0 && !allSelected}
+                  onChange={toggleAll}
+                />
+              </th>
               <th scope="col" className="py-2 pr-4 font-normal">
                 {t('projects.library.columns.scenario')}
               </th>
@@ -124,6 +182,15 @@ export function RunsTable({
           <tbody>
             {runs.map((run) => (
               <tr key={run.id} className="border-t border-current/10">
+                <td className="py-3 pr-2 align-top">
+                  <Checkbox
+                    aria-label={t('projects.library.select.row', {
+                      name: run.scenarioName,
+                    })}
+                    checked={selected.has(run.id)}
+                    onChange={() => toggle(run.id)}
+                  />
+                </td>
                 <td className="py-3 pr-4 align-top">
                   <Link
                     href={`/app/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(run.id)}`}
@@ -179,6 +246,19 @@ export function RunsTable({
       {failed ? (
         <Banner tone="danger">{t('projects.library.loadFailed')}</Banner>
       ) : null}
+      {notice === 'partlyGone' ? (
+        <Banner tone="info">
+          {t('projects.library.bulkDelete.partlyGone', {
+            count: alreadyGone,
+          })}
+        </Banner>
+      ) : null}
+      {notice === 'notFound' ? (
+        <Banner tone="danger">{t('projects.errors.notFound')}</Banner>
+      ) : null}
+      {notice === 'error' ? (
+        <Banner tone="danger">{t('auth.errors.unknown')}</Banner>
+      ) : null}
       {cursor === null ? null : (
         <div>
           <Button
@@ -193,6 +273,42 @@ export function RunsTable({
           </Button>
         </div>
       )}
+      <SelectionBar
+        count={selected.size}
+        onClear={() => setSelected(new Set())}
+        clearLabel={t('projects.library.select.clear')}
+        label={(count) =>
+          count > DELETE_RUNS_MAX
+            ? t('projects.library.select.countMax', {
+                count,
+                max: DELETE_RUNS_MAX,
+              })
+            : t('projects.library.select.count', { count })
+        }
+        actions={[
+          {
+            id: 'delete',
+            label: t('projects.library.bulkDelete.action'),
+            tone: 'danger',
+            disabled: selected.size > DELETE_RUNS_MAX,
+            onSelect: () => setConfirming(true),
+          },
+        ]}
+      />
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={
+          selected.size === 1
+            ? t('projects.library.bulkDelete.titleOne')
+            : t('projects.library.bulkDelete.title', { count: selected.size })
+        }
+        consequence={t('projects.library.bulkDelete.consequence')}
+        verb={t('projects.library.bulkDelete.confirm')}
+        cancelLabel={t('projects.library.bulkDelete.cancel')}
+        busy={deleting}
+        onConfirm={() => void deleteSelected()}
+      />
     </div>
   );
 }

@@ -59,6 +59,30 @@ export function syntheticSource(): Picture {
 }
 
 /**
+ * A 412×915 stand-in for a phone recording (spec 306), integer arithmetic
+ * only: a gradient and a grid, a header bar at the top and a red button near
+ * the bottom of the page.
+ */
+export function portraitSource(): Picture {
+  const picture = createPicture(412, 915);
+  for (let y = 0; y < 915; y++) {
+    for (let x = 0; x < 412; x++) {
+      let r = 50 + (y >> 4);
+      let g = 90 + (x >> 2);
+      let b = 120 + (y >> 4);
+      if (x % 64 === 0 || y % 64 === 0) [r, g, b] = [230, 230, 235];
+      if (y < 56) [r, g, b] = [30, 40, 60];
+      if (x >= 96 && x < 316 && y >= 820 && y < 880) [r, g, b] = [200, 60, 50];
+      const at = (y * 412 + x) * 3;
+      picture.data[at] = r;
+      picture.data[at + 1] = g;
+      picture.data[at + 2] = b;
+    }
+  }
+  return picture;
+}
+
+/**
  * The page before a navigation, at the synthetic source's size (spec 114):
  * warm horizontal bands and a dark panel where the source has its white bar,
  * so a held frame and a dissolve read apart from the live page.
@@ -102,6 +126,10 @@ export interface Scene {
   heldSourceMs?: number;
   /** Drawn as the vertical output of `plan` (spec 176), at its size. */
   vertical?: true;
+  /** Drawn as the square output of `plan` (spec 304), at its size. */
+  square?: true;
+  /** Drawn from this picture instead of the synthetic source. */
+  source?: Picture;
 }
 
 const PASSED_STAGES: Stages = {
@@ -217,6 +245,54 @@ const HELD_SOURCE_MS = TRANSITIONED.transitions?.holds[1]?.sourceMs;
 /** Spec 176: the framed run with the vertical output; the frame is not used there. */
 const VERTICAL = framedPlan({ formats: ['mp4', 'mp4-vertical'] });
 const VERTICAL_SIZE = { width: 1080, height: 1920 } as const;
+
+/**
+ * Spec 306: a phone-sized page, 412×915, with the vertical output. The click
+ * on the button near the bottom moves the crop down to it, with no zoom.
+ */
+function portraitPlan(device?: 'phone'): RenderPlan {
+  return planRender(
+    {
+      timeline: {
+        schemaVersion: 1,
+        ...(device === undefined ? {} : { device }),
+        viewport: { width: 412, height: 915 },
+        deviceScaleFactor: 1,
+        videoFile: 'source.webm',
+        events: [
+          {
+            stepIndex: 0,
+            action: 'click',
+            startMs: 600,
+            endMs: 1600,
+            target: { box: { x: 96, y: 820, width: 220, height: 60 } },
+            pointer: { from: { x: 206, y: 457 }, to: { x: 206, y: 850 } },
+          },
+        ],
+      },
+      result: RESULT,
+      source: {
+        width: 412,
+        height: 915,
+        fps: 25,
+        durationMs: 4000,
+        codec: 'vp9',
+        freezes: [],
+      },
+    },
+    { offsetMs: 0, frame: {}, formats: ['mp4', 'mp4-vertical'] },
+  );
+}
+
+const PORTRAIT = portraitPlan();
+/** Spec 307: the same run recorded as a phone — the tap ring, no arrow. */
+const PHONE = portraitPlan('phone');
+/** The crop has reached the button by the press, 100 ms before the click ends. */
+const PORTRAIT_FRAME = Math.round((PORTRAIT.clicks[0].atMs * 30) / 1000);
+
+/** Spec 304: the same run with the square output. */
+const SQUARE = framedPlan({ formats: ['mp4', 'mp4-square'] });
+const SQUARE_SIZE = { width: 1080, height: 1080 } as const;
 
 export const SCENES: readonly Scene[] = [
   {
@@ -348,6 +424,38 @@ export const SCENES: readonly Scene[] = [
     plan: VERTICAL,
     vertical: true,
   },
+  {
+    // Spec 304: the square crop on the red block at the press, zoomed, with
+    // the cursor, the ring and a caption long enough to need a third line.
+    name: 'square-zoomed',
+    frame: {
+      ...frameAt(SQUARE, PRESS_FRAME, 'square'),
+      caption:
+        'Open the invoice, check the total and the due date, then send it to the customer — Создать клиента',
+    },
+    region: { x: 0, y: 0, ...SQUARE_SIZE },
+    plan: SQUARE,
+    square: true,
+  },
+  {
+    // Spec 306: a 412×915 page, the crop followed the button down to the
+    // bottom of the page.
+    name: 'vertical-portrait-follow',
+    frame: frameAt(PORTRAIT, PORTRAIT_FRAME, 'vertical'),
+    region: { x: 0, y: 0, ...VERTICAL_SIZE },
+    plan: PORTRAIT,
+    vertical: true,
+    source: portraitSource(),
+  },
+  {
+    // Spec 307: a phone recording at the tap — the ring, no arrow.
+    name: 'phone-tap',
+    frame: frameAt(PHONE, PORTRAIT_FRAME, 'vertical'),
+    region: { x: 0, y: 0, ...VERTICAL_SIZE },
+    plan: PHONE,
+    vertical: true,
+    source: portraitSource(),
+  },
 ];
 
 function transitioned(name: string, atMs: number): Scene {
@@ -424,21 +532,26 @@ const PREVIOUS_PAGE = previousPageSource();
 
 /** Draws `scene` and returns the region it keeps. */
 export function renderScene(scene: Scene, source: Picture): Picture {
-  const vertical = scene.vertical === true ? scene.plan?.vertical : undefined;
+  const crop =
+    scene.vertical === true
+      ? scene.plan?.vertical
+      : scene.square === true
+        ? scene.plan?.square
+        : undefined;
   const output =
-    vertical === undefined
+    crop === undefined
       ? OUTPUT
-      : { ...OUTPUT, width: vertical.width, height: vertical.height };
+      : { ...OUTPUT, width: crop.width, height: crop.height };
   const target = createPicture(output.width, output.height);
   const compositor =
-    vertical === undefined
+    crop === undefined
       ? createCompositor(
           output,
           scene.plan === undefined ? undefined : renderStage(scene.plan),
         )
-      : createCompositor(output, undefined, vertical.caption);
+      : createCompositor(output, undefined, crop.caption);
   drawLayers(compositor, target, scene.frame, (ms) =>
-    ms === scene.heldSourceMs ? PREVIOUS_PAGE : source,
+    ms === scene.heldSourceMs ? PREVIOUS_PAGE : (scene.source ?? source),
   );
   const { x, y, width, height } = scene.region;
   return cropPicture(target, x, y, width, height);

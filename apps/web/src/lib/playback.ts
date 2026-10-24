@@ -7,11 +7,28 @@ export const FORMAT_ORDER = [
   'webm',
   'mp4-vertical',
   'webm-vertical',
+  'mp4-square',
+  'webm-square',
   'gif',
   'gif-vertical',
+  'gif-square',
 ] as const;
 
 export type PlayableFormat = (typeof FORMAT_ORDER)[number];
+
+/** The shape of the picture a format shows: the player's box follows it. */
+export type PlayerShape = 'landscape' | 'vertical' | 'square';
+
+export function playerShape(format: PlayableFormat): PlayerShape {
+  if (format.endsWith('-vertical')) return 'vertical';
+  if (format.endsWith('-square')) return 'square';
+  return 'landscape';
+}
+
+/** A GIF plays in an `<img>`, the others in the player. */
+export function isGifFormat(format: PlayableFormat): boolean {
+  return format.startsWith('gif');
+}
 
 export type Availability = 'removed' | 'offline' | 'failed' | 'ready';
 
@@ -32,6 +49,11 @@ export function orderFormats(formats: readonly string[]): PlayableFormat[] {
 /** The same-origin relay URL, so the session cookie goes with the request. */
 export function videoUrl(runId: string, format: PlayableFormat): string {
   return `/api/runs/${encodeURIComponent(runId)}/video/${format}`;
+}
+
+/** The same relay URL as an attachment: the server names the file (spec #300). */
+export function downloadUrl(runId: string, format: PlayableFormat): string {
+  return `${videoUrl(runId, format)}?download=1`;
 }
 
 export type DeleteFailureKey =

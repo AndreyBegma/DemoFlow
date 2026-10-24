@@ -27,6 +27,28 @@ describe('parseProjectConfig', () => {
           formats: ['mp4'],
           gif: { width: 800, fps: 12 },
           vertical: { followMs: 400, deadZone: 0.1, captionBand: 0.22 },
+          square: { followMs: 400, deadZone: 0.1, captionBand: 0.22 },
+        },
+      },
+    });
+  });
+
+  it('keeps the square formats and their own settings (spec 304)', () => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: {
+        formats: ['mp4-vertical', 'mp4-square', 'gif-square', 'webm-square'],
+        vertical: { followMs: 250 },
+        square: { deadZone: 0.2 },
+      },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        render: {
+          formats: ['mp4-vertical', 'mp4-square', 'gif-square', 'webm-square'],
+          vertical: { followMs: 250, deadZone: 0.1, captionBand: 0.22 },
+          square: { followMs: 400, deadZone: 0.2, captionBand: 0.22 },
         },
       },
     });
@@ -103,6 +125,12 @@ describe('parseProjectConfig', () => {
     [{ vertical: { captionBand: 0 } }, 'render.vertical.captionBand'],
     [{ vertical: { captionBand: 0.51 } }, 'render.vertical.captionBand'],
     [{ vertical: { zoom: 2 } }, 'render.vertical.zoom'],
+    [{ square: { followMs: -1 } }, 'render.square.followMs'],
+    [{ square: { followMs: 2001 } }, 'render.square.followMs'],
+    [{ square: { deadZone: 0.5 } }, 'render.square.deadZone'],
+    [{ square: { captionBand: 0 } }, 'render.square.captionBand'],
+    [{ square: { captionBand: 0.51 } }, 'render.square.captionBand'],
+    [{ square: { zoom: 2 } }, 'render.square.zoom'],
   ])('rejects the render %o at %s', (render, path) => {
     const result = parseProjectConfig({ baseUrl: 'https://a.example', render });
     expect(result.ok).toBe(false);

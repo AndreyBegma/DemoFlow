@@ -73,6 +73,8 @@ interface Spawned {
   child: RunChild;
   killed: number;
   exit(code?: number | null): void;
+  /** The child prints these lines on stdout. */
+  print(...lines: string[]): void;
 }
 
 function fakeSpawn(): { spawn: SpawnRun; calls: Spawned[] } {
@@ -88,6 +90,9 @@ function fakeSpawn(): { spawn: SpawnRun; calls: Spawned[] } {
       options,
       killed: 0,
       exit: (code = 0) => resolve({ code, stderrTail: '' }),
+      print: (...lines) => {
+        for (const line of lines) options?.onStdoutLine?.(line);
+      },
       child: {
         pid: 4242,
         exited,
@@ -463,13 +468,17 @@ describe('run.start', () => {
       'run',
       path.join(root, 'demoflow', 'nested', 'a.demo.json'),
       '--json',
+      '--progress',
       '--run-id',
       'local-1',
       '--project',
       root,
     ]);
     expect(call?.cwd).toBe(root);
-    expect(call?.options).toEqual({ killGraceMs: LAUNCH_KILL_GRACE_MS });
+    expect(call?.options).toEqual({
+      killGraceMs: LAUNCH_KILL_GRACE_MS,
+      onStdoutLine: expect.any(Function),
+    });
     expect(LAUNCH_KILL_GRACE_MS).toBe(15_000);
   });
 
@@ -710,6 +719,60 @@ describe('a running launch', () => {
     expect(await finished()).toMatchObject({ outcome: 'failed', runId: null });
   });
 
+  it('is announced by running() once its child is spawned, and not before', async () => {
+    const target = launcher();
+    expect(target.running()).toEqual([]);
+    send(target, startOf('demoflow/a.demo.json'));
+    // Still in its checks: nothing to reattach.
+    expect(target.running()).toEqual([]);
+    expect(await answered()).toMatchObject({ type: 'run.started' });
+    expect(target.running()).toEqual([REQUEST]);
+    spawned.calls[0]?.exit(0);
+    await finished();
+    expect(target.running()).toEqual([]);
+  });
+
+  it('is still announced while its child is being killed', async () => {
+    const target = launcher();
+    const call = await started(target);
+    call.child.kill = () => new Promise<void>(() => {});
+    send(target, { type: 'run.cancel', requestId: REQUEST });
+    expect(target.running()).toEqual([REQUEST]);
+  });
+
+  it('is not announced when its request id is not a UUID v4, and the log says so', async () => {
+    const target = launcher();
+    const id = 'not-a-uuid';
+    target.handle(
+      { ...startOf('demoflow/a.demo.json'), requestId: id },
+      reply,
+      current,
+    );
+    expect(await answered()).toMatchObject({ type: 'run.started' });
+    expect(target.running()).toEqual([]);
+    expect(logger.text()).toMatch(
+      /not announced, the request id is not a UUID v4/,
+    );
+  });
+
+  it('sends one run.finished cancelled for two run.cancel frames', async () => {
+    const target = launcher();
+    const call = await started(target);
+    send(target, { type: 'run.cancel', requestId: REQUEST });
+    send(target, { type: 'run.cancel', requestId: REQUEST });
+    await finished();
+    await clock.advance(0);
+    expect(current.sent).toEqual([
+      {
+        type: 'run.finished',
+        requestId: REQUEST,
+        outcome: 'cancelled',
+        runId: null,
+      },
+    ]);
+    expect(call.killed).toBeGreaterThanOrEqual(1);
+  });
+
   it('is cancelled by close(), which resolves once the child is gone', async () => {
     const target = launcher();
     const call = await started(target);
@@ -756,5 +819,129 @@ describe('a cancelled run with a real process tree', () => {
       },
       { timeout: 10_000, interval: 50 },
     );
+  });
+});
+
+const STDOUT_CHILD = path.join(import.meta.dirname, 'stdout-child.ts');
+
+describe('spawnNode stdout lines', () => {
+  it('delivers lines split across chunks, strips CRLF and drops a 9 KiB line only', async () => {
+    const lines: string[] = [];
+    const child = spawnNode(STDOUT_CHILD, [], tmp, {
+      onStdoutLine: (line) => {
+        lines.push(line);
+      },
+    });
+    await child.exited;
+    expect(lines).toEqual([
+      '{"type":"progress","phase":"app"}',
+      'second',
+      'third',
+      'last',
+    ]);
+  });
+
+  it('keeps reading when the callback throws', async () => {
+    const lines: string[] = [];
+    const child = spawnNode(STDOUT_CHILD, [], tmp, {
+      onStdoutLine: (line) => {
+        lines.push(line);
+        throw new Error('boom');
+      },
+    });
+    await child.exited;
+    expect(lines).toHaveLength(4);
+  });
+
+  it('discards stdout without a callback, as before', async () => {
+    const child = spawnNode(STDOUT_CHILD, [], tmp);
+    expect(await child.exited).toMatchObject({ code: 0 });
+  });
+});
+
+describe('run.progress', () => {
+  const runDir = () => runDirFor(home, 'local-1', process.platform);
+  const line = (progress: Record<string, unknown>) =>
+    JSON.stringify({ type: 'progress', ...progress });
+
+  beforeEach(() => {
+    register();
+    write('demoflow/a.demo.json', scenario('Ay'));
+  });
+
+  async function started(target: Launcher): Promise<Spawned> {
+    send(target, startOf('demoflow/a.demo.json'));
+    expect(await answered()).toMatchObject({ type: 'run.started' });
+    const call = spawned.calls[0];
+    if (call === undefined) throw new Error('nothing spawned');
+    return call;
+  }
+
+  it('sends the first progress at once, then only the latest once a second is up', async () => {
+    const call = await started(launcher());
+    call.print(
+      line({ phase: 'app' }),
+      line({ phase: 'steps', step: 1, steps: 3 }),
+      line({ phase: 'steps', step: 2, steps: 3 }),
+      line({ phase: 'steps', step: 3, steps: 3 }),
+    );
+    expect(current.sent).toEqual([
+      {
+        type: 'run.progress',
+        requestId: REQUEST,
+        phase: 'app',
+        step: null,
+        steps: null,
+      },
+    ]);
+    await clock.advance(999);
+    expect(current.sent).toHaveLength(1);
+    await clock.advance(1);
+    expect(current.sent[1]).toEqual({
+      type: 'run.progress',
+      requestId: REQUEST,
+      phase: 'steps',
+      step: 3,
+      steps: 3,
+    });
+    expect(current.sent).toHaveLength(2);
+  });
+
+  it('sends nothing for output that is not progress', async () => {
+    const call = await started(launcher());
+    call.print(
+      'garbage',
+      '{"status":"completed"}',
+      line({ phase: 'steps', step: 0, steps: 2 }),
+      line({ phase: 'steps', step: 3, steps: 2 }),
+      line({ phase: 'steps', step: 1, steps: 10_001 }),
+      line({ phase: 'app', step: 1, steps: 2 }),
+      line({ phase: 'nope' }),
+      JSON.stringify({ type: 'other', phase: 'app' }),
+    );
+    await clock.advance(5_000);
+    expect(current.sent).toEqual([]);
+  });
+
+  it('runs the launch through: frames in order, then run.finished, nothing after', async () => {
+    const call = await started(launcher());
+    call.print(line({ phase: 'app' }));
+    await clock.advance(1_000);
+    call.print(line({ phase: 'steps', step: 1, steps: 2 }));
+    await clock.advance(1_000);
+    call.print(line({ phase: 'steps', step: 2, steps: 2 }));
+    call.print(line({ phase: 'rendering' }));
+    statuses.set(runDir(), 'completed');
+    call.exit(0);
+    await vi.waitFor(() =>
+      expect(current.sent.at(-1)).toMatchObject({ type: 'run.finished' }),
+    );
+    await clock.advance(5_000);
+    expect(current.sent.map((m) => [m.type, m.phase, m.step])).toEqual([
+      ['run.progress', 'app', null],
+      ['run.progress', 'steps', 1],
+      ['run.progress', 'steps', 2],
+      ['run.finished', undefined, undefined],
+    ]);
   });
 });

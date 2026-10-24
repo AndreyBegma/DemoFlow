@@ -129,4 +129,113 @@ describe('the daemon with a website-started run', () => {
     expect(await done).toBe(0);
     expect(order).toEqual(['kill', 'child exited', 'daemon exited']);
   });
+
+  describe('after the socket drops', () => {
+    const REQUEST = '6f1c2b8e-3d4a-4b5c-9e7f-0a1b2c3d4e5f';
+
+    async function dropped() {
+      writeCredentials(host, {
+        server: 'https://demoflow.test',
+        token: 'dfr_daemon-launch-token',
+        runnerId: 'runner-1',
+      });
+      const root = path.join(tmp, 'shop');
+      mkdirSync(path.join(root, 'demoflow'), { recursive: true });
+      writeFileSync(
+        path.join(root, 'demoflow.config.json'),
+        '{"baseUrl":"http://localhost:1"}',
+      );
+      writeFileSync(
+        path.join(root, 'demoflow', 'a.demo.json'),
+        readFileSync(FIXTURE, 'utf8'),
+      );
+      const paths = runnerPaths(host);
+      appendReportedRun(paths.reportedRuns, {
+        id: 'srv-0',
+        runDir: path.join(tmp, 'runs', 'old'),
+        at: '2026-10-23T10:00:00.000Z',
+        root,
+      });
+
+      let exit: (code: ChildExit) => void = () => {};
+      const spawn: SpawnRun = () => {
+        const exited = new Promise<ChildExit>((r) => {
+          exit = r;
+        });
+        return {
+          pid: 4242,
+          exited,
+          kill: async () => {
+            exit({ code: null, stderrTail: '' });
+            await exited;
+          },
+        };
+      };
+      const { factory, sockets } = fakeSockets();
+      const clock = new FakeClock();
+      const done = runForeground(io, {
+        host,
+        pid: process.pid,
+        connect: factory,
+        clock,
+        random: () => 0.5,
+        fetch: async () => new Response(null, { status: 500 }),
+        spawn,
+      });
+
+      await vi.waitFor(() => expect(sockets).toHaveLength(1));
+      const first = sockets[0];
+      if (first === undefined) throw new Error('no socket');
+      first.open();
+      expect(first.sent[0]).toEqual({ type: 'launches.sync', running: [] });
+      first.receive({
+        type: 'run.start',
+        requestId: REQUEST,
+        rootPath: root,
+        scenarioId: 'demoflow/a.demo.json',
+      });
+      await vi.waitFor(() =>
+        expect(first.sent).toContainEqual(
+          expect.objectContaining({ type: 'run.started' }),
+        ),
+      );
+      first.serverClose(1006);
+
+      const reconnect = async () => {
+        await clock.advance(60_000);
+        const next = sockets[1];
+        if (next === undefined) throw new Error('no second socket');
+        next.open();
+        return next;
+      };
+      const stop = async (socket: { serverClose(c: number): void }) => {
+        writeFileSync(paths.stop, '');
+        await vi.waitFor(async () => {
+          await clock.advance(1);
+        });
+        socket.serverClose(1000);
+        await done;
+      };
+      return { exit: () => exit({ code: 0, stderrTail: '' }), reconnect, stop };
+    }
+
+    it('announces the run its child still has, before anything else', async () => {
+      const { reconnect, stop } = await dropped();
+      const next = await reconnect();
+      expect(next.sent[0]).toEqual({
+        type: 'launches.sync',
+        running: [REQUEST],
+      });
+      await stop(next);
+    });
+
+    it('announces nothing for a child that exited offline, and sends no run.finished on the new socket', async () => {
+      const { exit, reconnect } = await dropped();
+      exit();
+      // Let the launcher settle: the run.finished has no socket and is dropped.
+      await new Promise((r) => setTimeout(r, 50));
+      const next = await reconnect();
+      expect(next.sent).toEqual([{ type: 'launches.sync', running: [] }]);
+    });
+  });
 });

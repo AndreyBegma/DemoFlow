@@ -1,6 +1,80 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatElapsed, isActive, launchErrorKey } from './launch.ts';
+import {
+  canRunAgain,
+  formatElapsed,
+  isActive,
+  isStartableScenario,
+  launchErrorKey,
+  launchProgress,
+} from './launch.ts';
+
+const scenarioPath = 'demoflow/checkout/buy.demo.json';
+const bound = { rootPath: '/home/me/app', runner: { id: 'm1' } };
+const online = { id: 'm1', online: true };
+
+test('a scenario file of the project is startable', () => {
+  assert.equal(isStartableScenario(scenarioPath), true);
+  assert.equal(isStartableScenario('demoflow/a.demo.json'), true);
+});
+
+test('inline and foreign paths are not startable', () => {
+  assert.equal(isStartableScenario('inline/abc.demo.json'), false);
+  assert.equal(isStartableScenario('demoflow/a.json'), false);
+  assert.equal(isStartableScenario('other/a.demo.json'), false);
+});
+
+test('run again is ready for the recording machine, online', () => {
+  assert.equal(
+    canRunAgain({ project: bound, machine: online, scenarioPath }),
+    'ready',
+  );
+});
+
+test('run again is offline when the machine is offline', () => {
+  assert.equal(
+    canRunAgain({
+      project: bound,
+      machine: { id: 'm1', online: false },
+      scenarioPath,
+    }),
+    'offline',
+  );
+});
+
+test('run again is hidden when the click could only fail', () => {
+  const hidden = (input) => canRunAgain(input) === 'hidden';
+  assert.ok(hidden({ project: null, machine: online, scenarioPath }));
+  assert.ok(
+    hidden({
+      project: { ...bound, rootPath: null },
+      machine: online,
+      scenarioPath,
+    }),
+  );
+  assert.ok(hidden({ project: bound, machine: null, scenarioPath }));
+  assert.ok(
+    hidden({
+      project: { ...bound, runner: { id: 'm2' } },
+      machine: online,
+      scenarioPath,
+    }),
+  );
+  assert.ok(
+    hidden({
+      project: { ...bound, runner: null },
+      machine: online,
+      scenarioPath,
+    }),
+  );
+  assert.ok(
+    hidden({
+      project: bound,
+      machine: online,
+      scenarioPath: 'inline/x.demo.json',
+    }),
+  );
+});
 
 test('every API error code has its own message', () => {
   const expected = {
@@ -36,6 +110,48 @@ test('terminal and lost states are not active', () => {
   for (const state of ['passed', 'failed', 'cancelled', 'timed-out', 'lost']) {
     assert.equal(isActive(state), false);
   }
+});
+
+test('progress shows the phase of a running launch', () => {
+  const running = (progress) => ({ state: 'running', progress });
+  assert.deepEqual(
+    launchProgress(running({ phase: 'app', step: null, steps: null })),
+    { key: 'projects.launch.progress.app' },
+  );
+  assert.deepEqual(
+    launchProgress(running({ phase: 'rendering', step: null, steps: null })),
+    { key: 'projects.launch.progress.rendering' },
+  );
+  assert.deepEqual(
+    launchProgress(running({ phase: 'steps', step: 3, steps: 7 })),
+    { key: 'projects.launch.progress.steps', step: 3, steps: 7 },
+  );
+});
+
+test('progress is null unless the launch is running with a known phase', () => {
+  const steps = { phase: 'steps', step: 3, steps: 7 };
+  assert.equal(launchProgress({ state: 'starting', progress: steps }), null);
+  assert.equal(launchProgress({ state: 'passed', progress: steps }), null);
+  assert.equal(launchProgress({ state: 'running', progress: null }), null);
+  assert.equal(launchProgress({ state: 'running' }), null);
+  assert.equal(
+    launchProgress({
+      state: 'running',
+      progress: { phase: 'warming-up', step: null, steps: null },
+    }),
+    null,
+  );
+});
+
+test('progress steps with inconsistent numbers is null', () => {
+  const steps = (step, total) => ({
+    state: 'running',
+    progress: { phase: 'steps', step, steps: total },
+  });
+  assert.equal(launchProgress(steps(8, 7)), null);
+  assert.equal(launchProgress(steps(0, 7)), null);
+  assert.equal(launchProgress(steps(null, 7)), null);
+  assert.equal(launchProgress(steps(3, null)), null);
 });
 
 test('elapsed time reads as minutes and seconds', () => {

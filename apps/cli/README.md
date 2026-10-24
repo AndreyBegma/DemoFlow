@@ -44,8 +44,9 @@ as well, all encoded in one pass; the GIF is 800 px wide at 12 fps unless
 `demoflow run --format gif --format mp4` replaces `render.formats` for one
 run; `generate_demo` takes the same list as `formats`. The files are
 `render/ffmpeg.mp4`, `render/ffmpeg.gif`, `render/ffmpeg.webm` and
-`render/ffmpeg.vertical.mp4`, `render/ffmpeg.vertical.webm` and
-`render/ffmpeg.vertical.gif`.
+`render/ffmpeg.vertical.mp4`, `render/ffmpeg.vertical.webm`,
+`render/ffmpeg.vertical.gif`, `render/ffmpeg.square.mp4`,
+`render/ffmpeg.square.webm` and `render/ffmpeg.square.gif`.
 
 `mp4-vertical` is a 1080×1920 MP4 for phones, rendered from the same run.
 `webm-vertical` is the same frames as a 1080×1920 VP9 WebM, and `gif-vertical`
@@ -69,6 +70,23 @@ optional:
 shorter than `deadZone` (a share of the crop width) is skipped, so the camera
 does not jitter. `captionBand` is the share of the frame height, at the
 bottom, that captions sit in.
+
+`mp4-square`, `webm-square` and `gif-square` are the same for a 1:1 crop, the
+size of feed posts: a 1080×1080 MP4, a 1080×1080 VP9 WebM, and a GIF whose side
+is three quarters of `render.gif.width` (600×600 by default, again the pixels of
+the landscape GIF). The square crop has its own camera, so `render.square`
+takes the same three fields as `render.vertical` and tunes it alone; captions
+are cut to two lines. Ask for any mix of landscape, vertical and square files
+in one run:
+
+```json
+{
+  "render": {
+    "formats": ["mp4", "mp4-vertical", "mp4-square", "gif-square"],
+    "square": { "followMs": 400, "deadZone": 0.1, "captionBand": 0.22 }
+  }
+}
+```
 
 `demoflow render <runId>` renders a finished run again from
 `<home>/runs/<runId>/` with the current `render.*` config, without the app or
@@ -102,6 +120,16 @@ the MCP's `check_project` answer.
 Both commands are read-only: no browser, no file written, no network request.
 Outside a project (no `demoflow.config.json` in the folder or above) they exit 2.
 
+Runs pile up in `<home>/runs/`. `demoflow runs list` prints every run there,
+newest first: status (`partial` for a run that never finished, `active` for one
+touched in the last 5 minutes), date, size, scenario name and run id, then the
+total. `demoflow runs delete <id…>` deletes runs by id, and
+`demoflow runs prune --older-than 30d` or `--partial-only` deletes the runs
+matching every filter given. Nothing asks for confirmation, so preview with
+`--dry-run` first. An active run is never deleted, and nothing outside
+`<home>/runs/` is ever touched. These commands work outside a project too, and
+take `--out <dir>` like `run`.
+
 `demoflow record` writes a scenario from what you do in the app. To post the
 same thing for several items, tick a run of steps in the recording panel and
 choose **Repeat over data**. Name the list, then give one line per item for each
@@ -117,6 +145,8 @@ typed value. Secret fills are left as recorded.
 | `demoflow run <scenario>` | run it in a browser and render the video |
 | `demoflow render <runId>` | render an existing run again with the current config |
 | `demoflow list` | list recent runs of the current project, newest first |
+| `demoflow runs list` | list every run on this machine, with its size |
+| `demoflow runs delete <id…>` / `prune` | delete runs by id, or by age and state |
 | `demoflow check` | check that the project, FFmpeg and the browser are ready |
 | `demoflow setup` | install Chromium now instead of on the first run |
 | `demoflow mcp` | serve demo generation to MCP clients over stdio |

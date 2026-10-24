@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -17,7 +18,12 @@ import { RunnerConnections } from '../runner/runner-connections.service';
 import { MAX_STREAMS_PER_RUNNER } from '../runner/runner-socket';
 import { ArtifactsService } from './artifacts.service';
 import { parseRange } from './byte-range';
-import { RunVideoParamsDto } from './runs.dto';
+import { downloadName } from './download-name';
+import {
+  RunIdParamsDto,
+  RunVideoParamsDto,
+  RunVideoQueryDto,
+} from './runs.dto';
 import {
   liveMachine,
   type RunPage,
@@ -42,11 +48,25 @@ export class RunsController {
     return this.runs.page(user.id, id);
   }
 
+  /**
+   * Deletes the run's metadata; its files on the machine stay and nothing is
+   * sent to the Runner (spec #280, Decisions 1–4).
+   */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(
+    @CurrentUser() user: User,
+    @Param() { id }: RunIdParamsDto,
+  ): Promise<void> {
+    return this.runs.remove(user.id, id);
+  }
+
   /** Every check before anything goes to the Runner (Decisions 1–2). */
   @Get(':id/video/:format')
   async video(
     @CurrentUser() user: User,
     @Param() { id, format }: RunVideoParamsDto,
+    @Query() { download }: RunVideoQueryDto,
     @Headers('range') range: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
@@ -73,6 +93,7 @@ export class RunsController {
       runId: run.id,
       format,
       range: parseRange(range),
+      download: download ? { fileName: downloadName(run, format) } : undefined,
       res,
     });
   }

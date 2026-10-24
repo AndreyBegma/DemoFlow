@@ -56,7 +56,10 @@ export class LaunchesController {
     return { launch: await this.launches.start(target, scenarioId) };
   }
 
-  /** Ownership only: a launch whose machine went away is already `lost` (Decision 3). */
+  /**
+   * Ownership only: a launch whose machine went away keeps its state until
+   * the machine is back or the grace ends (spec #284, Decision 2).
+   */
   @Get(':id/launch')
   async latest(
     @CurrentUser() user: User,

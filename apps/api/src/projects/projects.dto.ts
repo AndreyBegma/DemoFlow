@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   ArrayUnique,
   IsArray,
   IsIn,
@@ -31,6 +32,9 @@ export const RUN_FORMATS = [
   'mp4-vertical',
   'gif-vertical',
   'webm-vertical',
+  'mp4-square',
+  'gif-square',
+  'webm-square',
 ] as const;
 export type RunFormat = (typeof RUN_FORMATS)[number];
 export const RUN_STATUSES = ['passed', 'failed'] as const;
@@ -216,6 +220,19 @@ export class UpdateProjectDto {
   @IsString()
   @Length(1, PATH_MAX)
   rootPath?: string;
+}
+
+/** Two library pages: what a person selects by hand (spec #286, Decision 2). */
+export const DELETE_RUNS_MAX = 100;
+
+export class DeleteRunsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(DELETE_RUNS_MAX)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @Length(1, 64, { each: true })
+  runIds!: string[];
 }
 
 export class RunsPageQueryDto {

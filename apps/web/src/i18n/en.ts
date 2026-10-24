@@ -265,6 +265,23 @@ export const en = {
       loadingMore: 'Loading…',
       loadFailed: 'We could not load more runs. Try again.',
       pageFailed: 'We could not load the runs. Try again in a moment.',
+      select: {
+        row: 'Select {name}',
+        all: 'Select all loaded runs',
+        count: '{count} selected',
+        countMax: '{count} selected (at most {max} at once)',
+        clear: 'Clear',
+      },
+      bulkDelete: {
+        action: 'Delete selected',
+        title: 'Delete {count} runs?',
+        titleOne: 'Delete 1 run?',
+        consequence:
+          'They are removed from your library. Their video files stay on the machine; to remove them, open a run and use Delete video files first. This cannot be undone.',
+        confirm: 'Delete runs',
+        cancel: 'Keep',
+        partlyGone: '{count} of the selected runs were already gone.',
+      },
     },
     launch: {
       title: 'Run a scenario',
@@ -276,6 +293,11 @@ export const en = {
       refresh: 'Refresh',
       run: 'Run',
       empty: 'No scenarios in demoflow/',
+      progress: {
+        app: 'Starting the app',
+        steps: 'Step {step} of {steps}',
+        rendering: 'Rendering the video',
+      },
       skipped: '{count} files could not be read as scenarios.',
       truncated: 'Showing the first 100 scenarios.',
       confirm: {
@@ -324,6 +346,21 @@ export const en = {
   },
   runPage: {
     title: 'Run of {name}',
+    again: {
+      title: 'Run this scenario again',
+      button: 'Run again',
+      offlineHint: 'The machine is offline.',
+    },
+    deleteRun: {
+      open: 'Delete run',
+      title: 'Delete this run?',
+      consequenceFiles:
+        'The run is removed from your library. Its video files stay on the machine; to remove them, use Delete video files first. This cannot be undone.',
+      consequence:
+        'The run is removed from your library. This cannot be undone.',
+      confirm: 'Delete run',
+      cancel: 'Keep',
+    },
     breadcrumbs: {
       label: 'Path',
       overflow: 'Show the path',
@@ -348,8 +385,11 @@ export const en = {
       webm: 'WebM',
       'mp4-vertical': 'Vertical MP4',
       'webm-vertical': 'Vertical WebM',
+      'mp4-square': 'Square MP4',
+      'webm-square': 'Square WebM',
       gif: 'GIF',
       'gif-vertical': 'Vertical GIF',
+      'gif-square': 'Square GIF',
     },
     failure: {
       title: 'Failed at {stage}',
@@ -388,6 +428,11 @@ export const en = {
     retry: 'Retry',
     retrying: 'Checking…',
     pageFailed: 'We could not load this run. Try again in a moment.',
+    download: {
+      button: 'Download',
+      checking: 'Checking…',
+      offlineHint: 'The machine is offline.',
+    },
     delete: {
       open: 'Delete video files',
       offlineHint: 'The machine is offline.',

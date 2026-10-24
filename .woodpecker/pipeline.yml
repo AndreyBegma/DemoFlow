@@ -22,6 +22,11 @@
 # worker pool plus Chromium and Postgres, and the kernel SIGKILLed test
 # processes on the shared 61 GB agent host (#242). The bound is a guess, not a
 # measurement: raise it only after a forced full run passes at the higher value.
+# The bound is per task, not per process: every task still sizes its own worker
+# pool to the host (jest cores − 1, vitest a thread per core), and a full run
+# with Chromium, FFmpeg and Postgres beside them was OOM-killed again (#315).
+# So with `CI` set, apps/api runs jest with --maxWorkers=2 (its `test` script)
+# and every vitest config sets maxWorkers: 2. Local runs keep full parallelism.
 #
 # The CI Postgres holds throwaway data. It runs on tmpfs, with fsync,
 # synchronous_commit and full_page_writes off.

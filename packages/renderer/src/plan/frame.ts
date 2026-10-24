@@ -2,20 +2,21 @@ import type { Box } from '@demoflow/core';
 import { toSourceMs } from './time-map.ts';
 import type {
   CameraKeyframe,
+  CropSpec,
   CursorMove,
   FollowKey,
   FrameState,
   MaskSpan,
   Point,
   RenderPlan,
-  VerticalSpec,
 } from './types.ts';
 
 /**
  * Which picture a frame is for: the landscape output every format but one
- * shares, or the 9:16 crop of `mp4-vertical` (spec 176).
+ * shares, the 9:16 crop of the `*-vertical` formats (spec 176), or the 1:1
+ * crop of the `*-square` ones (spec 304).
  */
-export type Layout = 'landscape' | 'vertical';
+export type Layout = 'landscape' | 'vertical' | 'square';
 
 /** How many frames the video has. */
 export function frameCount(plan: RenderPlan): number {
@@ -97,14 +98,14 @@ function viewOf(plan: RenderPlan, layout: Layout): View {
       geometryAt: (atMs) => geometryAt(plan, atMs),
     };
   }
-  const { vertical } = plan;
-  if (vertical === undefined) {
-    throw new Error('a vertical frame needs a plan with a vertical format');
+  const crop = layout === 'vertical' ? plan.vertical : plan.square;
+  if (crop === undefined) {
+    throw new Error(`a ${layout} frame needs a plan with a ${layout} format`);
   }
   return {
-    width: vertical.width,
-    height: vertical.height,
-    geometryAt: (atMs) => verticalGeometryAt(plan, vertical, atMs),
+    width: crop.width,
+    height: crop.height,
+    geometryAt: (atMs) => cropGeometryAt(plan, crop, atMs),
   };
 }
 
@@ -349,16 +350,16 @@ export function stageViewAt(plan: RenderPlan, atMs: number): Box {
 }
 
 /**
- * The vertical output (spec 176): the crop `verticalViewAt` gives fills the
- * frame. No window, no background: the page is all there is.
+ * The vertical and square outputs (specs 176, 304): the crop `cropViewAt`
+ * gives fills the frame. No window, no background: the page is all there is.
  */
-function verticalGeometryAt(
+function cropGeometryAt(
   plan: RenderPlan,
-  vertical: VerticalSpec,
+  vertical: CropSpec,
   atMs: number,
 ): Geometry {
   const { source } = plan;
-  const view = verticalViewAt(plan, vertical, atMs);
+  const view = cropViewAt(plan, vertical, atMs);
   const scale = vertical.width / view.width;
   return {
     crop: {
@@ -377,11 +378,11 @@ function verticalGeometryAt(
 }
 
 /**
- * The vertical crop at zoom 1, in viewport CSS pixels: the full viewport
+ * A crop (9:16 or 1:1) at zoom 1, in viewport CSS pixels: the full viewport
  * height and the output's aspect ratio — or, on a viewport narrower than
  * that, its full width.
  */
-export function verticalCropSize(
+export function cropSize(
   viewport: { width: number; height: number },
   output: { width: number; height: number },
 ): { width: number; height: number } {
@@ -391,40 +392,49 @@ export function verticalCropSize(
 }
 
 /**
- * The part of the viewport the vertical output shows at `atMs`: centred
- * across on the follow camera and down on the steps' camera, narrowed by
- * its zoom, and clamped to the page — it never leaves it.
+ * The part of the viewport a crop output shows at `atMs`: centred across on
+ * the follow camera, and down on it too when the crop at zoom 1 is shorter
+ * than the page (a tall source; spec 306, Decision 2) — otherwise on the
+ * steps' camera — narrowed by its zoom, and clamped to the page.
  */
-export function verticalViewAt(
+export function cropViewAt(
   plan: RenderPlan,
-  vertical: VerticalSpec,
+  vertical: CropSpec,
   atMs: number,
 ): Box {
   const { viewport } = plan;
   const { centre, zoom } = cameraStateAt(plan.camera, atMs);
-  const base = verticalCropSize(viewport, vertical);
+  const base = cropSize(viewport, vertical);
   const width = base.width / zoom;
   const height = base.height / zoom;
-  const x = followAt(vertical.follow, atMs) ?? viewport.width / 2;
+  const follow = followAt(vertical.follow, atMs);
+  const x = follow?.x ?? viewport.width / 2;
+  const y =
+    base.height < viewport.height
+      ? (follow?.y ?? viewport.height / 2)
+      : centre.y;
   return {
     x: Math.min(viewport.width - width, Math.max(0, x - width / 2)),
-    y: Math.min(viewport.height - height, Math.max(0, centre.y - height / 2)),
+    y: Math.min(viewport.height - height, Math.max(0, y - height / 2)),
     width,
     height,
   };
 }
 
-/** The follow camera's horizontal centre at `atMs`, eased between keys; `undefined` without keys. */
+/** The follow camera's centre at `atMs`, eased between keys; `undefined` without keys. */
 export function followAt(
   keys: readonly FollowKey[],
   atMs: number,
-): number | undefined {
+): Point | undefined {
   const next = keys.findIndex((key) => key.atMs > atMs);
-  if (next === 0) return keys[0].x;
-  if (next === -1) return keys.at(-1)?.x;
+  if (next === 0) return { x: keys[0].x, y: keys[0].y };
+  if (next === -1) {
+    const last = keys.at(-1);
+    return last && { x: last.x, y: last.y };
+  }
   const a = keys[next - 1];
   const b = keys[next];
-  return a.x + (b.x - a.x) * easeInOut((atMs - a.atMs) / (b.atMs - a.atMs));
+  return mix(a, b, easeInOut((atMs - a.atMs) / (b.atMs - a.atMs)));
 }
 
 /** The part of the viewport the camera shows at `atMs`, in viewport CSS pixels. */

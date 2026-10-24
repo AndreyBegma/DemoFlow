@@ -43,7 +43,7 @@ interface Connection {
   warnedStrayChunk: boolean;
   /** An `artifacts.*` answer for no pending request was logged on this socket. */
   warnedStrayArtifacts: boolean;
-  /** A `scenarios.*` or `run.*` answer for no pending request was logged on this socket. */
+  /** A `scenarios.*`, `run.*` or `launches.sync` frame for no pending request or launch was logged on this socket. */
   warnedStrayLaunch: boolean;
 }
 
@@ -74,6 +74,8 @@ export interface ArtifactsSink {
  */
 export interface LaunchSink {
   message(runnerId: string, message: LaunchMessage): boolean;
+  /** A socket became the machine's current one (spec #284, Decision 4). */
+  opened(runnerId: string): void;
   /** The machine's socket is gone: closed, replaced, revoked or shut down. */
   closed(runnerId: string): void;
 }
@@ -201,6 +203,8 @@ export class RunnerConnections
       this.socketGone(runner.id);
       previous.socket.close(CLOSE_REPLACED, 'replaced');
     }
+    // Before any await: the daemon's `launches.sync` is its first frame.
+    this.launchSink?.opened(runner.id);
 
     // Also the check that closes a socket whose machine was revoked between
     // the upgrade and this line.
@@ -342,6 +346,8 @@ export class RunnerConnections
       case 'run.started':
       case 'run.error':
       case 'run.finished':
+      case 'run.progress':
+      case 'launches.sync':
         this.relayLaunch(connection, message);
         return;
     }

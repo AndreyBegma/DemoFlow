@@ -13,7 +13,11 @@ import {
   type LaunchSink,
   RunnerConnections,
 } from '../runner/runner-connections.service';
-import type { LaunchMessage, RunOutcome } from '../runner/runner-socket';
+import type {
+  LaunchMessage,
+  RunOutcome,
+  RunPhase,
+} from '../runner/runner-socket';
 import { runError } from '../videos/runs.service';
 
 /** No `scenarios.listed` this long after `scenarios.list`: 504 (spec #247, Decision 5). */
@@ -26,6 +30,10 @@ export const CANCEL_TIMEOUT_MS = 30 * 1000;
 export const RUN_TIMEOUT_MS = 20 * 60 * 1000;
 /** A finished launch is kept this long for `GET` (Decision 9). */
 export const LAUNCH_RETENTION_MS = 10 * 60 * 1000;
+/** A detached launch whose machine has no new socket this long is `lost` (spec #284, Decision 3). */
+export const RECONNECT_GRACE_MS = 90 * 1000;
+/** A new socket without `launches.sync` this long ends its machine's detached launches (Decision 4). */
+export const SYNC_TIMEOUT_MS = 10 * 1000;
 /** How often the timeouts are checked. */
 const SWEEP_INTERVAL_MS = 1000;
 
@@ -42,6 +50,13 @@ const ACTIVE: ReadonlySet<LaunchState> = new Set([
   'cancelling',
 ]);
 
+/** The child's latest `run.progress` (spec #301): step `step` of `steps` while `phase` is `steps`. */
+export interface RunProgress {
+  phase: RunPhase;
+  step: number | null;
+  steps: number | null;
+}
+
 /** What the browser polls (Decision 1). */
 export interface LaunchView {
   id: string;
@@ -51,6 +66,8 @@ export interface LaunchView {
   startedAt: string;
   finishedAt: string | null;
   runId: string | null;
+  /** Only while `running`; null before the first frame (spec #301, Decision 7). */
+  progress: RunProgress | null;
 }
 
 export interface ScenarioList {
@@ -134,6 +151,13 @@ interface Launch {
   runId: string | null;
   /** `run.finished` arrived and its run id is being checked. */
   finishing: boolean;
+  /**
+   * Clock ms of the socket close that left it without a machine, until a
+   * `launches.sync` reattaches it (spec #284, Decision 2). Not in the view.
+   */
+  detachedAt: number | null;
+  /** The latest valid `run.progress`, kept across a detach (spec #301, Decision 6). */
+  progress: RunProgress | null;
   /** The `POST` waiting while `starting`. */
   settle?: (outcome: Outcome<LaunchView>) => void;
 }
@@ -155,6 +179,8 @@ export class LaunchesService
   private readonly lists = new Map<string, PendingList>();
   /** By launch id, in creation order. */
   private readonly launches = new Map<string, Launch>();
+  /** Clock ms each machine's current socket opened, until its `launches.sync` (Decision 4). */
+  private readonly syncWindows = new Map<string, number>();
   private timer: NodeJS.Timeout | undefined;
 
   constructor(
@@ -225,6 +251,8 @@ export class LaunchesService
         finishedAt: null,
         runId: null,
         finishing: false,
+        detachedAt: null,
+        progress: null,
         settle,
       };
       this.launches.set(launch.id, launch);
@@ -250,7 +278,10 @@ export class LaunchesService
     return launch ? toView(launch) : null;
   }
 
-  /** Sends `run.cancel` for the project's running launch (Decision 6). */
+  /**
+   * Sends `run.cancel` for the project's running launch (Decision 6). A
+   * detached one sends it once reattached (spec #284, Decision 8).
+   */
   cancel(projectId: string): LaunchView {
     const launch = this.latestOf(projectId);
     if (launch?.state === 'cancelling') {
@@ -261,12 +292,8 @@ export class LaunchesService
     }
     launch.state = 'cancelling';
     launch.since = this.now();
-    const sent = this.connections.sendTo(launch.runnerId, {
-      type: 'run.cancel',
-      requestId: launch.id,
-    });
-    if (!sent) {
-      this.end(launch, 'lost', null);
+    if (launch.detachedAt === null) {
+      this.sendCancel(launch);
     }
     return toView(launch);
   }
@@ -332,7 +359,9 @@ export class LaunchesService
         ) {
           return false;
         }
+        // The machine telling the outcome: nothing left to wait for (spec #284, Decision 7).
         launch.finishing = true;
+        launch.detachedAt = null;
         this.ownRunId(launch, message.runId)
           .then((runId) => this.end(launch, message.outcome, runId))
           .catch((error: unknown) => {
@@ -341,11 +370,48 @@ export class LaunchesService
           });
         return true;
       }
+      case 'run.progress': {
+        const launch = this.launches.get(message.requestId);
+        // Spec #301, Decision 4: early frames while `starting` are kept; not a heartbeat.
+        if (
+          launch?.runnerId !== runnerId ||
+          !ACTIVE.has(launch.state) ||
+          launch.finishing ||
+          !isConsistent(message)
+        ) {
+          return false;
+        }
+        // Decision 8: nothing logged per frame.
+        launch.progress = {
+          phase: message.phase,
+          step: message.step,
+          steps: message.steps,
+        };
+        return true;
+      }
+      case 'launches.sync': {
+        // Once per socket, inside its window; a later one is stray.
+        if (!this.syncWindows.delete(runnerId)) {
+          return false;
+        }
+        this.sync(runnerId, message.running);
+        return true;
+      }
     }
   }
 
-  /** Decision 7: pending requests end, launches on the machine are `lost`. */
+  /** The machine's new socket opens its sync window (spec #284, Decision 4). */
+  opened(runnerId: string): void {
+    this.syncWindows.set(runnerId, this.now());
+  }
+
+  /**
+   * Decision 7: pending requests end and a starting launch fails; a running
+   * or cancelling one is detached until the machine is back (spec #284,
+   * Decision 2).
+   */
   closed(runnerId: string): void {
+    this.syncWindows.delete(runnerId);
     for (const request of [...this.lists.values()]) {
       if (request.runnerId === runnerId) {
         this.endList(request, { ok: false, ...OFFLINE }, OFFLINE.error);
@@ -357,8 +423,11 @@ export class LaunchesService
       }
       if (launch.state === 'starting') {
         this.failStart(launch, OFFLINE, OFFLINE.error);
-      } else if (launch.state === 'running' || launch.state === 'cancelling') {
-        this.end(launch, 'lost', null);
+      } else if (
+        (launch.state === 'running' || launch.state === 'cancelling') &&
+        launch.detachedAt === null
+      ) {
+        launch.detachedAt = this.now();
       }
     }
   }
@@ -371,9 +440,31 @@ export class LaunchesService
         this.endList(request, { ok: false, ...TIMEOUT }, TIMEOUT.error);
       }
     }
+    // An old daemon never syncs: its detached launches end as before 284.
+    for (const [runnerId, openedAt] of [...this.syncWindows]) {
+      if (now - openedAt >= SYNC_TIMEOUT_MS) {
+        this.syncWindows.delete(runnerId);
+        for (const launch of this.detachedOf(runnerId)) {
+          this.end(launch, 'lost', null);
+        }
+      }
+    }
     for (const launch of [...this.launches.values()]) {
       if (launch.finishing) {
         continue;
+      }
+      if (launch.detachedAt !== null) {
+        if (
+          !this.syncWindows.has(launch.runnerId) &&
+          now - launch.detachedAt >= RECONNECT_GRACE_MS
+        ) {
+          this.end(launch, 'lost', null);
+          continue;
+        }
+        // Decision 8: the cancel timeout waits for the reattach.
+        if (launch.state === 'cancelling') {
+          continue;
+        }
       }
       const age = now - launch.since;
       switch (launch.state) {
@@ -405,6 +496,65 @@ export class LaunchesService
             this.launches.delete(launch.id);
           }
       }
+    }
+  }
+
+  /**
+   * Spec #284, Decision 5: a listed detached launch is reattached, an
+   * unlisted one is `lost`. Any other id is ignored (Decision 6).
+   */
+  private sync(runnerId: string, running: string[]): void {
+    const listed = new Set(running);
+    let reattached = 0;
+    let lost = 0;
+    for (const launch of this.detachedOf(runnerId)) {
+      if (!listed.delete(launch.id)) {
+        this.end(launch, 'lost', null);
+        lost += 1;
+        continue;
+      }
+      launch.detachedAt = null;
+      reattached += 1;
+      if (launch.state === 'cancelling') {
+        launch.since = this.now();
+        this.sendCancel(launch);
+      }
+    }
+    const ignored = listed.size;
+    if (ignored > 0) {
+      this.logger.warn(
+        `Runner ${runnerId} synced ${ignored} launch id(s) this API does not hold detached; ignored`,
+      );
+    }
+    // Decision 11: counts only, no path, no scenario id.
+    this.logger.log(
+      JSON.stringify({
+        event: 'launches.sync',
+        runnerId,
+        reattached,
+        lost,
+        ignored,
+      }),
+    );
+  }
+
+  private detachedOf(runnerId: string): Launch[] {
+    return [...this.launches.values()].filter(
+      (launch) =>
+        launch.runnerId === runnerId &&
+        launch.detachedAt !== null &&
+        !launch.finishing,
+    );
+  }
+
+  /** A `run.cancel` the machine cannot get leaves the launch `lost`. */
+  private sendCancel(launch: Launch): void {
+    const sent = this.connections.sendTo(launch.runnerId, {
+      type: 'run.cancel',
+      requestId: launch.id,
+    });
+    if (!sent) {
+      this.end(launch, 'lost', null);
     }
   }
 
@@ -470,6 +620,7 @@ export class LaunchesService
   ): void {
     launch.state = state;
     launch.finishing = false;
+    launch.detachedAt = null;
     launch.finishedAt = this.now();
     launch.runId = runId;
     this.logLaunch(launch, state);
@@ -523,5 +674,17 @@ function toView(launch: Launch): LaunchView {
         ? null
         : new Date(launch.finishedAt).toISOString(),
     runId: launch.runId,
+    progress: launch.state === 'running' ? launch.progress : null,
   };
+}
+
+/**
+ * Spec #301, Decision 3: `steps` carries both numbers with `step ≤ steps`,
+ * any other phase carries neither.
+ */
+function isConsistent({ phase, step, steps }: RunProgress): boolean {
+  if (phase !== 'steps') {
+    return step === null && steps === null;
+  }
+  return step !== null && steps !== null && step <= steps;
 }

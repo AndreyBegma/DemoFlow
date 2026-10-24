@@ -153,3 +153,25 @@ Work traced to an ADR, the vision or spec 179 that no phase had picked up.
 | [#266](https://github.com/AndreyBegma/DemoFlow/issues/266) | [`demoflow list` and `demoflow check`](266-list-and-check-commands.md) — vision §3.4 | — |
 | [#272](https://github.com/AndreyBegma/DemoFlow/issues/272) | [Docs: `demoflow list` and `check`, and what the run report sends](272-docs-list-check.md) — spec 266 follow-up | — |
 | [#273](https://github.com/AndreyBegma/DemoFlow/issues/273) | [`demoflow init`: write a config and a first scenario](273-init-command.md) — vision §3.4 | #272 (merge order) |
+| [#279](https://github.com/AndreyBegma/DemoFlow/issues/279) | [Docs: starting, cancelling and deleting runs from the website](279-docs-website-runs.md) — specs 235, 247-249 follow-up | — |
+| [#280](https://github.com/AndreyBegma/DemoFlow/issues/280) | [Delete a run's metadata (API)](280-delete-run-api.md) — specs 233/235 follow-up | — |
+| [#281](https://github.com/AndreyBegma/DemoFlow/issues/281) | [Delete a run from the run page](281-run-page-delete-run.md) | #280 |
+| [#282](https://github.com/AndreyBegma/DemoFlow/issues/282) | [Run a scenario again from the run page](282-run-page-run-again.md) — spec 249 follow-up | — |
+| [#283](https://github.com/AndreyBegma/DemoFlow/issues/283) | [`demoflow runs`: list, delete and prune local runs](283-local-runs-command.md) — spec 234 follow-up | — |
+| [#284](https://github.com/AndreyBegma/DemoFlow/issues/284) | [Re-sync a running launch after the runner reconnects (API)](284-launch-resync-api.md) — spec 247 Decision 7 | — |
+| [#285](https://github.com/AndreyBegma/DemoFlow/issues/285) | [The daemon re-announces running launches after a reconnect](285-launch-resync-daemon.md) | #284 |
+| [#286](https://github.com/AndreyBegma/DemoFlow/issues/286) | [Delete several runs at once from the project library](286-bulk-delete-runs.md) | #280, #281 |
+| [#299](https://github.com/AndreyBegma/DemoFlow/issues/299) | [Download a run's video through the relay (API)](299-video-download-api.md) — spec 191 follow-up, ADR-0009 | — |
+| [#300](https://github.com/AndreyBegma/DemoFlow/issues/300) | [Download a run's video from the run page](300-run-page-download.md) | #299 |
+| [#301](https://github.com/AndreyBegma/DemoFlow/issues/301) | [Live progress of a website-started run (API)](301-run-progress-api.md) — specs 247-249 follow-up | — |
+| [#302](https://github.com/AndreyBegma/DemoFlow/issues/302) | [The daemon sends the live progress of a website-started run](302-run-progress-daemon.md) | #301, #285 |
+| [#303](https://github.com/AndreyBegma/DemoFlow/issues/303) | [Show the live progress of a website-started run](303-run-progress-web.md) | #301 |
+| [#304](https://github.com/AndreyBegma/DemoFlow/issues/304) | [Square 1:1 export](304-square-output.md) — specs 176/236 follow-up | — |
+| [#305](https://github.com/AndreyBegma/DemoFlow/issues/305) | [Record a scenario as a phone](305-phone-device.md) — specs 176/236 follow-up | — |
+| [#306](https://github.com/AndreyBegma/DemoFlow/issues/306) | [Vertical and square crops follow up and down on a tall source](306-follow-camera-portrait.md) | #304 |
+| [#307](https://github.com/AndreyBegma/DemoFlow/issues/307) | [No mouse cursor on a phone recording, taps only](307-phone-tap-indicator.md) | #305 |
+| [#308](https://github.com/AndreyBegma/DemoFlow/issues/308) | [Docs: square formats, `render.square` and phone recording](308-docs-square-and-phone.md) | #304-#307 |
+| [#315](https://github.com/AndreyBegma/DemoFlow/issues/315) | [Woodpecker `test-pr` still runs out of memory when every package is affected](315-ci-test-memory.md) — spec 242 follow-up | — |
+| [#325](https://github.com/AndreyBegma/DemoFlow/issues/325) | [Run options (output formats) for a website-started run (API)](325-website-run-options-api.md) — ADR-0017 | — |
+| [#326](https://github.com/AndreyBegma/DemoFlow/issues/326) | [The daemon accepts output formats for a website-started run](326-website-run-options-daemon.md) — ADR-0017 | #325 |
+| [#327](https://github.com/AndreyBegma/DemoFlow/issues/327) | [Choose output formats when starting a run from the website](327-website-run-options-web.md) — ADR-0017 | #325 |

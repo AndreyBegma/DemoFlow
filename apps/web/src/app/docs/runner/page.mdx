@@ -4,7 +4,8 @@ export const metadata = { title: 'Runner' };
 
 You can pair a machine with your DemoFlow account and keep it connected, so the
 website shows it online. Nothing here is needed to make videos: every other
-command works without an account. No jobs run over the connection yet.
+command works without an account. With the runner connected, the site can also
+start runs on the machine and delete a run's files.
 
 ## Pair a machine
 
@@ -71,20 +72,95 @@ logon starts it again. Neither unit holds the token.
 
 ## Runs started from the website
 
-On a project's page, **Run a scenario** starts a scenario on the machine the
-project is bound to, and **Cancel run** stops it.
+On a project's page, the **Run a scenario** card starts a scenario on the
+machine the project is bound to. The card makes no request when the project has
+no folder or its machine was removed.
 
-- Only a project this machine has reported a run from can be run from the
-  site. Run `demoflow run` in the folder once to register it.
-- The site sends only the scenario id. The app starts with the project's own
-  `demoflow.config.json`.
-- A machine runs one website-started run at a time, and stops it after 15
-  minutes.
-- Cancel stops the browser and the dev server. The partial files stay in the
-  run directory.
-- `valueFrom.env` secrets come from the runner's environment, which an
-  autostart unit may not share with your shell.
-- With `CI` or `DEMOFLOW_NO_REPORT=1` set, the runner refuses these runs.
+### Which scenarios are listed
+
+- A project can be run from the site only after this machine has reported a run
+  from its folder. Run `demoflow run` in the folder once. A folder bound by hand
+  is not enough.
+- The list holds every `*.demo.json` under the project's `demoflow/` folder,
+  subfolders included, shown by name with its path.
+- The machine reads the list when the card opens or when you press **Refresh**,
+  so a new file shows at once.
+- Files that cannot be read as a scenario are skipped, and the card counts them.
+  The list stops at the first 100 scenarios, sorted by path, and the card says
+  so. Links are not followed.
+
+### What the site chooses
+
+The site sends only the scenario's path. The machine starts an ordinary
+`demoflow run` of that file with the project's own `demoflow.config.json`, its
+own `devCommand` and the runner's environment. No flags, formats or environment
+come from the site.
+
+`valueFrom.env` secrets come from the runner's environment, which an autostart
+unit may not share with your shell.
+
+### Starting
+
+**Run** asks for confirmation, naming the scenario and the machine. It is
+refused when:
+
+- The machine is offline. **Run** fails with a message to start the runner.
+- Reporting is off on the machine: `CI` is set to any non-empty value, or
+  `DEMOFLOW_NO_REPORT=1`. The run's result has to reach the site, so an opt-out
+  wins.
+- Another website-started run is in progress on that machine. A `demoflow run`
+  started in a terminal does not count.
+
+### While it runs
+
+The status row shows Starting, Running, Cancelling, Passed, Failed, Cancelled,
+Timed out or Lost contact.
+
+While a run is going, the card also shows what the machine is doing: starting
+the app, which step of how many it is on, or rendering the video. A machine
+with an older `demoflow` shows only **Running**.
+
+- A run still going after 15 minutes is stopped and ends **Timed out**.
+- **Cancel run** shows only while the state is Running and asks for no
+  confirmation. It stops the browser and the dev server, giving them up to 15
+  seconds.
+- Stopping the runner (`demoflow runner stop`, a signal, a shutdown) cancels a
+  run in progress.
+- **Lost contact** means the site lost the machine's connection, or heard
+  nothing for too long: 20 minutes after the start, 30 seconds after Cancel. The
+  run may still finish and appear in the library.
+
+### When it ends
+
+- When a run passes or fails, **Open the run** links to its page and the library
+  shows it. If the run finished but its report did not reach the site, the card
+  says so.
+- A cancelled or timed-out run's folder is left as it was. The run is not
+  reported, so it never appears in the library and cannot be deleted from the
+  site. To remove it, delete `runs/<id>/` in the DemoFlow home on the machine.
+
+## Delete a run's files
+
+On a run's page, **Delete video files** removes the run's files from the machine
+that recorded it. It asks for confirmation, naming the machine. The button shows
+only while the run has video formats and is not deleted yet.
+
+- **Removed:** the run's whole folder on the machine, `<home>/runs/<id>/`,
+  recursively. That is everything the run wrote there, not only the videos.
+  Links inside it are removed as links.
+- **Kept:** the run's entry in the library: scenario, status, time, duration,
+  formats, failed step, stages, files list and failure message. The library
+  marks the run **Files deleted**, and the run page shows "Video files deleted"
+  with the date.
+- **The machine must be online.** Otherwise the button is disabled with "The
+  machine is offline." A removed machine cannot delete.
+- The machine deletes only a run it reported itself, and only a folder that is a
+  DemoFlow run folder: `runs/<id>/` holding a `result.json` of that run.
+  Anything else is refused, and the page says the machine no longer has the
+  files.
+- Deleting cannot be undone. The site records it only after the machine
+  confirms. If the machine does not answer within 15 seconds, the page says so
+  and you can try again.
 
 ## Status on the site
 

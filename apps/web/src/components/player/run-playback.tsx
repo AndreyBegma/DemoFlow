@@ -17,8 +17,11 @@ import {
   availability,
   type DeleteFailureKey,
   deleteFailureKey,
+  downloadUrl,
+  isGifFormat,
   orderFormats,
   type PlayableFormat,
+  playerShape,
   videoUrl,
 } from '@/lib/playback';
 import { choosePlayer } from './video-player';
@@ -47,6 +50,8 @@ export function RunPlayback({
   // Bumped by Retry, so the player remounts and tries the stream again.
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
+  // True while Download re-checks the run before the browser takes over.
+  const [checking, setChecking] = useState(false);
   const [confirming, setConfirming] = useState(false);
   // True from the confirmation until the answer: the player is unmounted so
   // the browser drops its range request and the relay cancels the stream.
@@ -80,6 +85,28 @@ export function RunPlayback({
     }
   }
 
+  /**
+   * Re-checks the run, then lets the browser stream the attachment to disk. A
+   * navigation shows no HTTP status, so an offline machine or deleted files
+   * must be caught here (spec #300, Decision 3).
+   */
+  async function download(target: PlayableFormat) {
+    setChecking(true);
+    const result = await getRun(runId);
+    setChecking(false);
+    if (!result.ok) return;
+    setMachine(result.data.machine);
+    setDeletedAt(result.data.run.artifactsDeletedAt);
+    if (result.data.machine?.online !== true) return;
+    if (result.data.run.artifactsDeletedAt !== null) return;
+    const link = document.createElement('a');
+    link.href = downloadUrl(runId, target);
+    link.download = '';
+    document.body.append(link);
+    link.click();
+    link.remove();
+  }
+
   async function confirmDelete() {
     setDeleteError(undefined);
     setDeleting(true);
@@ -111,33 +138,50 @@ export function RunPlayback({
   const online = machine?.online === true;
   const Player = choosePlayer();
   const src = videoUrl(runId, format);
-  const isGif = format === 'gif' || format === 'gif-vertical';
+  const isGif = isGifFormat(format);
 
   return (
     <div className="flex flex-col gap-4">
-      {formats.length > 1 ? (
-        <SegmentedControl aria-label={t('runPage.formats.label')}>
-          {formats.map((candidate) => (
-            <SegmentedControlItem
-              key={candidate}
-              active={candidate === format}
-              layoutId="run-format"
-            >
-              <button
-                type="button"
-                aria-pressed={candidate === format}
-                className="px-3 py-1 text-sm"
-                onClick={() => {
-                  setFormat(candidate);
-                  setPlayerFailed(false);
-                }}
+      <div className="flex flex-wrap items-center gap-3">
+        {formats.length > 1 ? (
+          <SegmentedControl aria-label={t('runPage.formats.label')}>
+            {formats.map((candidate) => (
+              <SegmentedControlItem
+                key={candidate}
+                active={candidate === format}
+                layoutId="run-format"
               >
-                {t(`runPage.formats.${candidate}`)}
-              </button>
-            </SegmentedControlItem>
-          ))}
-        </SegmentedControl>
-      ) : null}
+                <button
+                  type="button"
+                  aria-pressed={candidate === format}
+                  className="px-3 py-1 text-sm"
+                  onClick={() => {
+                    setFormat(candidate);
+                    setPlayerFailed(false);
+                  }}
+                >
+                  {t(`runPage.formats.${candidate}`)}
+                </button>
+              </SegmentedControlItem>
+            ))}
+          </SegmentedControl>
+        ) : null}
+        <Button
+          type="button"
+          variant="glass"
+          disabled={!online || deleting || checking}
+          onClick={() => void download(format)}
+        >
+          {checking
+            ? t('runPage.download.checking')
+            : t('runPage.download.button')}
+        </Button>
+        {online ? null : (
+          <span className="text-sm text-ink-2">
+            {t('runPage.download.offlineHint')}
+          </span>
+        )}
+      </div>
       {state === 'ready' && isGif ? (
         // biome-ignore lint/performance/noImgElement: a relay stream, not a static asset next/image can optimize
         <img
@@ -152,7 +196,7 @@ export function RunPlayback({
         <Player
           key={`${src}-${attempt}`}
           src={src}
-          vertical={format === 'mp4-vertical' || format === 'webm-vertical'}
+          shape={playerShape(format)}
           onError={handlePlayerError}
         />
       ) : null}

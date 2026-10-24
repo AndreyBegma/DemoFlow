@@ -199,7 +199,7 @@ describe('run details (integration)', () => {
       ['a duplicate render format', { renders: [render, render] }],
       ['an unknown render format', { renders: [{ ...render, format: 'avi' }] }],
       [
-        'seven renders',
+        'ten renders',
         {
           renders: [
             'mp4',
@@ -208,6 +208,9 @@ describe('run details (integration)', () => {
             'mp4-vertical',
             'gif-vertical',
             'webm-vertical',
+            'mp4-square',
+            'gif-square',
+            'webm-square',
             'mp4',
           ].map((format) => ({ ...render, format })),
         },
