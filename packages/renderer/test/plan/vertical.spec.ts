@@ -7,6 +7,7 @@ import {
 } from '@demoflow/core';
 import { describe, expect, it } from 'vitest';
 import {
+  cameraStateAt,
   cropViewAt,
   frameAt,
   planRender,
@@ -46,14 +47,17 @@ const RESULT: RunResult = {
 
 function plan(
   events: Omit<TimelineEvent, 'stepIndex'>[],
-  options: RenderPlanOptions & { annotations?: Annotation[] } = {},
+  options: RenderPlanOptions & {
+    annotations?: Annotation[];
+    viewport?: { width: number; height: number };
+  } = {},
 ): RenderPlan {
-  const { annotations, ...rest } = options;
+  const { annotations, viewport = VIEWPORT, ...rest } = options;
   return planRender(
     {
       timeline: {
         schemaVersion: 1,
-        viewport: VIEWPORT,
+        viewport,
         deviceScaleFactor: 1,
         videoFile: 'source.webm',
         events: events.map((event, stepIndex) => ({ ...event, stepIndex })),
@@ -61,8 +65,7 @@ function plan(
       },
       result: RESULT,
       source: {
-        width: 1280,
-        height: 720,
+        ...viewport,
         fps: 25,
         durationMs: 20_000,
         codec: 'vp9',
@@ -305,5 +308,118 @@ describe('the vertical output (spec 176)', () => {
     expect(() =>
       frameAt(plan([], { formats: ['mp4'] }), 0, 'vertical'),
     ).toThrow(/vertical format/);
+  });
+});
+
+describe('the vertical output follows down on a tall source (spec 306)', () => {
+  const PHONE = { width: 412, height: 915 };
+  /** The crop at zoom 1: the page's full width, 9:16 — shorter than the page. */
+  const TALL = { width: 412, height: (412 * 16) / 9 };
+  const TOP = TALL.height / 2;
+  const BOTTOM = PHONE.height - TALL.height / 2;
+  const MIDDLE = PHONE.height / 2;
+
+  const phone = (
+    events: Omit<TimelineEvent, 'stepIndex'>[],
+    vertical: RenderPlanOptions['vertical'] = {},
+  ) => plan(events, { viewport: PHONE, vertical });
+
+  /** A click on a 120×28 target centred on `y`, across the middle of the page. */
+  function tap(
+    startMs: number,
+    y: number,
+    extra: Partial<TimelineEvent> = {},
+  ): Omit<TimelineEvent, 'stepIndex'> {
+    return {
+      action: 'click',
+      startMs,
+      endMs: startMs + 1000,
+      target: { box: { x: 146, y: y - 14, width: 120, height: 28 } },
+      pointer: { from: { x: 206, y: MIDDLE }, to: { x: 206, y } },
+      ...extra,
+    };
+  }
+
+  function centreY(rendered: RenderPlan, atMs: number): number {
+    const box = view(rendered, atMs);
+    return box.y + box.height / 2;
+  }
+
+  it('crops the full page width and starts on the page centre', () => {
+    const box = view(phone([]), 0);
+    expect(box.width).toBeCloseTo(TALL.width, 6);
+    expect(box.height).toBeCloseTo(TALL.height, 6);
+    expect(box.x).toBe(0);
+    expect(centreY(phone([]), 0)).toBeCloseTo(MIDDLE, 6);
+  });
+
+  it.each([
+    ['top', 100, TOP],
+    ['bottom', 850, BOTTOM],
+  ])('follows a target near the %s, clamped to the page', (_, y, centre) => {
+    const rendered = phone([tap(2000, y)]);
+    expect(centreY(rendered, 1500)).toBeCloseTo(MIDDLE, 6);
+    expect(centreY(rendered, 2000)).toBeCloseTo(centre, 6);
+    expect(centreY(rendered, 5000)).toBeCloseTo(centre, 6);
+    const box = view(rendered, 5000);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(PHONE.height + 1e-6);
+  });
+
+  it('eases the move over followMs, 400 by default', () => {
+    // A 520 px target is inside the crop's range, so the clamp is not in play.
+    const rendered = phone([tap(2000, 520)], { deadZone: 0.05 });
+    expect(centreY(rendered, 1800)).toBeCloseTo((MIDDLE + 520) / 2, 6);
+    expect(centreY(rendered, 1600)).toBeCloseTo(MIDDLE, 6);
+  });
+
+  it('follows a target in the middle of the range, between the clamps', () => {
+    const rendered = phone([tap(2000, 800), tap(4000, 400)]);
+    expect(centreY(rendered, 3000)).toBeCloseTo(BOTTOM, 6);
+    expect(centreY(rendered, 5000)).toBeCloseTo(400, 6);
+  });
+
+  it('skips a move under the dead zone, 10 % of the crop height', () => {
+    // 10 % of 732 px is 73 px: 50 px is under it, 100 px is over it.
+    const still = phone([tap(2000, MIDDLE + 50)]);
+    expect(still.vertical?.follow).toHaveLength(1);
+    expect(centreY(still, 3000)).toBeCloseTo(MIDDLE, 6);
+    const moved = phone([tap(2000, MIDDLE + 100)]);
+    expect(moved.vertical?.follow).toHaveLength(3);
+    expect(centreY(moved, 3000)).toBeCloseTo(MIDDLE + 91.28, 1);
+  });
+
+  it('measures the dead zone where the clamped crop would go', () => {
+    // Both targets clamp the crop to the bottom edge: the second is no move.
+    const rendered = phone([tap(2000, 850), tap(4000, 700)]);
+    expect(rendered.vertical?.follow).toHaveLength(3);
+    expect(view(rendered, 5000).y + TALL.height).toBeCloseTo(PHONE.height, 6);
+  });
+
+  it('has nothing to follow across when the crop is the full page width', () => {
+    const across = phone([
+      tap(2000, MIDDLE, {
+        target: { box: { x: 0, y: MIDDLE - 14, width: 20, height: 28 } },
+      }),
+    ]);
+    expect(across.vertical?.follow).toHaveLength(1);
+  });
+
+  it('composes a step zoom with the crop', () => {
+    const rendered = phone([tap(2000, 850, { zoom: 1.5 })]);
+    const box = view(rendered, 2900);
+    expect(box.width).toBeCloseTo(TALL.width / 1.5, 6);
+    expect(box.height).toBeCloseTo(TALL.height / 1.5, 6);
+    // Centred on the target as far as the page allows: the crop rests on the bottom.
+    expect(box.y + box.height).toBeCloseTo(PHONE.height, 6);
+    expect(view(rendered, 8000).height).toBeCloseTo(TALL.height, 6);
+  });
+
+  it('leaves y on the steps camera on a wide source (Decision 2)', () => {
+    const rendered = plan([click(2000, 1000, { zoom: 1.5 })]);
+    const state = cameraStateAt(rendered.camera, 2900);
+    const box = view(rendered, 2900);
+    expect(box.y + box.height / 2).toBeCloseTo(state.centre.y, 6);
+    expect(rendered.vertical?.follow.every((key) => key.y === 360)).toBe(true);
   });
 });

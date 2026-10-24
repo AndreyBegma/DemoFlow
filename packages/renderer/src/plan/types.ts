@@ -257,16 +257,19 @@ export interface TransitionsSpec {
   holds: NavigationHold[];
 }
 
-/** The crop's horizontal centre eases from each key to the next (viewport CSS pixels). */
+/** The crop's centre eases from each key to the next (viewport CSS pixels). */
 export interface FollowKey {
   atMs: number;
   x: number;
+  y: number;
 }
 
 /**
- * The 9:16 and 1:1 outputs (specs 176, 304): a crop of the page, the full viewport height at
- * zoom 1, whose horizontal centre follows `follow` and which the steps' zoom
- * (`RenderPlan.camera`) narrows. It fills the frame: no window, no background.
+ * The 9:16 and 1:1 outputs (specs 176, 304, 306): a crop of the page, the full
+ * viewport height at zoom 1 (or its full width on a tall source), whose centre
+ * follows `follow` across — and down, when the crop is shorter than the page —
+ * and which the steps' zoom (`RenderPlan.camera`) narrows. It fills the frame:
+ * no window, no background.
  */
 export interface CropSpec {
   width: number;
