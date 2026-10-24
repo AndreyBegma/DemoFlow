@@ -28,7 +28,7 @@ import {
 
 const TOKEN = 'dfr_old-token';
 const NEW_TOKEN = 'dfr_new-token';
-const EMPTY_SYNC = { type: 'launches.sync', running: [] };
+const EMPTY_SYNC = { type: 'launches.sync', running: [], runOptions: [] };
 
 let clock: FakeClock;
 let sockets: FakeSocket[];
@@ -487,7 +487,11 @@ describe('RunnerConnection and the video relay', () => {
     const first = last();
     first.open();
     first.receive({ type: 'ping', at: 1 });
-    expect(first.sent[0]).toEqual({ type: 'launches.sync', running: ids });
+    expect(first.sent[0]).toEqual({
+      type: 'launches.sync',
+      running: ids,
+      runOptions: ['formats'],
+    });
     expect(logger.text()).toContain('announced 1 running launch');
     first.serverClose(1006);
 
@@ -495,7 +499,9 @@ describe('RunnerConnection and the video relay', () => {
     await clock.advance(BACKOFF_MAX_MS);
     last().open();
     expect(last()).not.toBe(first);
-    expect(last().sent).toEqual([{ type: 'launches.sync', running: [] }]);
+    expect(last().sent).toEqual([
+      { type: 'launches.sync', running: [], runOptions: ['formats'] },
+    ]);
   });
 
   it('sends an empty launches.sync without a launcher', () => {

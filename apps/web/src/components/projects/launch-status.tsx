@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { t } from '@/i18n';
 import type { LaunchState, LaunchView } from '@/lib/api';
 import { formatElapsed, isActive, launchProgress } from '@/lib/launch';
+import { formatList } from './format-choice';
 
 const PILL: Record<LaunchState, Parameters<typeof StatusPill>[0]['status']> = {
   starting: 'waiting',
@@ -78,6 +79,13 @@ export function LaunchStatus({
           </Button>
         ) : null}
       </div>
+      {launch.formats ? (
+        <p className="text-sm text-ink-2">
+          {t('projects.launch.formats.row', {
+            list: formatList(launch.formats),
+          })}
+        </p>
+      ) : null}
       {progress?.key === 'projects.launch.progress.steps' ? (
         <Progress
           value={progress.step}

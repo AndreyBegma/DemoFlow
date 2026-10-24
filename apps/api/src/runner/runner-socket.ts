@@ -24,6 +24,7 @@ import {
 } from 'class-validator';
 import type { RawData } from 'ws';
 import { IsScenarioId } from '../launches/scenario-id';
+import type { RunFormat } from '../projects/projects.dto';
 import type { RunnerContext } from './runner-token';
 
 /**
@@ -84,8 +85,15 @@ export type ServerMessage =
       requestId: string;
       rootPath: string;
       scenarioId: string;
+      /** Only when the browser chose formats (spec #325): the default frame is unchanged. */
+      options?: RunStartOptions;
     }
   | { type: 'run.cancel'; requestId: string };
+
+/** What a website-started run may choose (ADR-0017): the output formats, nothing else. */
+export interface RunStartOptions {
+  formats: RunFormat[];
+}
 
 export type ClientMessage =
   | PingMessage
@@ -137,6 +145,12 @@ export const RUN_PHASES = ['app', 'steps', 'rendering'] as const;
 export type RunPhase = (typeof RUN_PHASES)[number];
 /** `run.progress` counts this many expanded steps at most. */
 export const MAX_PROGRESS_STEPS = 10_000;
+/** The `run.start` options this API knows a daemon may accept (spec #325). */
+export const RUN_OPTIONS = ['formats'] as const;
+export type RunOption = (typeof RUN_OPTIONS)[number];
+/** `launches.sync` announces this many options at most, each this long at most. */
+export const MAX_RUN_OPTIONS = 8;
+export const RUN_OPTION_MAX_LENGTH = 32;
 
 class PingMessage {
   @IsIn(['ping'])
@@ -365,7 +379,9 @@ class RunProgressMessage {
 
 /**
  * The daemon's first frame on every socket (spec #284, Decision 1): the
- * launch ids whose child it still has, possibly none.
+ * launch ids whose child it still has, possibly none, and the `run.start`
+ * options it accepts (spec #325). Unknown options pass here and are dropped
+ * when the frame is routed.
  */
 class LaunchesSyncMessage {
   @IsIn(['launches.sync'])
@@ -375,6 +391,14 @@ class LaunchesSyncMessage {
   @ArrayMaxSize(MAX_SYNCED_LAUNCHES)
   @IsUUID('4', { each: true })
   running!: string[];
+
+  /** Absent from a daemon before #326: it accepts none. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_RUN_OPTIONS)
+  @IsString({ each: true })
+  @MaxLength(RUN_OPTION_MAX_LENGTH, { each: true })
+  runOptions?: string[];
 }
 
 const CLIENT_MESSAGES: Record<

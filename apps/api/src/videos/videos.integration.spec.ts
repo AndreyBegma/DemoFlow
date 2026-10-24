@@ -695,7 +695,12 @@ describe('run video through the runner relay (integration)', () => {
           failure: null,
         },
         project: { id: expect.any(String), name: 'shop' },
-        machine: { id: machine.runnerId, name: 'Laptop', online: true },
+        machine: {
+          id: machine.runnerId,
+          name: 'Laptop',
+          online: true,
+          runOptions: [],
+        },
       });
     });
 
@@ -705,6 +710,33 @@ describe('run video through the runner relay (integration)', () => {
         id: machine.runnerId,
         name: 'Laptop',
         online: false,
+        runOptions: [],
+      });
+    });
+
+    it('shows the run options an online machine announced (spec #325)', async () => {
+      const socket = await daemon();
+      socket.sync([], ['formats', 'later']);
+      await socket.roundTrip();
+      const res = await page().expect(200);
+      expect(res.body.machine).toMatchObject({
+        online: true,
+        runOptions: ['formats'],
+      });
+    });
+
+    it('shows no run options once the announcing machine went offline', async () => {
+      const socket = await daemon();
+      socket.sync([], ['formats']);
+      await socket.roundTrip();
+      await socket.close();
+      await eventually(
+        () => !t.app.get(RunnerConnections).isOnline(machine.runnerId),
+      );
+      const res = await page().expect(200);
+      expect(res.body.machine).toMatchObject({
+        online: false,
+        runOptions: [],
       });
     });
 

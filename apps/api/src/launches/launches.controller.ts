@@ -50,10 +50,17 @@ export class LaunchesController {
   async start(
     @CurrentUser() user: User,
     @Param('id') id: string,
-    @Body() { scenarioId }: StartLaunchDto,
+    @Body() { scenarioId, formats }: StartLaunchDto,
   ): Promise<{ launch: LaunchView }> {
     const target = await this.target(user.id, id);
-    return { launch: await this.launches.start(target, scenarioId) };
+    // Spec #325, Decision 3: after `runner-offline`, before `runner-busy`.
+    if (
+      formats !== undefined &&
+      !this.connections.runOptions(target.runnerId).includes('formats')
+    ) {
+      throw runError(HttpStatus.CONFLICT, 'runner-outdated');
+    }
+    return { launch: await this.launches.start(target, scenarioId, formats) };
   }
 
   /**

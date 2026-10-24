@@ -1,6 +1,10 @@
 import { apiBase } from '../auth/server.ts';
 import type { ArtifactsPort } from './artifacts/index.ts';
-import type { LaunchPort, LaunchSender } from './launch/index.ts';
+import {
+  type LaunchPort,
+  type LaunchSender,
+  RUN_OPTIONS,
+} from './launch/index.ts';
 import type { Logger } from './log.ts';
 import type { RelaySender, VideoRelayPort } from './relay/index.ts';
 import type { ConnectionState } from './state.ts';
@@ -176,7 +180,10 @@ export class RunnerConnection {
     // Spec 285, Decision 1: the first frame on every socket, before anything
     // is handled, so the API can reattach the launches this machine still runs.
     const running = this.deps.launches?.running() ?? [];
-    this.send({ type: 'launches.sync', running });
+    // Spec 326, Decision 1: a connection without a launcher ignores run.start,
+    // so it claims no options.
+    const runOptions = this.deps.launches !== undefined ? [...RUN_OPTIONS] : [];
+    this.send({ type: 'launches.sync', running, runOptions });
     this.deps.logger.log(
       'info',
       `announced ${running.length} running launch${running.length === 1 ? '' : 'es'}`,

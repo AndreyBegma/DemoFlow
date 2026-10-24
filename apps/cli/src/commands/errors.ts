@@ -11,7 +11,10 @@ export type CommandErrorCode =
   | 'run-not-found'
   | 'invalid-result'
   | 'run-unfinished'
-  | 'no-recording';
+  | 'no-recording'
+  | 'invalid-port'
+  | 'app-already-running'
+  | 'fresh-app-needs-dev-command';
 
 /** Bad input to a command (spec 5: exit 2) that is not a config problem. */
 export class CommandError extends Error {

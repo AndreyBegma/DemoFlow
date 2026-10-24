@@ -1,4 +1,5 @@
 export * from './common.ts';
+export * from './config-template.ts';
 export { type ExpandedStep, expandScenario } from './expand.ts';
 export * from './json-schema.ts';
 export * from './locator.ts';

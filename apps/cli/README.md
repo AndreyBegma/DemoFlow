@@ -88,6 +88,48 @@ in one run:
 }
 ```
 
+### Parallel runs: `${PORT}`, `--port` and `--fresh-app`
+
+`baseUrl`, `devCommand.command`, each `devCommand.args` entry and
+`devCommand.readyUrl` may hold `${PORT}`; the three `devCommand` fields may
+also hold `${BASE_URL}`. DemoFlow fills them itself, on every OS, before the
+app starts:
+
+```json
+{
+  "baseUrl": "http://127.0.0.1:${PORT:-3000}",
+  "devCommand": {
+    "command": "npx",
+    "args": ["vite", "--port", "${PORT}", "--strictPort"],
+    "readyUrl": "${BASE_URL}/"
+  }
+}
+```
+
+`${PORT}` is `--port <n>`, else `PORT` from the environment, else the default
+in `${PORT:-3000}`. `${BASE_URL}` is `--base-url`, else `baseUrl` once
+filled; it is never read from the environment. `$${` is a literal `${`. Any
+other name, such as `${HOME}`, is a config error (exit 2), and so is a
+`${PORT}` with no port from any source in `run` and `record`; `check`, `list`,
+`runs` and `render` load such a config without a port. `allowedOrigins`
+always includes the origin of the base URL the run uses.
+
+`demoflow run --port <n>` also sets `PORT` for the app. Two checkouts of the
+same app can then run at once, each with its own port:
+
+```sh
+demoflow run demoflow/tour.demo.json --json --port 4101 --fresh-app
+demoflow run demoflow/tour.demo.json --json --port 4102 --fresh-app
+```
+
+Without `--fresh-app`, an app that already answers on `readyUrl` is used as
+is. With it, the run refuses instead — exit 2, nothing on stdout, no run
+directory, stderr `app-already-running: --fresh-app: <readyUrl> already
+answers; …` — so a caller can retry on another port. Prefer a dev command
+that fails when its port is taken (`vite --strictPort`): an app that takes the
+port between the check and the start is then caught too. The command still
+runs without a shell, so `%PORT%` and `$PORT` stay literal text.
+
 `demoflow render <runId>` renders a finished run again from
 `<home>/runs/<runId>/` with the current `render.*` config, without the app or
 the browser — to restyle it, add a format, or retry a render that crashed.

@@ -14,6 +14,10 @@ export interface StartAppOptions {
   /** Interval between `readyUrl` probes. */
   pollMs?: number;
   platform?: NodeJS.Platform;
+  /** Added to the app's environment: the run's `PORT` (spec 337, Decision 6). */
+  env?: Record<string, string>;
+  /** `--fresh-app`: never reuse an app that already answers on `readyUrl`. */
+  fresh?: boolean;
 }
 
 /** The app could not be started or never answered on `readyUrl`. */
@@ -32,7 +36,8 @@ const NOT_STARTED: RunningApp = { started: false, stop: async () => {} };
  * Starts the application from `devCommand` (ADR-0008 §4: commands come only
  * from the local config) and resolves once `readyUrl` answers. A no-op when
  * there is no `devCommand`, or when `readyUrl` already answers — the person's
- * own dev server is used as is and never stopped.
+ * own dev server is used as is and never stopped. With `fresh`, an app that
+ * already answers is an `AppStartError` instead.
  */
 export async function startApp(
   config: { devCommand?: ProjectConfig['devCommand'] },
@@ -40,7 +45,16 @@ export async function startApp(
   options: StartAppOptions = {},
 ): Promise<RunningApp> {
   const dev = config.devCommand;
-  if (dev === undefined || (await answers(dev.readyUrl))) return NOT_STARTED;
+  if (dev === undefined) return NOT_STARTED;
+  if (options.fresh === true) {
+    if (await anyAnswer(dev.readyUrl)) {
+      throw new AppStartError(
+        `--fresh-app: ${dev.readyUrl} already answers; another app holds this port`,
+      );
+    }
+  } else if (await answers(dev.readyUrl)) {
+    return NOT_STARTED;
+  }
 
   const platform = options.platform ?? process.platform;
   const log = options.log ?? (() => {});
@@ -48,6 +62,7 @@ export async function startApp(
   // No shell: the command and its arguments are data (ADR-0003 §6).
   const child = spawn(dev.command, dev.args ?? [], {
     cwd: root,
+    env: { ...process.env, ...options.env },
     // Its own process group on POSIX, so stop() reaches its children too.
     detached: platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -93,15 +108,28 @@ export async function startApp(
 
 /** Any HTTP answer below 500 means the server is up (a redirect or a 404 included). */
 async function answers(url: string): Promise<boolean> {
+  const status = await probe(url);
+  return status !== undefined && status < 500;
+}
+
+/**
+ * Any HTTP answer at all, 5xx included: someone's server holds the port. The
+ * `--fresh-app` check, stricter than readiness (spec 337, Decision 7).
+ */
+export async function anyAnswer(url: string): Promise<boolean> {
+  return (await probe(url)) !== undefined;
+}
+
+async function probe(url: string): Promise<number | undefined> {
   try {
     const response = await fetch(url, {
       redirect: 'manual',
       signal: AbortSignal.timeout(2_000),
     });
     await response.body?.cancel();
-    return response.status < 500;
+    return response.status;
   } catch {
-    return false;
+    return undefined;
   }
 }
 

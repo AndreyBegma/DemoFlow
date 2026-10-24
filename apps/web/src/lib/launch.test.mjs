@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  canChooseFormats,
   canRunAgain,
   formatElapsed,
   isActive,
   isStartableScenario,
   launchErrorKey,
   launchProgress,
+  runAgainFormats,
 } from './launch.ts';
 
 const scenarioPath = 'demoflow/checkout/buy.demo.json';
@@ -152,6 +154,34 @@ test('progress steps with inconsistent numbers is null', () => {
   assert.equal(launchProgress(steps(0, 7)), null);
   assert.equal(launchProgress(steps(null, 7)), null);
   assert.equal(launchProgress(steps(3, null)), null);
+});
+
+test('only a machine announcing formats can choose them', () => {
+  assert.equal(canChooseFormats(['formats']), true);
+  assert.equal(canChooseFormats([]), false);
+  assert.equal(canChooseFormats(undefined), false);
+  assert.equal(canChooseFormats(null), false);
+});
+
+test('run again repeats the rendered formats when the machine takes them', () => {
+  assert.deepEqual(runAgainFormats(['mp4', 'gif'], ['formats']), [
+    'mp4',
+    'gif',
+  ]);
+  assert.equal(runAgainFormats([], ['formats']), undefined);
+  assert.equal(runAgainFormats(['mp4'], []), undefined);
+  assert.equal(runAgainFormats(['mp4'], undefined), undefined);
+});
+
+test('the formats errors have their own messages', () => {
+  assert.equal(
+    launchErrorKey('runner-outdated'),
+    'projects.launch.errors.runnerOutdated',
+  );
+  assert.equal(
+    launchErrorKey('options-invalid'),
+    'projects.launch.errors.optionsInvalid',
+  );
 });
 
 test('elapsed time reads as minutes and seconds', () => {
