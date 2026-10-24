@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import {
@@ -30,6 +30,8 @@ export function runError(status: HttpStatus, error: string): HttpException {
 /** One run, only for the account whose project holds it; else 404. */
 @Injectable()
 export class RunsService {
+  private readonly logger = new Logger(RunsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly connections: RunnerConnections,
@@ -58,6 +60,24 @@ export class RunsService {
         online: this.connections.isOnline(machine.id),
       },
     };
+  }
+
+  /**
+   * Deletes the run's row, never its files (spec #280, Decisions 2–4). One
+   * statement: ownership and delete cannot race. Already gone is 404 too.
+   */
+  async remove(userId: string, id: string): Promise<void> {
+    const { count } = await this.prisma.run.deleteMany({
+      where: { id, project: { userId } },
+    });
+    const outcome = count === 1 ? 'deleted' : 'not-found';
+    // Decision 7: no email, no path, no scenario name.
+    this.logger.log(
+      JSON.stringify({ event: 'run.delete', runId: id, outcome }),
+    );
+    if (count !== 1) {
+      throw runError(HttpStatus.NOT_FOUND, 'not-found');
+    }
   }
 }
 
