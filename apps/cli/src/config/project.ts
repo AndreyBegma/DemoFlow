@@ -96,8 +96,10 @@ export function scenarioId(
  */
 const STAND_IN_PORT = 3000;
 
+type Env = Readonly<Record<string, string | undefined>>;
+
 /** `PORT` from the environment; an empty value counts as unset. */
-function envPort(env: NodeJS.ProcessEnv): string | undefined {
+function envPort(env: Env): string | undefined {
   const value = env.PORT;
   return value === undefined || value === '' ? undefined : value;
 }
@@ -110,7 +112,7 @@ function envPort(env: NodeJS.ProcessEnv): string | undefined {
  */
 export function loadProjectConfig(
   root: string,
-  env: NodeJS.ProcessEnv = process.env,
+  env: Env = process.env,
 ): ProjectConfig {
   const fromEnv = envPort(env);
   const variables: ConfigVariables = {
@@ -128,7 +130,7 @@ export interface AppConfigOptions {
   port?: number;
   /** `--base-url`: `${BASE_URL}` and `allowedOrigins` follow it. */
   baseUrl?: string;
-  env?: NodeJS.ProcessEnv;
+  env?: Env;
 }
 
 export interface AppConfig {

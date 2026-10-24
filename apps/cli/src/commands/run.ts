@@ -1,21 +1,32 @@
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { RenderFormat, RunResult } from '@demoflow/core';
+import {
+  type ProjectConfig,
+  parsePort,
+  type RenderFormat,
+  type RunResult,
+} from '@demoflow/core';
 import {
   createCaptureObserver,
   RUN_FILES,
   runScenario,
 } from '@demoflow/engine';
 import { buildRenderPlan, ffmpegRenderer } from '@demoflow/renderer';
-import { AppStartError, type RunningApp, startApp } from '../app/dev-server.ts';
+import {
+  AppStartError,
+  anyAnswer,
+  type RunningApp,
+  startApp,
+} from '../app/dev-server.ts';
 import { outputTail } from '../app/output-tail.ts';
 import {
   currentHost,
   findProjectRoot,
   type HostEnvironment,
+  loadAppConfig,
   loadGlobalConfig,
-  loadProjectConfig,
+  PROJECT_CONFIG_FILE,
   projectRootAt,
   resolveHome,
   runDir as runDirFor,
@@ -39,6 +50,10 @@ import { settleRun } from './settle.ts';
 
 export interface RunFlags {
   baseUrl?: string;
+  /** `--port`: fills `${PORT}` and sets `PORT` for the app (spec 337). */
+  port?: string;
+  /** `--fresh-app`: refuse an app that already answers on `readyUrl`. */
+  freshApp?: boolean;
   out?: string;
   headed?: boolean;
   json?: boolean;
@@ -78,11 +93,22 @@ export async function runCommand(
   deps: RunDeps = defaultRunDeps(),
 ): Promise<number> {
   const { host } = deps;
+  const port = flags.port === undefined ? undefined : portFlag(flags.port);
   const root =
     flags.project === undefined
       ? findProjectRoot(file)
       : projectRootAt(path.resolve(deps.cwd, flags.project));
-  const config = loadProjectConfig(root);
+  const app = loadAppConfig(root, {
+    port,
+    baseUrl: flags.baseUrl,
+    env: host.env,
+  });
+  const { config } = app;
+  if (port !== undefined && !app.usesPort) {
+    io.stderr(
+      `warning: --port ${port} is given but ${PROJECT_CONFIG_FILE} uses no \${PORT}; baseUrl and readyUrl are unchanged\n`,
+    );
+  }
   const { home } = resolveHome({
     ...host,
     out: flags.out,
@@ -105,6 +131,8 @@ export async function runCommand(
       `run directory already exists: ${runDir}`,
     );
   }
+  const fresh = flags.freshApp === true;
+  if (fresh) await assertNoAppRunning(config.devCommand);
   // After every input check: a bad scenario never costs a browser download
   // or an app start. The start overlaps with the download; the app's output
   // is kept and shown only if the start fails.
@@ -113,6 +141,8 @@ export async function runCommand(
   const tail = outputTail();
   const starting: Promise<Started> = startApp(config, root, {
     log: (text) => tail.push(text),
+    env: app.port === undefined ? undefined : { PORT: String(app.port) },
+    fresh,
   }).then(
     (app) => ({ app }),
     (error: unknown) => ({ error }),
@@ -209,6 +239,41 @@ export async function runCommand(
 }
 
 type Started = { app: RunningApp } | { error: unknown };
+
+/** `--port <n>`: a decimal integer from 1 to 65535, used or not (spec 337). */
+export function portFlag(text: string): number {
+  const port = parsePort(text);
+  if (port === undefined) {
+    throw new CommandError(
+      'invalid-port',
+      `--port ${text}: expected an integer from 1 to 65535`,
+    );
+  }
+  return port;
+}
+
+/**
+ * `--fresh-app` (spec 337, Decision 7): any answer on `readyUrl`, 5xx
+ * included, means another app holds the port. Checked before the browser
+ * check, the run directory and the app start, so a refusal is fast and
+ * leaves nothing behind.
+ */
+async function assertNoAppRunning(
+  dev: ProjectConfig['devCommand'],
+): Promise<void> {
+  if (dev === undefined) {
+    throw new CommandError(
+      'fresh-app-needs-dev-command',
+      `--fresh-app needs devCommand in ${PROJECT_CONFIG_FILE}: without it DemoFlow starts no app`,
+    );
+  }
+  if (await anyAnswer(dev.readyUrl)) {
+    throw new CommandError(
+      'app-already-running',
+      `--fresh-app: ${dev.readyUrl} already answers; another app holds this port. Stop it or pass another --port.`,
+    );
+  }
+}
 
 /**
  * The app never answered, so the engine never ran: the CLI writes the run's
