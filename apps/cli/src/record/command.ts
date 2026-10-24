@@ -7,7 +7,7 @@ import { EXIT_STAGE_FAILED } from '../commands/errors.ts';
 import type { Io } from '../commands/io.ts';
 import { runCommand } from '../commands/run.ts';
 import {
-  loadProjectConfig,
+  loadAppConfig,
   projectRootAbove,
   projectRootAt,
 } from '../config/index.ts';
@@ -70,7 +70,8 @@ export async function recordCommand(
     flags.project === undefined
       ? projectRootAbove(deps.cwd)
       : projectRootAt(path.resolve(deps.cwd, flags.project));
-  const config = loadProjectConfig(root);
+  // Strict, as it starts the app: `${PORT}` from PORT or its default (spec 337).
+  const { config, port } = loadAppConfig(root);
   const force = flags.force === true;
   const scenarioName = name ?? DEFAULT_NAME;
   let file: string;
@@ -88,7 +89,10 @@ export async function recordCommand(
   }
   let app: Awaited<ReturnType<typeof startApp>>;
   try {
-    app = await startApp(config, root, { log: (text) => io.stderr(text) });
+    app = await startApp(config, root, {
+      log: (text) => io.stderr(text),
+      env: port === undefined ? undefined : { PORT: String(port) },
+    });
   } catch (error) {
     if (!(error instanceof AppStartError)) throw error;
     io.stderr(`app-not-ready: ${error.message}\n`);

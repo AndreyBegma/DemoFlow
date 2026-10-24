@@ -1,4 +1,8 @@
 import type { z } from 'zod';
+import {
+  type ConfigVariables,
+  resolveConfigTemplates,
+} from './config-template.ts';
 import { expandSteps } from './expand.ts';
 import { formatPath, type Issue, toIssues } from './issues.ts';
 import { isCssLocator, type Locator } from './locator.ts';
@@ -64,8 +68,58 @@ export function parseScenario(input: unknown): ParseResult<Scenario> {
   return { ok: true, value: result.value, warnings };
 }
 
-/** Validates `demoflow.config.json` and applies its defaults. */
-export function parseProjectConfig(input: unknown): ParseResult<ProjectConfig> {
-  const result = parseWith(ProjectConfigSchema, input);
-  return result.ok ? { ...result, warnings: [] } : result;
+/**
+ * Validates `demoflow.config.json` and applies its defaults, after its
+ * `${PORT}` / `${BASE_URL}` templates are filled from `variables` (spec 337).
+ * With `variables.baseUrl`, `allowedOrigins` follows that URL's origin.
+ */
+export function parseProjectConfig(
+  input: unknown,
+  variables: ConfigVariables = {},
+): ParseResult<ProjectConfig> {
+  const templated = resolveConfigTemplates(input, variables);
+  if (!templated.ok) return templated;
+  const result = parseWith(ProjectConfigSchema, templated.value);
+  if (!result.ok) return result;
+  const value =
+    variables.baseUrl === undefined
+      ? result.value
+      : withEffectiveOrigin(
+          result.value,
+          variables.baseUrl,
+          hasAllowedOrigins(templated.value),
+        );
+  return { ok: true, value, warnings: [] };
+}
+
+function hasAllowedOrigins(input: unknown): boolean {
+  return (
+    typeof input === 'object' &&
+    input !== null &&
+    Reflect.get(input, 'allowedOrigins') !== undefined
+  );
+}
+
+/**
+ * `allowedOrigins` for a run on `baseUrl` instead of the config's: its origin
+ * alone when the config lists none, else added once. A URL that does not
+ * parse is left for the run's readiness stage to report.
+ */
+function withEffectiveOrigin(
+  config: ProjectConfig,
+  baseUrl: string,
+  listed: boolean,
+): ProjectConfig {
+  let origin: string;
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return config;
+    origin = url.origin;
+  } catch {
+    return config;
+  }
+  if (!listed) return { ...config, allowedOrigins: [origin] };
+  return config.allowedOrigins.includes(origin)
+    ? config
+    : { ...config, allowedOrigins: [...config.allowedOrigins, origin] };
 }

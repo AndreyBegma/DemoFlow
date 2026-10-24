@@ -70,6 +70,15 @@ export async function main(
     .description('Run a scenario and render its video')
     .argument('<scenario>', 'path to a .demo.json file')
     .option('--base-url <url>', 'override baseUrl from demoflow.config.json')
+    .option(
+      '--port <n>',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the config's own syntax.
+      'fill ${PORT} in demoflow.config.json and set PORT for the app',
+    )
+    .option(
+      '--fresh-app',
+      'refuse to run when readyUrl already answers, instead of reusing that app',
+    )
     .option('--out <dir>', 'artifacts directory (the home of runs/)')
     .option('--headed', 'show the browser window')
     .option('--json', 'print the result as one JSON object on stdout')
@@ -92,6 +101,8 @@ export async function main(
         scenario: string,
         flags: {
           baseUrl?: string;
+          port?: string;
+          freshApp?: boolean;
           out?: string;
           headed?: boolean;
           json?: boolean;

@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: `${PORT}` is the config's own syntax, written as plain text on purpose.
 import {
   mkdirSync,
   mkdtempSync,
@@ -7,7 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { checkCommand } from '../../src/commands/check.ts';
 import type { Io } from '../../src/commands/io.ts';
 import { listCommand } from '../../src/commands/list.ts';
@@ -112,6 +113,50 @@ function seedRuns(): void {
     server: 'https://demoflow.example',
   });
 }
+
+describe('a config with ${PORT} and PORT unset (spec 337)', () => {
+  beforeEach(() => {
+    vi.stubEnv('PORT', '');
+    write(
+      'project/demoflow.config.json',
+      JSON.stringify({
+        baseUrl: 'http://127.0.0.1:${PORT}',
+        devCommand: {
+          command: 'node',
+          args: ['server.mjs', '--port', '${PORT}'],
+          readyUrl: '${BASE_URL}/',
+        },
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('demoflow check reports the config valid', async () => {
+    const io = capture();
+    const code = await checkCommand({}, io, {
+      host,
+      cwd: project,
+      check: async (input, cwd, env) => ({
+        ...(await checkProject(input, cwd, env)),
+        ffmpeg: 'bundled',
+        browser: 'installed',
+      }),
+    });
+    expect(code, io.err).toBe(0);
+    expect(io.out).toContain('config: valid');
+  });
+
+  it('demoflow list lists the runs', async () => {
+    seedRuns();
+    const io = capture();
+    expect(await listCommand({}, io, { host, cwd: project })).toBe(0);
+    expect(io.err).toBe('');
+    expect(io.out).toContain('Scenario new');
+  });
+});
 
 describe('demoflow list', () => {
   it('prints runs newest first, skips a corrupt one, shows the page URL', async () => {
