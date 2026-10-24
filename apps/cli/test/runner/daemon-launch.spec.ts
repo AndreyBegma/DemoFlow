@@ -187,7 +187,11 @@ describe('the daemon with a website-started run', () => {
       const first = sockets[0];
       if (first === undefined) throw new Error('no socket');
       first.open();
-      expect(first.sent[0]).toEqual({ type: 'launches.sync', running: [] });
+      expect(first.sent[0]).toEqual({
+        type: 'launches.sync',
+        running: [],
+        runOptions: ['formats'],
+      });
       first.receive({
         type: 'run.start',
         requestId: REQUEST,
@@ -225,6 +229,7 @@ describe('the daemon with a website-started run', () => {
       expect(next.sent[0]).toEqual({
         type: 'launches.sync',
         running: [REQUEST],
+        runOptions: ['formats'],
       });
       await stop(next);
     });
@@ -235,7 +240,9 @@ describe('the daemon with a website-started run', () => {
       // Let the launcher settle: the run.finished has no socket and is dropped.
       await new Promise((r) => setTimeout(r, 50));
       const next = await reconnect();
-      expect(next.sent).toEqual([{ type: 'launches.sync', running: [] }]);
+      expect(next.sent).toEqual([
+        { type: 'launches.sync', running: [], runOptions: ['formats'] },
+      ]);
     });
   });
 });

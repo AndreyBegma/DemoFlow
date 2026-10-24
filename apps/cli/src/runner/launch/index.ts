@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { RenderFormat } from '@demoflow/core';
 import { generateRunId } from '../../commands/run-id.ts';
 import { readResult as readRunResult } from '../../commands/settle.ts';
 import {
@@ -20,9 +21,11 @@ import {
   type ProjectLoad,
 } from './checks.ts';
 import { listedFrame, listScenarios } from './list.ts';
+import { checkRunOptions } from './options.ts';
 import { ProgressGate, parseProgressLine } from './progress.ts';
 
 export { nodeLaunchFs } from './checks.ts';
+export { RUN_OPTIONS } from './options.ts';
 
 /**
  * Decision 7: SIGTERM gives the child this long to stop its dev server (up to
@@ -146,7 +149,7 @@ export class Launcher implements LaunchPort {
     reply: LaunchSender,
     current: LaunchSender,
   ): void {
-    const { type, requestId, rootPath, scenarioId } = message;
+    const { type, requestId, rootPath, scenarioId, options } = message;
     const { logger } = this.deps;
     switch (type) {
       case 'scenarios.list':
@@ -165,7 +168,7 @@ export class Launcher implements LaunchPort {
           logger.log('warn', 'ignored a malformed run.start');
           return;
         }
-        this.start(requestId, rootPath, scenarioId, reply, current);
+        this.start(requestId, rootPath, scenarioId, options, reply, current);
         return;
       case 'run.cancel':
         if (typeof requestId !== 'string') {
@@ -235,6 +238,7 @@ export class Launcher implements LaunchPort {
     requestId: string,
     rootPath: string,
     scenarioId: string,
+    options: unknown,
     reply: LaunchSender,
     current: LaunchSender,
   ): void {
@@ -258,9 +262,22 @@ export class Launcher implements LaunchPort {
       refuse(early);
       return;
     }
+    // Spec 326, Decision 4: pure, so a refused start touches no file.
+    const checked = checkRunOptions(options);
+    if (!checked.ok) {
+      refuse('options-invalid');
+      return;
+    }
     const launch: Launch = { requestId, done: Promise.resolve() };
     this.launch = launch;
-    launch.done = this.run(launch, rootPath, scenarioId, reply, current)
+    launch.done = this.run(
+      launch,
+      rootPath,
+      scenarioId,
+      checked.formats,
+      reply,
+      current,
+    )
       .catch((error: unknown) => {
         if (error instanceof Refused) refuse(error.code);
         else if (launch.child === undefined) refuse('io');
@@ -280,6 +297,7 @@ export class Launcher implements LaunchPort {
     launch: Launch,
     rootPath: string,
     scenarioId: string,
+    formats: RenderFormat[] | null,
     reply: LaunchSender,
     current: LaunchSender,
   ): Promise<void> {
@@ -309,7 +327,8 @@ export class Launcher implements LaunchPort {
         steps: progress.phase === 'steps' ? progress.steps : null,
       });
     });
-    // Decision 6: nothing from the message but the checked file and root.
+    // Decision 6: nothing from the message but the checked file and root, and
+    // (spec 326, Decision 5) the enum's own format constants.
     const child = deps.spawn(
       [
         'run',
@@ -320,6 +339,7 @@ export class Launcher implements LaunchPort {
         runId,
         '--project',
         project.root,
+        ...(formats ?? []).flatMap((format) => ['--format', format]),
       ],
       project.root,
       {
@@ -337,7 +357,10 @@ export class Launcher implements LaunchPort {
     }
     launch.child = child;
     reply.send({ type: 'run.started', requestId, scenarioName: scenario.name });
-    deps.logger.log('info', `launch ${shown(requestId)}: started run ${runId}`);
+    deps.logger.log(
+      'info',
+      `launch ${shown(requestId)}: started run ${runId}, formats ${formats?.length ?? 'default'}`,
+    );
     const cancelCap = deps.clock.after(LAUNCH_MAX_MS, () => {
       void this.stop(launch, 'timed-out');
     });
