@@ -6,6 +6,8 @@ export type CommandErrorCode =
   | 'invalid-scenario'
   | 'invalid-run-id'
   | 'invalid-limit'
+  | 'invalid-duration'
+  | 'prune-needs-a-filter'
   | 'run-not-found'
   | 'invalid-result'
   | 'run-unfinished'

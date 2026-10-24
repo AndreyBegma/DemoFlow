@@ -336,6 +336,21 @@ export function deleteRunArtifacts(id: string) {
   });
 }
 
+/** Deletes the run's row; 204 when it is gone. The machine's files stay (spec #280). */
+export function deleteRun(id: string) {
+  return request<void>(`/runs/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+/** Deletes the project's runs among `runIds`; answers how many it removed (spec #286). */
+export function deleteProjectRuns(projectId: string, runIds: string[]) {
+  return request<{ deleted: number }>(
+    `/projects/${encodeURIComponent(projectId)}/runs/delete`,
+    { method: 'POST', body: { runIds } },
+  );
+}
+
 // Starting a run from the website (spec #249, contract from spec #247).
 
 /** A scenario file on the project's machine. */

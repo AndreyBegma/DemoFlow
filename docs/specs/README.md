@@ -161,3 +161,13 @@ Work traced to an ADR, the vision or spec 179 that no phase had picked up.
 | [#284](https://github.com/AndreyBegma/DemoFlow/issues/284) | [Re-sync a running launch after the runner reconnects (API)](284-launch-resync-api.md) — spec 247 Decision 7 | — |
 | [#285](https://github.com/AndreyBegma/DemoFlow/issues/285) | [The daemon re-announces running launches after a reconnect](285-launch-resync-daemon.md) | #284 |
 | [#286](https://github.com/AndreyBegma/DemoFlow/issues/286) | [Delete several runs at once from the project library](286-bulk-delete-runs.md) | #280, #281 |
+| [#299](https://github.com/AndreyBegma/DemoFlow/issues/299) | [Download a run's video through the relay (API)](299-video-download-api.md) — spec 191 follow-up, ADR-0009 | — |
+| [#300](https://github.com/AndreyBegma/DemoFlow/issues/300) | [Download a run's video from the run page](300-run-page-download.md) | #299 |
+| [#301](https://github.com/AndreyBegma/DemoFlow/issues/301) | [Live progress of a website-started run (API)](301-run-progress-api.md) — specs 247-249 follow-up | — |
+| [#302](https://github.com/AndreyBegma/DemoFlow/issues/302) | [The daemon sends the live progress of a website-started run](302-run-progress-daemon.md) | #301, #285 |
+| [#303](https://github.com/AndreyBegma/DemoFlow/issues/303) | [Show the live progress of a website-started run](303-run-progress-web.md) | #301 |
+| [#304](https://github.com/AndreyBegma/DemoFlow/issues/304) | [Square 1:1 export](304-square-output.md) — specs 176/236 follow-up | — |
+| [#305](https://github.com/AndreyBegma/DemoFlow/issues/305) | [Record a scenario as a phone](305-phone-device.md) — specs 176/236 follow-up | — |
+| [#306](https://github.com/AndreyBegma/DemoFlow/issues/306) | [Vertical and square crops follow up and down on a tall source](306-follow-camera-portrait.md) | #304 |
+| [#307](https://github.com/AndreyBegma/DemoFlow/issues/307) | [No mouse cursor on a phone recording, taps only](307-phone-tap-indicator.md) | #305 |
+| [#308](https://github.com/AndreyBegma/DemoFlow/issues/308) | [Docs: square formats, `render.square` and phone recording](308-docs-square-and-phone.md) | #304-#307 |
