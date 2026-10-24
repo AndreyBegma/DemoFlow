@@ -111,7 +111,9 @@ export async function runScenario(
   });
   try {
     await emit('onBrowserLaunched', { browser });
-    const context = await browser.newContext(toContextOptions(recording));
+    const context = await browser.newContext(
+      toContextOptions(recording, browser.version()),
+    );
     const marked = new MarkedMasks(scenario.viewport);
     const annotations = new Annotations();
     await installPageScripts(context, marked, annotations);

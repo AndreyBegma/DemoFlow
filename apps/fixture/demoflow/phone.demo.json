@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "name": "Sign in on a phone",
+  "description": "Sign in as a phone: a touch device with a mobile user agent and the default 412x914 viewport.",
+  "device": "phone",
+  "steps": [
+    { "action": "navigate", "path": "/login" },
+    {
+      "action": "fill",
+      "target": { "label": "Email" },
+      "value": "ada@example.com"
+    },
+    {
+      "action": "fill",
+      "target": { "label": "Password" },
+      "valueFrom": { "env": "FIXTURE_PASSWORD" }
+    },
+    { "action": "click", "target": { "role": "button", "name": "Sign in" } },
+    {
+      "action": "assertText",
+      "target": { "role": "heading", "name": "Welcome" },
+      "text": "Welcome, ada@example.com"
+    }
+  ]
+}

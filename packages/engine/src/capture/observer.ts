@@ -64,6 +64,7 @@ export function createCaptureObserver(options: CaptureOptions): EngineObserver {
           schemaVersion: 1,
           viewport: recording.viewport,
           deviceScaleFactor: recording.deviceScaleFactor,
+          device: recording.device,
           videoFile: RUN_FILES.video,
           events: outcome.events,
           ...(outcome.syncMark === undefined
