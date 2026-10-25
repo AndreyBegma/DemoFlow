@@ -39,14 +39,21 @@ function phoneUserAgent(browserVersion: string): string {
   return `Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${browserVersion} Mobile Safari/537.36`;
 }
 
+/**
+ * The context options of the run. `video: false` for the off-camera context
+ * (ADR-0018): the same browser, viewport and device, with nothing recorded.
+ */
 export function toContextOptions(
   recording: RecordingOptions,
   browserVersion: string,
+  { video = true }: { video?: boolean } = {},
 ): BrowserContextOptions {
   return {
     viewport: recording.viewport,
     deviceScaleFactor: recording.deviceScaleFactor,
-    recordVideo: { dir: recording.videoDir, size: recording.videoSize },
+    ...(video
+      ? { recordVideo: { dir: recording.videoDir, size: recording.videoSize } }
+      : {}),
     ...(recording.device === 'phone'
       ? {
           isMobile: true,

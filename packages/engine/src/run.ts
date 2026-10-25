@@ -6,13 +6,20 @@ import {
   expandScenario,
   type MaskedElement,
   type Navigation,
+  offCameraSteps,
   type Scenario,
   type Stage,
   type Stages,
   type StepOrigin,
   type TimelineEvent,
 } from '@demoflow/core';
-import { type BrowserContext, chromium, type Page } from 'playwright';
+import {
+  type Browser,
+  type BrowserContext,
+  type BrowserContextOptions,
+  chromium,
+  type Page,
+} from 'playwright';
 import {
   errorMessage,
   type FailedStage,
@@ -111,50 +118,94 @@ export async function runScenario(
   });
   try {
     await emit('onBrowserLaunched', { browser });
-    const context = await browser.newContext(
-      toContextOptions(recording, browser.version()),
-    );
-    const marked = new MarkedMasks(scenario.viewport);
-    const annotations = new Annotations();
-    await installPageScripts(context, marked, annotations);
     const guard = new OriginGuard(options.allowedOrigins);
-    const navigation = watchNavigation(context, guard);
-
-    stages.recording = { status: 'running', startedAt: timestamp() };
-    const page = await context.newPage();
-    const clock = startClock();
-    marked.attach(page, clock);
-    annotations.attach(page, clock);
-    const navigations = new NavigationRecorder(page, clock);
-    await emit('onPageCreated', { page, recording });
-    const syncMark = await recordSyncMark(page, clock);
-
-    const events: TimelineEvent[] = [];
-    // A `repeat` runs as its expanded steps (spec 165); `stepIndex` counts them.
+    // A `repeat` runs as its expanded steps (spec 165); `stepIndex` counts them,
+    // the off-camera ones included (ADR-0018).
     const { steps } = expandScenario(scenario);
+    const hidden = offCameraSteps(steps);
     const hasAssertions = steps.some((step) => ASSERTIONS.has(step.action));
     stages.execution = { status: 'running', startedAt: timestamp() };
     if (hasAssertions) {
       stages.verification = { status: 'running', startedAt: timestamp() };
     }
+    const execute = (
+      session: Session,
+      range: { from: number; to: number },
+      events: TimelineEvent[],
+    ): Promise<Failure | undefined> =>
+      executeSteps({
+        steps,
+        ...range,
+        page: session.page,
+        clock: session.clock,
+        baseUrl,
+        guard,
+        secrets: readiness.secrets,
+        pointer: viewportCentre(scenario.viewport),
+        observers,
+        events,
+        navigation: session.navigation,
+        masks: new MaskTracker(session.page, session.clock),
+        marked: session.marked,
+        annotations: session.annotations,
+        scrub,
+        emit,
+      });
 
-    const failure = await executeSteps({
-      steps,
-      page,
-      clock,
-      baseUrl,
-      guard,
-      secrets: readiness.secrets,
-      pointer: viewportCentre(scenario.viewport),
-      observers,
-      events,
-      navigation,
-      masks: new MaskTracker(page, clock),
-      marked,
-      annotations,
-      scrub,
-      emit,
+    // The opening off-camera steps run in a context of their own with no
+    // video; the recorded one starts in its storage, on the page it ended on.
+    let start: OffCameraEnd | undefined;
+    if (hidden > 0) {
+      const off = await openSession(browser, scenario, guard, {
+        options: toContextOptions(recording, browser.version(), {
+          video: false,
+        }),
+      });
+      const offEvents: TimelineEvent[] = [];
+      const failure = await execute(off, { from: 0, to: hidden }, offEvents);
+      if (failure === undefined) {
+        start = {
+          storageState: await off.context.storageState(),
+          url: off.page.url(),
+        };
+      }
+      await off.context.close();
+      if (failure !== undefined) {
+        failStages(stages, failure);
+        stages.recording = { status: 'skipped' };
+        // The failed step is the run's only event: there is no video to time.
+        const outcome = conclude(
+          startedAt,
+          stages,
+          offEvents.filter((event) => event.stepIndex === failure.stepIndex),
+        );
+        await emit('onRunFinished', { outcome, video: null });
+        return outcome;
+      }
+    }
+
+    stages.recording = { status: 'running', startedAt: timestamp() };
+    const session = await openSession(browser, scenario, guard, {
+      options: {
+        ...toContextOptions(recording, browser.version()),
+        ...(start === undefined ? {} : { storageState: start.storageState }),
+      },
     });
+    const { context, page, clock, marked, annotations } = session;
+    const navigations = new NavigationRecorder(page, clock);
+    await emit('onPageCreated', { page, recording });
+    let failure: Failure | undefined;
+    if (start !== undefined && /^https?:/.test(start.url)) {
+      failure = await reopen(page, start.url, hidden - 1, steps, scrub);
+    }
+    const syncMark = await recordSyncMark(page, clock);
+
+    const events: TimelineEvent[] = [];
+    failure ??= await execute(
+      session,
+      { from: hidden, to: steps.length },
+      events,
+    );
     // Before the context closes: a document's clock exchange may still be running on it.
     const maskedElements = await marked.list();
 
@@ -164,14 +215,7 @@ export async function runScenario(
         ? finish(stages.verification, 'passed')
         : { status: 'skipped' };
     } else {
-      const other: FailedStage =
-        failure.stage === 'execution' ? 'verification' : 'execution';
-      stages[failure.stage] = finish(stages[failure.stage], 'failed', {
-        message: failure.message,
-        stepIndex: failure.stepIndex,
-        ...(failure.origin === undefined ? {} : { origin: failure.origin }),
-      });
-      stages[other] = { ...stages[other], status: 'skipped' };
+      failStages(stages, failure);
     }
 
     // Closing the context finalises the video, also after a failed step.
@@ -205,8 +249,83 @@ export async function runScenario(
   }
 }
 
+/** A browser context and its page, with what watches and times it. */
+interface Session {
+  context: BrowserContext;
+  page: Page;
+  clock: Clock;
+  marked: MarkedMasks;
+  annotations: Annotations;
+  navigation: NavigationWatch;
+}
+
+async function openSession(
+  browser: Browser,
+  scenario: Scenario,
+  guard: OriginGuard,
+  { options }: { options: BrowserContextOptions },
+): Promise<Session> {
+  const context = await browser.newContext(options);
+  const marked = new MarkedMasks(scenario.viewport);
+  const annotations = new Annotations();
+  await installPageScripts(context, marked, annotations);
+  const navigation = watchNavigation(context, guard);
+  const page = await context.newPage();
+  const clock = startClock();
+  marked.attach(page, clock);
+  annotations.attach(page, clock);
+  return { context, page, clock, marked, annotations, navigation };
+}
+
+/** Where the off-camera steps left the browser (ADR-0018). */
+interface OffCameraEnd {
+  /** Cookies and localStorage; sessionStorage does not carry over. */
+  storageState: Awaited<ReturnType<BrowserContext['storageState']>>;
+  url: string;
+}
+
+/**
+ * Opens the page the off-camera steps ended on, before the sync mark: the
+ * video starts there. A failure is the last off-camera step's.
+ */
+async function reopen(
+  page: Page,
+  url: string,
+  stepIndex: number,
+  steps: readonly ExpandedStep[],
+  scrub: (message: string) => string,
+): Promise<Failure | undefined> {
+  try {
+    await page.goto(url, { waitUntil: 'load' });
+    return undefined;
+  } catch (error) {
+    return {
+      stage: 'execution',
+      message: scrub(
+        `cannot reopen ${url} after the off-camera steps: ${errorMessage(error)}`,
+      ),
+      stepIndex,
+      origin: steps[stepIndex]?.origin,
+    };
+  }
+}
+
+function failStages(stages: Stages, failure: Failure): void {
+  const other: FailedStage =
+    failure.stage === 'execution' ? 'verification' : 'execution';
+  stages[failure.stage] = finish(stages[failure.stage], 'failed', {
+    message: failure.message,
+    stepIndex: failure.stepIndex,
+    ...(failure.origin === undefined ? {} : { origin: failure.origin }),
+  });
+  stages[other] = { ...stages[other], status: 'skipped' };
+}
+
 interface ExecuteInput {
+  /** Every expanded step; the ones in `[from, to)` run. */
   steps: readonly ExpandedStep[];
+  from: number;
+  to: number;
   page: Page;
   clock: Clock;
   baseUrl: string | undefined;
@@ -237,7 +356,9 @@ interface Failure {
 async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
   const { clock, emit, scrub } = input;
   let pointer = input.pointer;
-  for (const [stepIndex, step] of input.steps.entries()) {
+  for (let stepIndex = input.from; stepIndex < input.to; stepIndex++) {
+    const step = input.steps[stepIndex];
+    if (step === undefined) break;
     const startMs = clock.now();
     input.marked.stepStarted(startMs);
     input.annotations.stepStarted(startMs);

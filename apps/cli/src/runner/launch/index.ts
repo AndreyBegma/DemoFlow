@@ -79,7 +79,8 @@ export interface LauncherDeps extends CheckDeps {
 export function loadProjectFor(host: HostEnvironment) {
   return (root: string): ProjectLoad => {
     try {
-      return { ok: true, home: resolveProject(root, root, host).home };
+      const { home, config } = resolveProject(root, root, host);
+      return { ok: true, home, fragmentsDir: config.fragmentsDir };
     } catch (error) {
       if (
         error instanceof ToolError &&
@@ -221,7 +222,11 @@ export class Launcher implements LaunchPort {
       const project = await checkProject(rootPath, this.deps);
       // Decision 2: a config that does not load is not a project to list.
       if (!project.ok) return refuse('project-unknown');
-      const listing = await listScenarios(project.root, this.deps.fs);
+      const listing = await listScenarios(
+        project.root,
+        this.deps.fs,
+        project.fragmentsDir,
+      );
       const frame = listedFrame(requestId, listing);
       const sent = (frame.scenarios as unknown[]).length;
       logger.log(
@@ -305,7 +310,12 @@ export class Launcher implements LaunchPort {
     const { requestId } = launch;
     const project = await checkProject(rootPath, deps);
     if (!project.ok) throw new Refused(project.code);
-    const scenario = await checkScenario(project.root, scenarioId, deps.fs);
+    const scenario = await checkScenario(
+      project.root,
+      scenarioId,
+      deps.fs,
+      project.fragmentsDir,
+    );
     if (!scenario.ok) throw new Refused(scenario.code);
     if (launch.ending !== undefined) {
       // The API gave up on this start (spec 247, Decision 5): nothing runs.

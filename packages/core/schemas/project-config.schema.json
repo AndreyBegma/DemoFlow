@@ -53,6 +53,11 @@
       "type": "string",
       "minLength": 1
     },
+    "fragmentsDir": {
+      "description": "Where the fragments scenarios include live, relative to the project root. Default demoflow/fragments.",
+      "type": "string",
+      "minLength": 1
+    },
     "render": {
       "default": {},
       "type": "object",

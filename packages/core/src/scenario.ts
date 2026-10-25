@@ -5,7 +5,7 @@ import {
   NonEmptyStringSchema,
   ViewportSchema,
 } from './common.ts';
-import { DataKeySchema, ScenarioStepSchema } from './step.ts';
+import { DataKeySchema, ScenarioStepSchema, SetupStepSchema } from './step.ts';
 
 /** One item of a data list: the fields a `repeat` substitutes. */
 export const DataItemSchema = z.record(
@@ -54,6 +54,15 @@ export const ScenarioSchema = z
     }),
     viewport: ViewportSchema.optional(),
     data: ScenarioDataSchema.optional(),
+    setup: z
+      .array(SetupStepSchema)
+      .min(1, 'expected at least one step')
+      .max(200, 'expected at most 200 steps')
+      .optional()
+      .meta({
+        description:
+          'Steps that run off camera before the recording starts, such as signing in: an include of a fragment, or plain steps. The recording starts in the same browser storage (cookies, localStorage), on the page setup ended on.',
+      }),
     steps: z
       .array(ScenarioStepSchema)
       .min(1, 'expected at least one step')

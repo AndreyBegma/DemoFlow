@@ -3,7 +3,12 @@ import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { resolveFfmpeg } from '@demoflow/renderer';
 import { readResult } from '../commands/settle.ts';
-import { type HostEnvironment, runDir as runDirFor } from '../config/index.ts';
+import {
+  type HostEnvironment,
+  lazyFragments,
+  projectFragments,
+  runDir as runDirFor,
+} from '../config/index.ts';
 import { runnerPaths } from '../runner/paths.ts';
 import {
   pageUrlFor,
@@ -47,9 +52,16 @@ export function validateScenario(
   }
   if (input.file !== undefined) {
     const project = resolveProject(input.project, cwd, host);
-    resolveScenarioFile(project.root, input.file);
+    resolveScenarioFile(project.root, input.file, project.config.fragmentsDir);
   } else {
-    checkInlineScenario(input.scenario);
+    // A plain inline scenario needs no project; an include needs one.
+    checkInlineScenario(
+      input.scenario,
+      lazyFragments(() => {
+        const project = resolveProject(input.project, cwd, host);
+        return projectFragments(project.root, project.config.fragmentsDir);
+      }),
+    );
   }
   return { valid: true };
 }

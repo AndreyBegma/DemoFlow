@@ -45,6 +45,7 @@ function cutName(name: string): string {
 export async function listScenarios(
   root: string,
   fs: LaunchFs,
+  fragmentsDir?: string,
 ): Promise<Listing> {
   const top = path.join(root, SCENARIOS_DIR);
   const empty: Listing = { scenarios: [], truncated: false, skipped: 0 };
@@ -83,7 +84,7 @@ export async function listScenarios(
   const scenarios: ListedScenario[] = [];
   let skipped = 0;
   for (const id of ids) {
-    const check = await checkScenario(root, id, fs);
+    const check = await checkScenario(root, id, fs, fragmentsDir);
     if (check.ok) scenarios.push({ id, name: cutName(check.name) });
     else skipped++;
   }
