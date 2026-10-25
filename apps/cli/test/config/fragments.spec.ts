@@ -107,8 +107,12 @@ function toolError(fn: () => unknown): ToolError {
 
 beforeEach(() => {
   // Real paths: the launch checks compare them.
-  root = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'demoflow-fragments-')));
-  outside = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'demoflow-outside-')));
+  root = realpathSync.native(
+    mkdtempSync(path.join(tmpdir(), 'demoflow-fragments-')),
+  );
+  outside = realpathSync.native(
+    mkdtempSync(path.join(tmpdir(), 'demoflow-outside-')),
+  );
 });
 
 afterEach(() => {
