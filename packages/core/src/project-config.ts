@@ -296,6 +296,10 @@ export const ProjectConfigSchema = z
       })
       .optional(),
     artifactsDir: NonEmptyStringSchema.optional(),
+    fragmentsDir: NonEmptyStringSchema.optional().meta({
+      description:
+        'Where the fragments scenarios include live, relative to the project root. Default demoflow/fragments.',
+    }),
     render: RenderConfigSchema,
   })
   .transform(({ allowedOrigins, ...config }) => {

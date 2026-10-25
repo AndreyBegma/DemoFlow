@@ -58,7 +58,9 @@ unchanged.
 
 Takes an inline `scenario` or a `file`, exactly one. Returns `{ "valid": true }`,
 or an `invalid-scenario` error with issue paths. Nothing is run or written, so
-an agent can fix a scenario before spending a run on it.
+an agent can fix a scenario before spending a run on it. Includes are resolved
+from the fragments of `project`; a problem inside a fragment names the
+fragment file and step.
 
 ### list_demos
 
@@ -79,3 +81,11 @@ whether FFmpeg and the browser are available.
 4. It tells you where the video is.
 
 The [scenario format](/docs/scenarios) is the same one `demoflow run` reads.
+
+## Writing scenarios
+
+The tool descriptions tell an agent to reuse the project's
+[fragments](/docs/scenarios#fragments) with an `include` step instead of
+copying steps, to keep signing in and other preparation
+[off camera](/docs/scenarios#off-camera-steps) with `setup` or
+`"record": false`, and to take secrets from `valueFrom.env` only.

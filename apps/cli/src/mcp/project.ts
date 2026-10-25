@@ -1,6 +1,10 @@
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { type ProjectConfig, parseScenario } from '@demoflow/core';
+import {
+  type FragmentSource,
+  type ProjectConfig,
+  parseScenario,
+} from '@demoflow/core';
 import { CommandError } from '../commands/errors.ts';
 import { loadScenario } from '../commands/scenario-file.ts';
 import {
@@ -10,6 +14,7 @@ import {
   loadGlobalConfig,
   loadProjectConfig,
   PROJECT_CONFIG_FILE,
+  projectFragments,
   resolveHome,
 } from '../config/index.ts';
 import { ToolError } from './errors.ts';
@@ -85,9 +90,13 @@ export function resolveProject(
 /**
  * The `file` argument → the absolute path of a valid `*.demo.json` inside the
  * project. Resolved against the root; real paths are compared, so a symlink
- * cannot lead out of it.
+ * cannot lead out of it. Its includes come from the project's `fragmentsDir`.
  */
-export function resolveScenarioFile(root: string, file: string): string {
+export function resolveScenarioFile(
+  root: string,
+  file: string,
+  fragmentsDir?: string,
+): string {
   const absolute = path.resolve(root, file);
   const outside = new ToolError(
     'file-not-in-project',
@@ -106,7 +115,7 @@ export function resolveScenarioFile(root: string, file: string): string {
   }
   if (!isInside(realpathSync(root), realpathSync(absolute))) throw outside;
   try {
-    loadScenario(absolute);
+    loadScenario(absolute, projectFragments(root, fragmentsDir));
   } catch (error) {
     if (!(error instanceof CommandError)) throw error;
     throw new ToolError(
@@ -123,9 +132,15 @@ export function resolveScenarioFile(root: string, file: string): string {
   return absolute;
 }
 
-/** An inline `scenario` checked against `ScenarioSchema` before it is queued. */
-export function checkInlineScenario(raw: unknown): void {
-  const parsed = parseScenario(raw);
+/**
+ * An inline `scenario` checked against `ScenarioSchema` before it is queued;
+ * its includes come from `fragments`, without which an include is an issue.
+ */
+export function checkInlineScenario(
+  raw: unknown,
+  fragments?: FragmentSource,
+): void {
+  const parsed = parseScenario(raw, { fragments });
   if (!parsed.ok) {
     throw new ToolError(
       'invalid-scenario',

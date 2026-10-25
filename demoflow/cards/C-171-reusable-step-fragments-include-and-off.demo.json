@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "name": "Fragments and off-camera steps",
+  "description": "Open the scenarios docs off camera through a fragment, then show the new Fragments and Off-camera steps sections.",
+  "viewport": { "width": 1280, "height": 720 },
+  "setup": [
+    {
+      "action": "include",
+      "fragment": "open-docs",
+      "with": { "page": "scenarios", "heading": "Scenarios" }
+    }
+  ],
+  "steps": [
+    {
+      "action": "scroll",
+      "target": { "role": "heading", "name": "Fragments" }
+    },
+    {
+      "action": "assertText",
+      "target": { "role": "heading", "name": "Fragments" },
+      "text": "Fragments"
+    },
+    {
+      "action": "scroll",
+      "target": { "role": "heading", "name": "Off-camera steps" }
+    },
+    {
+      "action": "assertText",
+      "target": { "role": "heading", "name": "Off-camera steps" },
+      "text": "Off-camera steps"
+    }
+  ]
+}

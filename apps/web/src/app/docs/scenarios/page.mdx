@@ -26,6 +26,7 @@ schema and reports problems by path, such as `steps[1].target`.
 | `device` | `"desktop"` (default) or `"phone"`. See [Record as a phone](#record-as-a-phone). |
 | `viewport` | The browser size. Default 1920×1080, or 412×914 for a phone. |
 | `data` | Lists a `repeat` step runs over. See [Repeat over data](#repeat-over-data). |
+| `setup` | Optional. 1 to 200 steps that run before the recording starts. See [Off-camera steps](#off-camera-steps). |
 | `steps` | 1 to 200 steps. |
 
 ## Record as a phone
@@ -72,8 +73,8 @@ whole string instead of a part of it.
 
 ## Steps
 
-Every step has an `action`. Every step may also carry a `caption` and a
-`timeoutMs`.
+Every step has an `action`. Every step may also carry a `caption`, a
+`timeoutMs` and `"record": false` (see [Off-camera steps](#off-camera-steps)).
 
 | Action | What it does | Fields |
 |---|---|---|
@@ -91,7 +92,8 @@ Every step has an `action`. Every step may also carry a `caption` and a
 | `waitForReady` | Waits until your app signals it is ready. See [Application SDK](/docs/sdk#tell-a-scenario-you-are-ready). | `name` |
 | `marker` | Marks a scene or a caption in the video. | `title`, `kind` (`scene` by default, or `caption`) |
 | `wait` | Pauses on screen. | `ms` (1 to 5000) |
-| `repeat` | Runs steps once per item of a list. | See below. |
+| `repeat` | Runs steps once per item of a list. | See [Repeat over data](#repeat-over-data). |
+| `include` | Runs the steps of a fragment. | `fragment`, optional `with`. See [Fragments](#fragments). |
 
 ### caption
 
@@ -195,5 +197,96 @@ They work in every string of a step inside the `repeat`.
 - A `repeat` holds 1 to 50 steps and no `repeat` of its own: loops are one level deep.
 - Its `caption` is shown once, before the first iteration.
 - Every field a step uses must be in every item, and a URL, path or key must be valid once filled in. `demoflow validate` reports a problem by step path, such as `steps[1].steps[1].value`, before anything runs.
-- `{{…}}` is an error outside a `repeat`. Write `\\{{` in JSON for a literal `{{`.
+- `{{…}}` is an error outside a `repeat`, except `{{params.…}}` in a [fragment](#fragments). Write `\\{{` in JSON for a literal `{{`.
 - The timeline and `result.json` count the expanded steps. A failure reads like `step 4 (repeat steps[1], iteration 3)`.
+
+## Fragments
+
+A fragment is a list of steps that several scenarios share, such as signing
+in. It lives in `demoflow/fragments/<name>.json`, or under the `fragmentsDir`
+the [project config](/docs/config) names, and a scenario runs it with an
+`include` step:
+
+```json
+{
+  "schemaVersion": 1,
+  "description": "Signs the demo user in.",
+  "params": {
+    "next": { "description": "Where to go once signed in.", "default": "/" }
+  },
+  "steps": [
+    { "action": "navigate", "path": "/login" },
+    { "action": "fill", "target": { "label": "Email" }, "valueFrom": { "env": "DEMO_LOGIN_EMAIL" } },
+    { "action": "fill", "target": { "label": "Password" }, "valueFrom": { "env": "DEMO_LOGIN_PASSWORD" } },
+    { "action": "click", "target": { "role": "button", "name": "Sign in" } },
+    { "action": "navigate", "path": "{{params.next}}" }
+  ]
+}
+```
+
+```json
+{
+  "action": "include",
+  "fragment": "sign-in",
+  "with": { "next": "/projects/demo-project" }
+}
+```
+
+- The name is the file's path under the fragments directory, without `.json`:
+  `sign-in`, or `auth/sign-in` for `auth/sign-in.json`. A fragment file must be
+  inside the project.
+- `params` declares what `with` may pass. A parameter without a `default` is
+  required. Values are strings, numbers or booleans, and steps use them as
+  `{{params.<name>}}`.
+- A fragment can include other fragments, up to 8 deep. It cannot hold a
+  `repeat`, and an `include` cannot sit inside a `repeat`.
+- `valueFrom.env` works in a fragment as in a scenario, so secrets stay out of
+  both.
+- The steps are inlined when the scenario is loaded: the timeline, `result.json`
+  and the run's `scenario.json` show them as ordinary steps.
+- `demoflow validate` checks every fragment a scenario includes. A missing
+  fragment, an include cycle or a bad parameter is reported at the `include`,
+  with the fragment file and step, such as
+  `steps[0].fragment: unknown fragment sign-in: no demoflow/fragments/sign-in.json`
+  or `steps[0]: in demoflow/fragments/sign-in.json steps[4].path: …`.
+
+The JSON schema for fragment files is `fragment.schema.json` in
+`@demoflow/core`.
+
+## Off-camera steps
+
+Steps the video should not show, such as signing in, run off camera. Put them
+in the scenario's `setup`, or give the opening steps (or an `include`)
+`"record": false`:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "Create a project",
+  "setup": [
+    { "action": "include", "fragment": "sign-in", "with": { "next": "/projects" } }
+  ],
+  "steps": [
+    { "action": "click", "target": { "role": "button", "name": "New project" } }
+  ]
+}
+```
+
+- Off-camera steps run first, in a browser context that records nothing. Its
+  cookies and local storage carry over to the recorded context, which opens on
+  the page the off-camera steps ended on. The video starts there, already
+  signed in, on the first recorded step.
+- Only the opening steps can be off camera: `setup`, then any leading steps
+  with `"record": false`. A `"record": false` step after a recorded one is an
+  error, and at least one step must be recorded.
+- `record` goes on a `repeat`, not on the steps inside it. Steps in `setup` are
+  off camera already and take no `record`.
+- The page is loaded again when recording starts, so state held only in memory
+  or in session storage does not carry over.
+- The timeline holds only the recorded steps, and its times and markers match
+  the video. Step numbers in `result.json` and errors still count the
+  off-camera steps, `setup` first.
+- A failed off-camera step fails the run before anything is recorded.
+
+`demoflow record` and [`@demoflow/playwright`](/docs/playwright) write plain
+steps; add `include` and `setup` to their scenarios by hand afterwards.

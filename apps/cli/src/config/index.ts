@@ -1,5 +1,11 @@
 export { CliError, type CliErrorCode, EXIT_INVALID_INPUT } from './errors.ts';
 export {
+  FRAGMENT_MAX_BYTES,
+  fragmentsNear,
+  lazyFragments,
+  projectFragments,
+} from './fragments.ts';
+export {
   type GlobalConfig,
   globalConfigPath,
   type HomeSource,

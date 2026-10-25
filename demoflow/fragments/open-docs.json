@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "description": "Opens a page of the DemoFlow docs and waits for its heading.",
+  "params": {
+    "page": { "description": "The docs page, such as scenarios." },
+    "heading": { "description": "The page's main heading." }
+  },
+  "steps": [
+    { "action": "navigate", "path": "/docs/{{params.page}}" },
+    {
+      "action": "waitFor",
+      "target": { "role": "heading", "name": "{{params.heading}}" }
+    }
+  ]
+}

@@ -22,3 +22,4 @@ it is accepted: a later record supersedes it and says so.
 | [0015](0015-playwright-tests-become-scenarios.md) | Playwright tests become scenarios: a `demoflow/playwright` fixture records a `.demo.json`, the engine replays it; new module `packages/playwright`, optional peer `@playwright/test` | accepted |
 | [0016](0016-website-started-runs.md) | Runs started from the website: scenario listing (ids and names), a registered project is a root the machine reported a run from | accepted; §4 superseded by 0017 |
 | [0017](0017-website-run-options.md) | The website may choose the output formats of a run it starts (formats only; always headless) | accepted |
+| [0018](0018-fragments-and-off-camera-steps.md) | Step fragments (`include`) are inlined at load time; off-camera steps (`setup`, `record: false`) are an unrecorded prefix run in its own context | accepted |

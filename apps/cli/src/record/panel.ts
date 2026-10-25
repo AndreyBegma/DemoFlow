@@ -69,6 +69,8 @@ export function describeStep(step: ScenarioStepInput): string {
   switch (step.action) {
     case 'repeat':
       return `repeat over ${step.each} (${step.steps.length} steps)`;
+    case 'include':
+      return `include ${step.fragment}`;
     case 'navigate':
       return `navigate ${step.path ?? step.url ?? ''}`;
     case 'fill':

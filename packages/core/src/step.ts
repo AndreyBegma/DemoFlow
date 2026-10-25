@@ -29,10 +29,20 @@ export type StepAction = z.infer<typeof StepActionSchema>;
 export const MarkerKindSchema = z.enum(['scene', 'caption']);
 export type MarkerKind = z.infer<typeof MarkerKindSchema>;
 
+/**
+ * Whether a step is on camera (ADR-0018). `false` runs it before the
+ * recording starts, so only the opening steps of a scenario may set it.
+ */
+export const RecordSchema = z.boolean().optional().meta({
+  description:
+    'false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.',
+});
+
 /** Fields every step may carry. */
 const common = {
   caption: z.string().max(120).optional(),
   timeoutMs: z.number().int().min(100).max(60_000).default(10_000),
+  record: RecordSchema,
 };
 
 /**
@@ -317,17 +327,90 @@ export const RepeatStepSchema = z.strictObject({
     .max(50, 'expected at most 50 steps'),
   // Shown once, before the first iteration.
   caption: z.string().max(120).optional(),
+  // For every iteration at once: a step inside a repeat takes none.
+  record: RecordSchema,
 });
 export type RepeatStep = z.infer<typeof RepeatStepSchema>;
 export type RepeatStepInput = z.input<typeof RepeatStepSchema>;
 
-/** A step as a scenario holds it: a plain step or a `repeat`. */
+/**
+ * A fragment's name: its file below the fragments directory, without `.json`
+ * (ADR-0018). Folders are separated by `/`; no `..`, so it stays inside.
+ */
+export const FRAGMENT_NAME = /^[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)*$/;
+export const FragmentNameSchema = z
+  .string()
+  .regex(
+    FRAGMENT_NAME,
+    'expected lowercase letters, digits and -, with / between folders',
+  );
+
+/** A value an `include` passes to a fragment parameter. */
+export const ParamValueSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+/**
+ * Runs the steps of a fragment file in its place (ADR-0018), with `with`
+ * substituted for its `{{params.<name>}}`. Not inside a `repeat`.
+ */
+export const IncludeStepSchema = z
+  .strictObject({
+    action: z.literal('include'),
+    fragment: FragmentNameSchema.meta({
+      description:
+        'The fragment file below fragmentsDir (demoflow.config.json; default demoflow/fragments), without .json: "sign-in" reads demoflow/fragments/sign-in.json.',
+    }),
+    with: z.record(DataKeySchema, ParamValueSchema).optional().meta({
+      description:
+        'Values for the fragment parameters, by name; a parameter without a default must be given.',
+    }),
+    record: RecordSchema.meta({
+      description:
+        'false runs every step of the fragment off camera, for setup such as signing in. Only the opening steps of a scenario may be off camera.',
+    }),
+  })
+  .meta({
+    description:
+      'Runs the steps of a reusable fragment file here, with its parameters filled in from `with`.',
+  });
+export type IncludeStep = z.infer<typeof IncludeStepSchema>;
+export type IncludeStepInput = z.input<typeof IncludeStepSchema>;
+
+/** A step as a scenario holds it: a plain step, a `repeat` or an `include`. */
 export const ScenarioStepSchema = z.discriminatedUnion(
   'action',
-  [...StepSchema.options, RepeatStepSchema],
+  [...StepSchema.options, RepeatStepSchema, IncludeStepSchema],
   {
-    error: `expected action to be one of ${STEP_ACTIONS.join('|')}|repeat`,
+    error: `expected action to be one of ${STEP_ACTIONS.join('|')}|repeat|include`,
   },
 );
 export type ScenarioStep = z.infer<typeof ScenarioStepSchema>;
 export type ScenarioStepInput = z.input<typeof ScenarioStepSchema>;
+
+/** A step of a scenario's `setup`: no `repeat`, and nothing there is recorded. */
+export const SetupStepSchema = z.discriminatedUnion(
+  'action',
+  [...StepSchema.options, IncludeStepSchema],
+  {
+    error: (issue) =>
+      actionOf(issue.input) === 'repeat'
+        ? 'expected no repeat in setup'
+        : `expected action to be one of ${STEP_ACTIONS.join('|')}|include`,
+  },
+);
+export type SetupStep = z.infer<typeof SetupStepSchema>;
+
+/**
+ * A step of a fragment file: a plain step whose strings may hold
+ * `{{params.<name>}}`, or an `include` of another fragment. No `repeat`.
+ */
+export const FragmentStepSchema = z.discriminatedUnion(
+  'action',
+  [...TemplateStepSchema.options, IncludeStepSchema],
+  {
+    error: (issue) =>
+      actionOf(issue.input) === 'repeat'
+        ? 'expected no repeat in a fragment'
+        : `expected action to be one of ${STEP_ACTIONS.join('|')}|include`,
+  },
+);
+export type FragmentStep = z.infer<typeof FragmentStepSchema>;
