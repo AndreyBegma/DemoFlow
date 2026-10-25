@@ -22,8 +22,9 @@ export interface Expansion {
 /**
  * Turns a scenario into the flat list of steps it runs (spec 165): every
  * `repeat` becomes its steps once per item, with `{{…}}` substituted, and
- * `\{{` becomes `{{` everywhere. Pure: zod only, no Node API (ADR-0001).
- * Throws on a scenario `parseScenario` would have rejected.
+ * `\{{` becomes `{{` everywhere. `setup` comes first, off camera (spec 171).
+ * Pure: zod only, no Node API (ADR-0001). Throws on a scenario
+ * `parseScenario` would have rejected, and on an `include` it did not resolve.
  */
 export function expandScenario(scenario: Scenario): { steps: ExpandedStep[] } {
   const { steps, issues } = expandSteps(scenario);
@@ -33,21 +34,69 @@ export function expandScenario(scenario: Scenario): { steps: ExpandedStep[] } {
       .join('; ');
     throw new Error(`cannot expand the scenario: ${detail}`);
   }
+  const hidden = offCameraSteps(steps);
+  if (steps.slice(hidden).some((step) => step.record === false)) {
+    throw new Error(
+      'cannot expand the scenario: an off-camera step follows a recorded one',
+    );
+  }
   return { steps };
 }
 
+/** How many of the expanded steps open the scenario off camera (spec 171). */
+export function offCameraSteps(steps: readonly ExpandedStep[]): number {
+  const first = steps.findIndex((step) => step.record !== false);
+  return first === -1 ? steps.length : first;
+}
+
+export interface ExpandOptions {
+  /**
+   * Leave `include` steps out instead of reporting them: `parseScenario`
+   * checks the authored steps while the fragments are resolved apart.
+   */
+  skipIncludes?: boolean;
+}
+
 /** Expands the steps and collects every problem instead of throwing. */
-export function expandSteps(scenario: Scenario): Expansion {
+export function expandSteps(
+  scenario: Scenario,
+  options: ExpandOptions = {},
+): Expansion {
   const issues: Issue[] = [];
   const steps: ExpandedStep[] = [];
+  const plain = (step: Step, at: readonly PropertyKey[]): Step | undefined =>
+    checkTemplates(step, at, outsideRepeat, issues)
+      ? validateStep(substitute(step), at, '', issues)
+      : undefined;
+  const unresolved = (at: readonly PropertyKey[]): void => {
+    if (options.skipIncludes === true) return;
+    issues.push({
+      path: formatPath(at),
+      code: 'unresolved-include',
+      message:
+        'expected the include to be resolved: parse the scenario with its fragments',
+    });
+  };
+  for (const [index, step] of (scenario.setup ?? []).entries()) {
+    const at = ['setup', index];
+    if (step.action === 'include') {
+      unresolved(at);
+      continue;
+    }
+    const expanded = plain(step, at);
+    if (expanded !== undefined) steps.push({ ...expanded, record: false });
+  }
   for (const [index, step] of scenario.steps.entries()) {
     const at = ['steps', index];
+    if (step.action === 'include') {
+      unresolved(at);
+      continue;
+    }
     if (step.action === 'repeat') {
       steps.push(...expandRepeat(scenario, step, index, issues));
       continue;
     }
-    if (!checkTemplates(step, at, outsideRepeat, issues)) continue;
-    const expanded = validate(substitute(step), at, '', issues);
+    const expanded = plain(step, at);
     if (expanded !== undefined) steps.push(expanded);
   }
   return { steps: issues.length > 0 ? [] : steps, issues };
@@ -96,9 +145,11 @@ function expandRepeat(
   if (!usable) return [];
 
   const steps: ExpandedStep[] = [];
+  // An off-camera repeat is off camera in every iteration.
+  const hidden = repeat.record === false ? { record: false } : {};
   // The repeat's caption is a caption marker before the first iteration.
   if (repeat.caption !== undefined && repeat.caption !== '') {
-    const marker = validate(
+    const marker = validateStep(
       {
         action: 'marker',
         kind: 'caption',
@@ -109,7 +160,11 @@ function expandRepeat(
       issues,
     );
     if (marker !== undefined) {
-      steps.push({ ...marker, origin: { repeatIndex, iteration: 0 } });
+      steps.push({
+        ...marker,
+        ...hidden,
+        origin: { repeatIndex, iteration: 0 },
+      });
     }
   }
   // One report per step of the repeat: the first iteration it fails in.
@@ -122,7 +177,7 @@ function expandRepeat(
     };
     for (const [index, step] of repeat.steps.entries()) {
       if (failed.has(index)) continue;
-      const expanded = validate(
+      const expanded = validateStep(
         substitute(step, scope),
         [...at, 'steps', index],
         ` (iteration ${iteration + 1})`,
@@ -131,7 +186,11 @@ function expandRepeat(
       if (expanded === undefined) {
         failed.add(index);
       } else {
-        steps.push({ ...expanded, origin: { repeatIndex, iteration } });
+        steps.push({
+          ...expanded,
+          ...hidden,
+          origin: { repeatIndex, iteration },
+        });
       }
     }
   }
@@ -156,7 +215,7 @@ function show(placeholder: Placeholder): string {
  * Reports every string of `value` that is not a valid template, or holds a
  * placeholder `check` rejects. `true` when there is nothing to report.
  */
-function checkTemplates(
+export function checkTemplates(
   value: unknown,
   at: readonly PropertyKey[],
   check: (placeholder: Placeholder) => string | undefined,
@@ -195,12 +254,12 @@ function template(text: string) {
   return parsed.template;
 }
 
-function substitute(value: unknown, scope?: TemplateScope): unknown {
+export function substitute(value: unknown, scope?: TemplateScope): unknown {
   return mapStrings(value, [], (text) => renderTemplate(template(text), scope));
 }
 
 /** The substituted step checked as a plain step: formats hold once filled in. */
-function validate(
+export function validateStep(
   value: unknown,
   at: readonly PropertyKey[],
   suffix: string,
@@ -218,7 +277,7 @@ function validate(
  * A copy of `value` with every string replaced by `fn`, except under
  * `valueFrom`: a secret's name is never a template.
  */
-function mapStrings(
+export function mapStrings(
   value: unknown,
   path: readonly PropertyKey[],
   fn: (text: string, path: readonly PropertyKey[]) => string,

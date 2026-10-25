@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { NonEmptyStringSchema } from './common.ts';
+import { formatPath, type Issue } from './issues.ts';
 
 /** The keys that select a locator shape; a locator carries exactly one. */
 export const LOCATOR_KEYS = [
@@ -37,4 +38,24 @@ export type Locator = z.infer<typeof LocatorSchema>;
 
 export function isCssLocator(locator: Locator): locator is { css: string } {
   return 'css' in locator;
+}
+
+/** A warning on each `{ css }` locator of a step, at `path` (its `target` or `within`). */
+export function cssLocatorWarnings(
+  step: object,
+  path: readonly PropertyKey[],
+): Issue[] {
+  const warnings: Issue[] = [];
+  for (const key of ['target', 'within']) {
+    const locator: unknown = Reflect.get(step, key);
+    if (typeof locator === 'object' && locator !== null && 'css' in locator) {
+      warnings.push({
+        path: formatPath([...path, key]),
+        code: 'css-locator',
+        message:
+          'a CSS selector breaks when the markup changes; prefer role, label, testId, text or placeholder',
+      });
+    }
+  }
+  return warnings;
 }

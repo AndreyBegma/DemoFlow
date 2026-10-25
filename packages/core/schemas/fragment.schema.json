@@ -1,0 +1,1554 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "params": {
+      "description": "The parameters the steps use as {{params.<name>}}, by name.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "default": {
+            "description": "The value when an include gives none. Without a default the parameter is required.",
+            "type": ["string", "number", "boolean"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "steps": {
+      "minItems": 1,
+      "maxItems": 200,
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "navigate"
+              },
+              "path": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^\\/(?![/\\\\])"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{"
+                  }
+                ]
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^[hH][tT][tT][pP][sS]?://"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{"
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action"],
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "required": ["path"]
+              },
+              {
+                "required": ["url"]
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "waitFor"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "state": {
+                "anyOf": [
+                  {
+                    "default": "visible",
+                    "type": "string",
+                    "enum": ["visible", "hidden"]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{"
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "target"],
+            "additionalProperties": false,
+            "not": {
+              "required": ["state", "zoom"],
+              "properties": {
+                "state": {
+                  "const": "hidden"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "click"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "target"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "fill"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
+              "value": {
+                "type": "string"
+              },
+              "valueFrom": {
+                "type": "object",
+                "properties": {
+                  "env": {
+                    "type": "string",
+                    "pattern": "^[A-Z_][A-Z0-9_]*$"
+                  }
+                },
+                "required": ["env"],
+                "additionalProperties": false
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "target"],
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "required": ["value"]
+              },
+              {
+                "required": ["valueFrom"]
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "select"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "option": {
+                "type": "string"
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "target", "option"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "hover"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "target"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "press"
+              },
+              "key": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{"
+                  }
+                ]
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "key"],
+            "additionalProperties": false,
+            "dependentRequired": {
+              "zoom": ["target"]
+            }
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "scroll"
+              },
+              "to": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": ["top", "bottom"]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{"
+                  }
+                ]
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "within": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action"],
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "required": ["to"]
+              },
+              {
+                "required": ["target"]
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "assertVisible"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "target"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "assertText"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["role"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["label"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "testId": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["testId"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["text"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "placeholder": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "exact": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["placeholder"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "css": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["css"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "zoom": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 3
+                  }
+                ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "match": {
+                "anyOf": [
+                  {
+                    "default": "contains",
+                    "type": "string",
+                    "enum": ["exact", "contains"]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{"
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "target", "text"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "screenshot"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9-]+$"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{"
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "name"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "marker"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "anyOf": [
+                  {
+                    "default": "scene",
+                    "type": "string",
+                    "enum": ["scene", "caption"]
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{"
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "title"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "wait"
+              },
+              "ms": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5000
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "ms"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "waitForReady"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "\\{\\{"
+                  }
+                ]
+              },
+              "caption": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "timeoutMs": {
+                "default": 10000,
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 60000
+              },
+              "record": {
+                "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "name"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "include"
+              },
+              "fragment": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*(?:\\/[a-z0-9][a-z0-9-]*)*$",
+                "description": "The fragment file below fragmentsDir (demoflow.config.json; default demoflow/fragments), without .json: \"sign-in\" reads demoflow/fragments/sign-in.json."
+              },
+              "with": {
+                "description": "Values for the fragment parameters, by name; a parameter without a default must be given.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": ["string", "number", "boolean"]
+                }
+              },
+              "record": {
+                "description": "false runs every step of the fragment off camera, for setup such as signing in. Only the opening steps of a scenario may be off camera.",
+                "type": "boolean"
+              }
+            },
+            "required": ["action", "fragment"],
+            "additionalProperties": false,
+            "description": "Runs the steps of a reusable fragment file here, with its parameters filled in from `with`."
+          }
+        ]
+      }
+    }
+  },
+  "required": ["schemaVersion", "steps"],
+  "additionalProperties": false,
+  "title": "DemoFlow fragment",
+  "description": "Reusable steps a scenario runs with an include step, such as signing in."
+}

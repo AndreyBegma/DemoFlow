@@ -4,11 +4,11 @@ import {
   resolveConfigTemplates,
 } from './config-template.ts';
 import { expandSteps } from './expand.ts';
-import { formatPath, type Issue, toIssues } from './issues.ts';
-import { isCssLocator, type Locator } from './locator.ts';
+import { type FragmentSource, resolveFragments } from './fragment.ts';
+import { type Issue, toIssues } from './issues.ts';
+import { cssLocatorWarnings } from './locator.ts';
 import { type ProjectConfig, ProjectConfigSchema } from './project-config.ts';
 import { type Scenario, ScenarioSchema } from './scenario.ts';
-import type { Step, TemplateStep } from './step.ts';
 
 export { formatPath, type Issue } from './issues.ts';
 
@@ -26,46 +26,52 @@ function parseWith<S extends z.ZodType>(
     : { ok: false, errors: toIssues(result.error.issues) };
 }
 
+export interface ParseScenarioOptions {
+  /** Reads the fragments the scenario includes (spec 171). */
+  fragments?: FragmentSource;
+}
+
 /**
- * Validates a scenario and applies its defaults, then its `{{…}}`
- * substitution: every expanded step must be a valid step (spec 165). Warns on
- * every `{ css }` locator.
+ * Validates a scenario and applies its defaults, inlines the fragments it
+ * includes, then checks its `{{…}}` substitution: every expanded step must be
+ * a valid step (spec 165). The value is the resolved scenario, with no
+ * `include` left. Warns on every `{ css }` locator.
  */
-export function parseScenario(input: unknown): ParseResult<Scenario> {
+export function parseScenario(
+  input: unknown,
+  options: ParseScenarioOptions = {},
+): ParseResult<Scenario> {
   const result = parseWith(ScenarioSchema, input);
   if (!result.ok) return result;
-  const { issues } = expandSteps(result.value);
-  if (issues.length > 0) return { ok: false, errors: issues };
+  const authored = result.value;
+  // The authored steps keep their own paths in the issues.
+  const expansion = expandSteps(authored, { skipIncludes: true });
+  const resolution = resolveFragments(authored, options.fragments);
+  const errors = [...expansion.issues, ...resolution.issues];
+  if (errors.length > 0) return { ok: false, errors };
+  // What the fragments brought in expands as well: their own checks hold.
+  const resolved = expandSteps(resolution.scenario);
+  if (resolved.issues.length > 0) return { ok: false, errors: resolved.issues };
+
   const warnings: Issue[] = [];
-  const warn = (
-    path: readonly PropertyKey[],
-    step: Step | TemplateStep,
-  ): void => {
-    const locators: [string, Locator | undefined][] = [
-      ['target', 'target' in step ? step.target : undefined],
-      ['within', 'within' in step ? step.within : undefined],
-    ];
-    for (const [key, locator] of locators) {
-      if (locator !== undefined && isCssLocator(locator)) {
-        warnings.push({
-          path: formatPath([...path, key]),
-          code: 'css-locator',
-          message:
-            'a CSS selector breaks when the markup changes; prefer role, label, testId, text or placeholder',
+  for (const [key, steps] of [
+    ['setup', authored.setup ?? []],
+    ['steps', authored.steps],
+  ] as const) {
+    steps.forEach((step, index) => {
+      if (step.action === 'repeat') {
+        step.steps.forEach((inner, innerIndex) => {
+          warnings.push(
+            ...cssLocatorWarnings(inner, [key, index, 'steps', innerIndex]),
+          );
         });
+      } else if (step.action !== 'include') {
+        warnings.push(...cssLocatorWarnings(step, [key, index]));
       }
-    }
-  };
-  result.value.steps.forEach((step, index) => {
-    if (step.action === 'repeat') {
-      step.steps.forEach((inner, innerIndex) => {
-        warn(['steps', index, 'steps', innerIndex], inner);
-      });
-    } else {
-      warn(['steps', index], step);
-    }
-  });
-  return { ok: true, value: result.value, warnings };
+    });
+  }
+  warnings.push(...resolution.warnings);
+  return { ok: true, value: resolution.scenario, warnings };
 }
 
 /**

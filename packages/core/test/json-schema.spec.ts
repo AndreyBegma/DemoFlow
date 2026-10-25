@@ -4,8 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { jsonSchemas } from '../src/index.ts';
 
 describe('committed JSON Schemas', () => {
-  it('publishes the scenario and project config schemas', () => {
+  it('publishes the scenario, fragment and project config schemas', () => {
     expect(Object.keys(jsonSchemas()).sort()).toEqual([
+      'fragment.schema.json',
       'project-config.schema.json',
       'scenario.schema.json',
     ]);
