@@ -27,6 +27,7 @@ import {
   loadAppConfig,
   loadGlobalConfig,
   PROJECT_CONFIG_FILE,
+  projectFragments,
   projectRootAt,
   resolveHome,
   runDir as runDirFor,
@@ -117,7 +118,10 @@ export async function runCommand(
     projectConfig: config,
     globalConfig: loadGlobalConfig(host),
   });
-  const { scenario, warnings } = loadScenario(file);
+  const { scenario, warnings } = loadScenario(
+    file,
+    projectFragments(root, config.fragmentsDir),
+  );
   for (const warning of warnings) {
     io.stderr(`warning ${warning.path}: ${warning.message}\n`);
   }

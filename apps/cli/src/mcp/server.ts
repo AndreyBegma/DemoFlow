@@ -23,6 +23,7 @@ import {
   type HostEnvironment,
   loadGlobalConfig,
   osDataDir,
+  projectFragments,
   runDir as runDirFor,
 } from '../config/index.ts';
 import { runnerPaths } from '../runner/paths.ts';
@@ -52,6 +53,13 @@ const MINUTE_MS = 60_000;
 /** Headroom under the 60 s request timeout of MCP clients (the SDK's default). */
 const MAX_WAIT_SECONDS = 50;
 
+/**
+ * How to write a scenario beyond the schema (ADR-0018): an agent reuses the
+ * project's fragments and keeps signing in off camera.
+ */
+const AUTHORING =
+  'Reuse steps with { "action": "include", "fragment": "<name>", "with": { … } }: the fragment is <fragmentsDir>/<name>.json in the project (default demoflow/fragments), its steps use {{params.<name>}}. Steps the video must not show, such as signing in, go in `setup` or carry "record": false (also on an include): they run first, in the same browser context, before the recording starts, so the video opens already signed in. Only the opening steps can be off camera. Secrets come from valueFrom.env, never as values.';
+
 const GenerateDemoInput = z.strictObject({
   project: z
     .string()
@@ -60,7 +68,7 @@ const GenerateDemoInput = z.strictObject({
       "Absolute path of the project (the directory with demoflow.config.json); default: the server's working directory.",
     ),
   scenario: ScenarioSchema.optional().describe(
-    'An inline scenario. Exactly one of `scenario` and `file`.',
+    `An inline scenario. Exactly one of \`scenario\` and \`file\`. ${AUTHORING}`,
   ),
   file: z
     .string()
@@ -116,7 +124,7 @@ const PROJECT_DESCRIPTION =
 const ValidateScenarioInput = z.strictObject({
   project: z.string().optional().describe(PROJECT_DESCRIPTION),
   scenario: ScenarioSchema.optional().describe(
-    'An inline scenario. Exactly one of `scenario` and `file`.',
+    `An inline scenario. Exactly one of \`scenario\` and \`file\`. ${AUTHORING}`,
   ),
   file: z
     .string()
@@ -168,7 +176,7 @@ const TOOLS: Tool[] = [
   {
     name: 'validate_scenario',
     description:
-      'Check a scenario (inline or a *.demo.json in the project) against the scenario schema without running it. Returns { valid: true } or an invalid-scenario error with issue paths.',
+      "Check a scenario (inline or a *.demo.json in the project) against the scenario schema without running it, its includes resolved from the project's fragments. Returns { valid: true } or an invalid-scenario error with issue paths; a problem inside a fragment names the fragment file and step.",
     inputSchema: inputSchema(ValidateScenarioInput),
   },
   {
@@ -256,9 +264,16 @@ export function createMcpServer(deps: McpServerDeps): Server {
     const project = resolveProject(input.project, cwd, host);
     let scenarioFile: string | undefined;
     if (input.file !== undefined) {
-      scenarioFile = resolveScenarioFile(project.root, input.file);
+      scenarioFile = resolveScenarioFile(
+        project.root,
+        input.file,
+        project.config.fragmentsDir,
+      );
     } else {
-      checkInlineScenario(input.scenario);
+      checkInlineScenario(
+        input.scenario,
+        projectFragments(project.root, project.config.fragmentsDir),
+      );
     }
 
     let taskId = newTaskId();
