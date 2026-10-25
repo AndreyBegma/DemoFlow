@@ -31,6 +31,10 @@ export interface FixtureServer {
   close(): Promise<void>;
 }
 
+/** Answers with a session cookie, as a sign-in would (spec 171). */
+export const SIGN_IN_PATH = '/__sign-in';
+export const SESSION_COOKIE = 'demoflow-session';
+
 /**
  * Serves the built fixture on an ephemeral port (spec 3: never a fixed
  * port). Unknown paths fall back to `index.html`, as the app routes itself.
@@ -53,6 +57,9 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       response.writeHead(200, {
         'content-type':
           CONTENT_TYPES[path.extname(target)] ?? 'application/octet-stream',
+        ...(pathname === SIGN_IN_PATH
+          ? { 'set-cookie': `${SESSION_COOKIE}=signed-in; Path=/` }
+          : {}),
       });
       createReadStream(target).pipe(response);
     })();

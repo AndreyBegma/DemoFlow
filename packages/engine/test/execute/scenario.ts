@@ -12,6 +12,7 @@ export function scenario(
     baseUrl?: string;
     viewport?: { width: number; height: number };
     data?: ScenarioInput['data'];
+    setup?: ScenarioInput['setup'];
   } = {},
 ): Scenario {
   const parsed = parseScenario({
