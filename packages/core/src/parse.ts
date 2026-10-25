@@ -27,7 +27,7 @@ function parseWith<S extends z.ZodType>(
 }
 
 export interface ParseScenarioOptions {
-  /** Reads the fragments the scenario includes (spec 171). */
+  /** Reads the fragments the scenario includes (ADR-0018). */
   fragments?: FragmentSource;
 }
 

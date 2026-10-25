@@ -11,6 +11,7 @@ import { cssLocatorWarnings } from './locator.ts';
 import type { Scenario } from './scenario.ts';
 import {
   DataKeySchema,
+  FragmentNameSchema,
   FragmentStepSchema,
   type IncludeStep,
   ParamValueSchema,
@@ -48,7 +49,7 @@ export const FragmentParamSchema = z.strictObject({
 export type FragmentParam = z.infer<typeof FragmentParamSchema>;
 
 /**
- * A fragment file, `<fragmentsDir>/<name>.json` (spec 171): steps a scenario
+ * A fragment file, `<fragmentsDir>/<name>.json` (ADR-0018): steps a scenario
  * runs with `{ "action": "include", "fragment": "<name>" }`, their strings
  * filled in from the include's `with` through `{{params.<name>}}`.
  */
@@ -107,7 +108,7 @@ type Loaded =
 
 /**
  * Replaces every `include` of the scenario, in `setup` and `steps`, with the
- * steps of its fragment, parameters substituted (spec 171). The result is a
+ * steps of its fragment, parameters substituted (ADR-0018). The result is a
  * plain scenario: it parses again without any fragment, so a run's
  * `scenario.json` is complete. A problem inside a fragment is reported at the
  * include in the scenario, its message naming the fragment file and step.
@@ -134,6 +135,53 @@ export function resolveFragments(
     steps: steps.map((entry) => entry.step),
   };
   return { scenario: resolved, issues, warnings };
+}
+
+/** At most this many fragment files are read ahead for one scenario. */
+export const MAX_PREFETCHED_FRAGMENTS = 64;
+
+/**
+ * Reads ahead, with an asynchronous `load`, every fragment a raw scenario
+ * includes, directly or through other fragments, and returns a source that
+ * serves them to `parseScenario`. A name that is not a fragment name is not
+ * read: the parse reports it. Past `MAX_PREFETCHED_FRAGMENTS`, a name is a
+ * failed load.
+ */
+export async function prefetchFragments(
+  raw: unknown,
+  load: (name: string) => Promise<FragmentLoad>,
+): Promise<FragmentSource> {
+  const loaded = new Map<string, FragmentLoad>();
+  const pending = [...includedNames(raw, ['setup', 'steps'])];
+  for (let name = pending.shift(); name !== undefined; name = pending.shift()) {
+    if (loaded.has(name) || loaded.size >= MAX_PREFETCHED_FRAGMENTS) continue;
+    const result = await load(name);
+    loaded.set(name, result);
+    if (result.ok) pending.push(...includedNames(result.value, ['steps']));
+  }
+  return (name) =>
+    loaded.get(name) ?? {
+      ok: false,
+      file: name,
+      missing: false,
+      message: `expected at most ${MAX_PREFETCHED_FRAGMENTS} fragments in one scenario`,
+    };
+}
+
+function includedNames(raw: unknown, keys: readonly string[]): string[] {
+  if (typeof raw !== 'object' || raw === null) return [];
+  const names: string[] = [];
+  for (const key of keys) {
+    const steps: unknown = (raw as Record<string, unknown>)[key];
+    if (!Array.isArray(steps)) continue;
+    for (const step of steps) {
+      if (typeof step !== 'object' || step === null) continue;
+      const { action, fragment } = step as Record<string, unknown>;
+      const name = FragmentNameSchema.safeParse(fragment);
+      if (action === 'include' && name.success) names.push(name.data);
+    }
+  }
+  return names;
 }
 
 interface Entry {
@@ -461,7 +509,7 @@ function escapeTemplate(text: string): string {
 }
 
 /**
- * The off-camera rule (spec 171): `setup`, then the steps marked
+ * The off-camera rule (ADR-0018): `setup`, then the steps marked
  * `record: false`, and only then the recorded ones. A hidden span in the
  * middle would have to be cut from the video, so it is refused.
  */

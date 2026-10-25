@@ -31,7 +31,7 @@ export interface FixtureServer {
   close(): Promise<void>;
 }
 
-/** Answers with a session cookie, as a sign-in would (spec 171). */
+/** Answers with a session cookie, as a sign-in would (ADR-0018). */
 export const SIGN_IN_PATH = '/__sign-in';
 export const SESSION_COOKIE = 'demoflow-session';
 

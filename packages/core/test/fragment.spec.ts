@@ -6,6 +6,7 @@ import {
   type Issue,
   offCameraSteps,
   parseScenario,
+  prefetchFragments,
   type Scenario,
 } from '../src/index.ts';
 
@@ -657,5 +658,60 @@ describe('FragmentSchema', () => {
     expect(
       FragmentSchema.safeParse({ schemaVersion: 1, steps: [] }).success,
     ).toBe(false);
+  });
+});
+
+describe('prefetchFragments', () => {
+  const nested = {
+    schemaVersion: 1,
+    steps: [{ action: 'include', fragment: 'sign-in', with: { next: '/' } }],
+  };
+
+  it('reads every fragment once, nested ones too, and serves them', async () => {
+    const read: string[] = [];
+    const fragments = source({ 'sign-in': SIGN_IN, 'sign-in-home': nested });
+    const prefetched = await prefetchFragments(
+      scenario({
+        setup: [{ action: 'include', fragment: 'sign-in-home' }],
+        steps: [signIn('/a'), visible, { action: 'include', fragment: '../x' }],
+      }),
+      async (name) => {
+        read.push(name);
+        return fragments(name);
+      },
+    );
+    expect(read).toEqual(['sign-in-home', 'sign-in']);
+    const result = parseScenario(
+      scenario({
+        setup: [{ action: 'include', fragment: 'sign-in-home' }],
+        steps: [signIn('/a'), visible],
+      }),
+      { fragments: prefetched },
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('stops reading a cycle', async () => {
+    const loop = {
+      schemaVersion: 1,
+      steps: [{ action: 'include', fragment: 'loop' }],
+    };
+    const read: string[] = [];
+    const prefetched = await prefetchFragments(
+      scenario({ steps: [{ action: 'include', fragment: 'loop' }] }),
+      async (name) => {
+        read.push(name);
+        return source({ loop })(name);
+      },
+    );
+    expect(read).toEqual(['loop']);
+    expect(prefetched('other')).toMatchObject({ ok: false, missing: false });
+  });
+
+  it('reads nothing from a scenario that is not an object', async () => {
+    const prefetched = await prefetchFragments('nope', async () => {
+      throw new Error('expected no read');
+    });
+    expect(prefetched('a')).toMatchObject({ ok: false });
   });
 });

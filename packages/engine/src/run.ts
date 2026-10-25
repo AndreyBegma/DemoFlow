@@ -120,7 +120,7 @@ export async function runScenario(
     await emit('onBrowserLaunched', { browser });
     const guard = new OriginGuard(options.allowedOrigins);
     // A `repeat` runs as its expanded steps (spec 165); `stepIndex` counts them,
-    // the off-camera ones included (spec 171).
+    // the off-camera ones included (ADR-0018).
     const { steps } = expandScenario(scenario);
     const hidden = offCameraSteps(steps);
     const hasAssertions = steps.some((step) => ASSERTIONS.has(step.action));
@@ -277,7 +277,7 @@ async function openSession(
   return { context, page, clock, marked, annotations, navigation };
 }
 
-/** Where the off-camera steps left the browser (spec 171). */
+/** Where the off-camera steps left the browser (ADR-0018). */
 interface OffCameraEnd {
   /** Cookies and localStorage; sessionStorage does not carry over. */
   storageState: Awaited<ReturnType<BrowserContext['storageState']>>;

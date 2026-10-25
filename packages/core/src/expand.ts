@@ -22,7 +22,7 @@ export interface Expansion {
 /**
  * Turns a scenario into the flat list of steps it runs (spec 165): every
  * `repeat` becomes its steps once per item, with `{{…}}` substituted, and
- * `\{{` becomes `{{` everywhere. `setup` comes first, off camera (spec 171).
+ * `\{{` becomes `{{` everywhere. `setup` comes first, off camera (ADR-0018).
  * Pure: zod only, no Node API (ADR-0001). Throws on a scenario
  * `parseScenario` would have rejected, and on an `include` it did not resolve.
  */
@@ -43,7 +43,7 @@ export function expandScenario(scenario: Scenario): { steps: ExpandedStep[] } {
   return { steps };
 }
 
-/** How many of the expanded steps open the scenario off camera (spec 171). */
+/** How many of the expanded steps open the scenario off camera (ADR-0018). */
 export function offCameraSteps(steps: readonly ExpandedStep[]): number {
   const first = steps.findIndex((step) => step.record !== false);
   return first === -1 ? steps.length : first;

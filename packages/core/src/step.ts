@@ -30,7 +30,7 @@ export const MarkerKindSchema = z.enum(['scene', 'caption']);
 export type MarkerKind = z.infer<typeof MarkerKindSchema>;
 
 /**
- * Whether a step is on camera (spec 171). `false` runs it before the
+ * Whether a step is on camera (ADR-0018). `false` runs it before the
  * recording starts, so only the opening steps of a scenario may set it.
  */
 export const RecordSchema = z.boolean().optional().meta({
@@ -335,7 +335,7 @@ export type RepeatStepInput = z.input<typeof RepeatStepSchema>;
 
 /**
  * A fragment's name: its file below the fragments directory, without `.json`
- * (spec 171). Folders are separated by `/`; no `..`, so it stays inside.
+ * (ADR-0018). Folders are separated by `/`; no `..`, so it stays inside.
  */
 export const FRAGMENT_NAME = /^[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)*$/;
 export const FragmentNameSchema = z
@@ -349,7 +349,7 @@ export const FragmentNameSchema = z
 export const ParamValueSchema = z.union([z.string(), z.number(), z.boolean()]);
 
 /**
- * Runs the steps of a fragment file in its place (spec 171), with `with`
+ * Runs the steps of a fragment file in its place (ADR-0018), with `with`
  * substituted for its `{{params.<name>}}`. Not inside a `repeat`.
  */
 export const IncludeStepSchema = z

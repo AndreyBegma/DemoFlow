@@ -41,7 +41,7 @@ function phoneUserAgent(browserVersion: string): string {
 
 /**
  * The context options of the run. `video: false` for the off-camera context
- * (spec 171): the same browser, viewport and device, with nothing recorded.
+ * (ADR-0018): the same browser, viewport and device, with nothing recorded.
  */
 export function toContextOptions(
   recording: RecordingOptions,
