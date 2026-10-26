@@ -1,7 +1,6 @@
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { buttonClassName } from '@andrewbehma/glass-ui/button';
 import { Card } from '@andrewbehma/glass-ui/card';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { UnlinkGithubButton } from '@/components/auth/unlink-github-button';
 import { DeleteAccount } from '@/components/settings/delete-account';
@@ -24,12 +23,8 @@ export default async function SettingsPage({
   const error = githubErrorMessage((await searchParams).error);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-4 p-6">
-      <header>
-        <Link href="/app" className="text-sm text-ink-2 underline">
-          {t('app.settings.back')}
-        </Link>
-      </header>
+    // Forms read best narrower than the shell's column.
+    <div className="flex w-full max-w-2xl flex-col gap-6">
       {error ? <Banner tone="danger">{error}</Banner> : null}
       <Card pad="lg">
         <h1 className="text-2xl font-semibold">{t('app.settings.title')}</h1>
@@ -69,6 +64,6 @@ export default async function SettingsPage({
         </dl>
       </Card>
       <DeleteAccount email={user.email} />
-    </main>
+    </div>
   );
 }

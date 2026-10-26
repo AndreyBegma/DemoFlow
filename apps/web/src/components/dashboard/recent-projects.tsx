@@ -48,7 +48,7 @@ export function RecentProjects({ projects }: { projects: Project[] | null }) {
 function ProjectRow({ project }: { project: Project }) {
   const { lastRun } = project;
   return (
-    <li className="flex flex-col gap-1 border-t border-current/10 py-3 first:border-t-0 first:pt-0">
+    <li className="flex flex-col gap-1 border-t border-line py-3 first:border-t-0 first:pt-0">
       <Link
         href={`/app/projects/${encodeURIComponent(project.id)}`}
         className="break-words font-semibold underline"
