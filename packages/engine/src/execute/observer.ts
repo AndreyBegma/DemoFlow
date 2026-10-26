@@ -33,6 +33,8 @@ export interface RunOutcome {
   maskedElements?: MaskedElement[];
   /** Scenes and captions the page set through `window.demoflow` (#201); absent when none. */
   annotations?: Annotation[];
+  /** How long the recording held the final frame after the last step (C-203); only on a recorded run that passed. */
+  endHoldMs?: number;
   /** The absolute path of the raw recording, when the browser was started. */
   videoPath?: string;
 }

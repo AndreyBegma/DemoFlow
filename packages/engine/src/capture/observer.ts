@@ -79,6 +79,9 @@ export function createCaptureObserver(options: CaptureOptions): EngineObserver {
           ...(outcome.annotations === undefined
             ? {}
             : { annotations: outcome.annotations }),
+          ...(outcome.endHoldMs === undefined
+            ? {}
+            : { endHoldMs: outcome.endHoldMs }),
         });
         await writeJson(path.join(runDir, RUN_FILES.timeline), timeline);
       }

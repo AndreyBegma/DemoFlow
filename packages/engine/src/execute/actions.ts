@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
   type Box,
+  DEFAULT_PACING,
   type Locator,
   MASKED_VALUE,
   type Step,
@@ -19,8 +20,8 @@ import {
 } from './readiness.ts';
 import { waitForReady } from './ready.ts';
 
-/** Spec 3: the recording shows typing, one character every 35 ms. */
-export const TYPING_DELAY_MS = 35;
+/** The recording shows typing, one character every 80 ms unless the scenario's pacing says otherwise (C-203). */
+export const TYPING_DELAY_MS = DEFAULT_PACING.typingDelayMs;
 
 /** A scroll waits on animation frames; this bounds one wait if the page stops producing them. */
 const SCROLL_FRAME_FALLBACK_MS = 100;
@@ -55,6 +56,8 @@ export interface StepContext {
   /** Where the real pointer is; actions that move it update it. */
   pointer: Point;
   observers: readonly EngineObserver[];
+  /** Milliseconds between two characters a `fill` types. */
+  typingDelayMs: number;
 }
 
 /** The fields of a step's timeline event the action itself knows. */
@@ -130,7 +133,7 @@ export async function runAction(
       if (!masked) {
         await target.fill('', { timeout: step.timeoutMs });
         const box = await measure(target);
-        await type(target, value, step.timeoutMs);
+        await type(target, value, step.timeoutMs, ctx.typingDelayMs);
         return { ...withBox(box), value };
       }
       // #42: a failure part-way leaves typed characters on screen, so the
@@ -139,7 +142,7 @@ export async function runAction(
       try {
         await target.fill('', { timeout: step.timeoutMs });
         box = await measure(target);
-        await type(target, value, step.timeoutMs);
+        await type(target, value, step.timeoutMs, ctx.typingDelayMs);
       } catch (error) {
         box ??= await measure(target);
         throw maskedFailure(error, withBox(box));
@@ -207,10 +210,11 @@ async function type(
   target: PlaywrightLocator,
   value: string,
   timeoutMs: number,
+  delayMs: number,
 ): Promise<void> {
   await target.pressSequentially(value, {
-    delay: TYPING_DELAY_MS,
-    timeout: timeoutMs + value.length * TYPING_DELAY_MS,
+    delay: delayMs,
+    timeout: timeoutMs + value.length * delayMs,
   });
 }
 

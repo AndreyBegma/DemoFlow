@@ -1,4 +1,5 @@
 import { mkdir } from 'node:fs/promises';
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   type Annotation,
   deriveRunStatus,
@@ -7,6 +8,8 @@ import {
   type MaskedElement,
   type Navigation,
   offCameraSteps,
+  type Pacing,
+  resolvePacing,
   type Scenario,
   type Stage,
   type Stages,
@@ -32,6 +35,7 @@ import { MarkedMasks } from './execute/marked-masks.ts';
 import { MaskTracker } from './execute/mask.ts';
 import { NavigationRecorder } from './execute/navigations.ts';
 import type { EngineObserver, RunOutcome } from './execute/observer.ts';
+import { stepPace } from './execute/pacing.ts';
 import { installPageScripts } from './execute/page-scripts.ts';
 import { type Point, viewportCentre } from './execute/pointer.ts';
 import {
@@ -90,6 +94,7 @@ export async function runScenario(
   const stages = pendingStages();
   const recording = recordingOptions(scenario, options.runDir);
   const baseUrl = scenario.baseUrl ?? options.baseUrl;
+  const pacing = resolvePacing(scenario.pacing);
 
   await mkdir(options.runDir, { recursive: true });
   await emit('onRunStarted', {
@@ -139,10 +144,14 @@ export async function runScenario(
       session: Session,
       range: { from: number; to: number },
       events: TimelineEvent[],
+      onCamera: boolean,
     ): Promise<Failure | undefined> =>
       executeSteps({
         steps,
         ...range,
+        pacing,
+        onCamera,
+        recording: record,
         page: session.page,
         clock: session.clock,
         baseUrl,
@@ -169,7 +178,12 @@ export async function runScenario(
         }),
       });
       const offEvents: TimelineEvent[] = [];
-      const failure = await execute(off, { from: 0, to: hidden }, offEvents);
+      const failure = await execute(
+        off,
+        { from: 0, to: hidden },
+        offEvents,
+        false,
+      );
       if (failure === undefined) {
         start = {
           storageState: await off.context.storageState(),
@@ -215,7 +229,13 @@ export async function runScenario(
       session,
       { from: hidden, to: steps.length },
       events,
+      true,
     );
+    // The final frame stays on screen before the video stops (C-203); a failed
+    // run ends at the failure, and a check has nothing to watch.
+    const endHoldMs =
+      record && failure === undefined ? pacing.endHoldMs : undefined;
+    if (endHoldMs !== undefined && endHoldMs > 0) await sleep(endHoldMs);
     // Before the context closes: a document's clock exchange may still be running on it.
     const maskedElements = await marked.list();
 
@@ -255,6 +275,7 @@ export async function runScenario(
       navigations: navigations.list(),
       maskedElements,
       annotations: annotations.list(),
+      endHoldMs,
     });
     await emit('onRunFinished', { outcome, video });
     return outcome;
@@ -340,6 +361,11 @@ interface ExecuteInput {
   steps: readonly ExpandedStep[];
   from: number;
   to: number;
+  pacing: Pacing;
+  /** Off-camera steps (ADR-0018) are not paced. */
+  onCamera: boolean;
+  /** Whether the run records a video: a check run does not dwell. */
+  recording: boolean;
   page: Page;
   clock: Clock;
   baseUrl: string | undefined;
@@ -378,8 +404,14 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
     input.annotations.stepStarted(startMs);
     await emit('onStepStarted', { stepIndex, step, startMs });
 
+    const pace = stepPace(step, input.pacing, {
+      onCamera: input.onCamera,
+      recording: input.recording,
+      last: stepIndex === input.to - 1,
+    });
     const ctx = {
       page: input.page,
+      typingDelayMs: pace.typingDelayMs,
       stepIndex,
       baseUrl: input.baseUrl,
       guard: input.guard,
@@ -425,6 +457,10 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
       ...(failure === undefined ? {} : failure.detail),
       ...(step.caption === undefined ? {} : { caption: step.caption }),
       ...('zoom' in step && step.zoom !== undefined ? { zoom: step.zoom } : {}),
+      // A failed step does not dwell: the run stops there.
+      ...(failure === undefined && pace.dwellMs > 0
+        ? { dwellMs: pace.dwellMs }
+        : {}),
     };
     if (failure !== undefined && failure.stage === 'execution') {
       event.error = { message: scrub(failure.message) };
@@ -450,6 +486,8 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
         origin: step.origin,
       };
     }
+    // The viewer sees the step's result before the next step starts (C-203).
+    if (event.dwellMs !== undefined) await sleep(event.dwellMs);
   }
   return undefined;
 }
@@ -528,10 +566,17 @@ function conclude(
     navigations?: Navigation[];
     maskedElements?: MaskedElement[];
     annotations?: Annotation[];
+    endHoldMs?: number | undefined;
   } = {},
 ): RunOutcome {
-  const { videoPath, syncMark, navigations, maskedElements, annotations } =
-    recorded;
+  const {
+    videoPath,
+    syncMark,
+    navigations,
+    maskedElements,
+    annotations,
+    endHoldMs,
+  } = recorded;
   const warnings: string[] = [];
   return {
     startedAt,
@@ -551,6 +596,7 @@ function conclude(
       ? {}
       : { annotations }),
     ...(videoPath === undefined ? {} : { videoPath }),
+    ...(endHoldMs === undefined ? {} : { endHoldMs }),
   };
 }
 
