@@ -14,6 +14,13 @@ import { readReportedRunsByDir } from '../../runs-report/reported-runs.ts';
 import type { Clock } from '../connection.ts';
 import type { Logger } from '../log.ts';
 import {
+  CHECK_PASS_MAX_MS,
+  CHECK_SCENARIO_MAX_MS,
+  checkCheckStart,
+  checkTotals,
+  isCheckProgressLine,
+} from './check.ts';
+import {
   type CheckDeps,
   checkProject,
   checkScenario,
@@ -132,7 +139,8 @@ class Refused extends Error {
 
 /**
  * Spec 248: the daemon's side of `scenarios.list`, `run.start` and
- * `run.cancel`. One website-started run at a time, an ordinary `demoflow run`
+ * `run.cancel`, and (spec 360) `check.start`. One website-started run or
+ * check pass at a time, an ordinary `demoflow run`
  * child that reports itself (ADR-0016 §4). `runner.log` gets request ids,
  * outcomes, codes and run ids, never a path or a scenario id (Decision 13).
  */
@@ -170,6 +178,9 @@ export class Launcher implements LaunchPort {
           return;
         }
         this.start(requestId, rootPath, scenarioId, options, reply, current);
+        return;
+      case 'check.start':
+        this.startCheck(message, reply, current);
         return;
       case 'run.cancel':
         if (typeof requestId !== 'string') {
@@ -254,15 +265,7 @@ export class Launcher implements LaunchPort {
       );
       reply.send({ type: 'run.error', requestId, code });
     };
-    // Decision 6: a start still in its checks counts as running.
-    const early =
-      this.launch !== null
-        ? 'busy'
-        : this.closing !== null
-          ? 'io'
-          : isReportOff(this.deps.env)
-            ? 'reporting-off'
-            : null;
+    const early = this.refusedEarly();
     if (early !== null) {
       refuse(early);
       return;
@@ -296,6 +299,143 @@ export class Launcher implements LaunchPort {
       .finally(() => {
         if (this.launch === launch) this.launch = null;
       });
+  }
+
+  /** Decision 6: a start still in its checks counts as running. */
+  private refusedEarly(): string | null {
+    return this.launch !== null
+      ? 'busy'
+      : this.closing !== null
+        ? 'io'
+        : isReportOff(this.deps.env)
+          ? 'reporting-off'
+          : null;
+  }
+
+  /**
+   * Spec 360, Decision 6: a check pass the website starts. Checked like a
+   * `run.start`, then one `run --check` child for the whole project; it is
+   * the machine's one launch and is cancelled with `run.cancel`.
+   */
+  private startCheck(
+    message: Record<string, unknown>,
+    reply: LaunchSender,
+    current: LaunchSender,
+  ): void {
+    const { logger } = this.deps;
+    const checked = checkCheckStart(message);
+    if (!checked.ok && checked.requestId === null) {
+      logger.log('warn', 'ignored a malformed check.start');
+      return;
+    }
+    const { requestId } = checked;
+    const refuse = (code: string) => {
+      logger.log('info', `check ${shown(requestId)}: refused ${code}`);
+      reply.send({ type: 'check.error', requestId, code });
+    };
+    if (!checked.ok) {
+      refuse(checked.code);
+      return;
+    }
+    const early = this.refusedEarly();
+    if (early !== null) {
+      refuse(early);
+      return;
+    }
+    const launch: Launch = { requestId, done: Promise.resolve() };
+    this.launch = launch;
+    launch.done = this.runCheck(
+      launch,
+      checked.rootPath,
+      checked.exclude,
+      reply,
+      current,
+    )
+      .catch((error: unknown) => {
+        if (error instanceof Refused) refuse(error.code);
+        else if (launch.child === undefined) refuse('io');
+        else
+          logger.log('error', `check ${shown(requestId)}: failed after start`);
+      })
+      .finally(() => {
+        if (this.launch === launch) this.launch = null;
+      });
+  }
+
+  private async runCheck(
+    launch: Launch,
+    rootPath: string,
+    exclude: string[],
+    reply: LaunchSender,
+    current: LaunchSender,
+  ): Promise<void> {
+    const { deps } = this;
+    const { requestId } = launch;
+    const project = await checkProject(rootPath, deps);
+    if (!project.ok) throw new Refused(project.code);
+    if (launch.ending !== undefined) {
+      deps.logger.log(
+        'info',
+        `check ${shown(requestId)}: cancelled before start`,
+      );
+      return;
+    }
+    let totals: { passed: number; failed: number } | null = null;
+    // The launch cap applies per scenario: each scenario's start resets it.
+    let cancelScenarioCap = (): void => {};
+    const capScenario = () => {
+      cancelScenarioCap();
+      cancelScenarioCap = deps.clock.after(CHECK_SCENARIO_MAX_MS, () => {
+        void this.stop(launch, 'timed-out');
+      });
+    };
+    // Nothing from the message but the checked root and scenario ids.
+    const child = deps.spawn(
+      [
+        'run',
+        '--check',
+        '--json',
+        '--progress',
+        '--project',
+        project.root,
+        ...exclude.flatMap((id) => ['--exclude', id]),
+      ],
+      project.root,
+      {
+        killGraceMs: LAUNCH_KILL_GRACE_MS,
+        onStdoutLine: (line) => {
+          if (isCheckProgressLine(line)) capScenario();
+          totals = checkTotals(line) ?? totals;
+        },
+      },
+    );
+    if (child.pid === undefined) {
+      await child.exited;
+      throw new Refused('io');
+    }
+    launch.child = child;
+    reply.send({ type: 'check.started', requestId });
+    deps.logger.log(
+      'info',
+      `check ${shown(requestId)}: started, ${exclude.length} excluded`,
+    );
+    capScenario();
+    const cancelPassCap = deps.clock.after(CHECK_PASS_MAX_MS, () => {
+      void this.stop(launch, 'timed-out');
+    });
+    await child.exited;
+    cancelScenarioCap();
+    cancelPassCap();
+    // A pass that was ended, or crashed before its summary, verified nothing.
+    const { passed, failed } =
+      launch.ending === undefined && totals !== null
+        ? totals
+        : { passed: 0, failed: 0 };
+    deps.logger.log(
+      'info',
+      `check ${shown(requestId)}: ${launch.ending ?? 'finished'}, ${passed} passed, ${failed} failed`,
+    );
+    current.send({ type: 'check.finished', requestId, passed, failed });
   }
 
   private async run(

@@ -14,7 +14,9 @@ export type CommandErrorCode =
   | 'no-recording'
   | 'invalid-port'
   | 'app-already-running'
-  | 'fresh-app-needs-dev-command';
+  | 'fresh-app-needs-dev-command'
+  | 'missing-scenario'
+  | 'check-flag';
 
 /** Bad input to a command (spec 5: exit 2) that is not a config problem. */
 export class CommandError extends Error {

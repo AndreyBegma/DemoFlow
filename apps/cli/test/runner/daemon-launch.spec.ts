@@ -191,6 +191,7 @@ describe('the daemon with a website-started run', () => {
         type: 'launches.sync',
         running: [],
         runOptions: ['formats'],
+        checks: true,
       });
       first.receive({
         type: 'run.start',
@@ -230,6 +231,7 @@ describe('the daemon with a website-started run', () => {
         type: 'launches.sync',
         running: [REQUEST],
         runOptions: ['formats'],
+        checks: true,
       });
       await stop(next);
     });
@@ -241,7 +243,12 @@ describe('the daemon with a website-started run', () => {
       await new Promise((r) => setTimeout(r, 50));
       const next = await reconnect();
       expect(next.sent).toEqual([
-        { type: 'launches.sync', running: [], runOptions: ['formats'] },
+        {
+          type: 'launches.sync',
+          running: [],
+          runOptions: ['formats'],
+          checks: true,
+        },
       ]);
     });
   });

@@ -113,6 +113,23 @@ describe('buildReport', () => {
     });
   });
 
+  it('marks a check run with kind check, and an ordinary run with no kind (#360)', () => {
+    const check = buildReport({
+      root: ROOT,
+      result: result(),
+      cliVersion: 'x',
+      check: true,
+    });
+    expect(check.kind).toBe('check');
+    const ordinary = buildReport({
+      root: ROOT,
+      result: result(),
+      cliVersion: 'x',
+      check: false,
+    });
+    expect('kind' in ordinary).toBe(false);
+  });
+
   it('is failed with the 0-based failed step', () => {
     const failed = result({
       status: 'failed',
@@ -380,6 +397,16 @@ describe('reportRun', () => {
       projectName: 'shop',
       cliVersion: '1.2.3',
     });
+  });
+
+  it('sends kind check for a check run only (#360)', async () => {
+    pair();
+    await reportRun({ ...input(), check: true }, deps(ok));
+    await reportRun(input(), deps(ok));
+    const bodies = calls.map(
+      (call) => JSON.parse(String(call.init.body)) as Record<string, unknown>,
+    );
+    expect(bodies.map((body) => body.kind)).toEqual(['check', undefined]);
   });
 
   it('sends the canonical root: a symlinked folder is the same project', async () => {

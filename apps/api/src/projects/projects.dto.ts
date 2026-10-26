@@ -38,6 +38,9 @@ export const RUN_FORMATS = [
 ] as const;
 export type RunFormat = (typeof RUN_FORMATS)[number];
 export const RUN_STATUSES = ['passed', 'failed'] as const;
+/** A run's kind (spec 360); an ordinary run sends none. */
+export const RUN_KINDS = ['check'] as const;
+export type RunKind = (typeof RUN_KINDS)[number];
 
 /** `STAGE_NAMES` of `@demoflow/core`. */
 export const RUN_STAGES = [
@@ -194,6 +197,11 @@ export class RunReportDto {
   @ValidateNested()
   @Type(() => RunFailureDto)
   failure?: RunFailureDto;
+
+  /** `check` for a check run (spec 360); absent for an ordinary run. */
+  @IsOptional()
+  @IsIn(RUN_KINDS)
+  kind?: RunKind;
 }
 
 export class CreateProjectDto {
