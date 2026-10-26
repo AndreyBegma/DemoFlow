@@ -11,6 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
+import { nextDueSlot, type ScheduleConfig } from '@demoflow/core';
 import { readCredentials } from '../auth/credentials.ts';
 import type { Io } from '../commands/io.ts';
 import { currentHost, type HostEnvironment } from '../config/platform.ts';
@@ -20,6 +21,8 @@ import { platformAutostart } from './install/autostart.ts';
 import { isAlive, type LockHolder, readLock, releaseLock } from './lock.ts';
 import { redact } from './log.ts';
 import { type RunnerPaths, runnerPaths } from './paths.ts';
+import { hasScheduledRoot } from './schedule/roots.ts';
+import { type LastPass, readScheduleState } from './schedule/state.ts';
 import { type ConnectionState, type RunnerState, readState } from './state.ts';
 
 /** `start` waits this long for the child to take the lock. */
@@ -64,7 +67,11 @@ export const defaultControlDeps = (): ControlDeps => ({
 /** `demoflow runner start`: spawns the daemon detached, its output into the log. */
 export async function startRunner(io: Io, deps: ControlDeps): Promise<number> {
   const paths = runnerPaths(deps.host);
-  if (readCredentials(deps.host) === null) {
+  // Spec 361, Decision 5: a scheduled root runs without an account.
+  if (
+    readCredentials(deps.host) === null &&
+    !hasScheduledRoot(paths, deps.host.env)
+  ) {
     io.stderr('Not logged in; run demoflow login first\n');
     return 1;
   }
@@ -183,6 +190,18 @@ export interface RunnerStatus {
   retryInSeconds: number | null;
   server: string | null;
   autostart: boolean;
+  /** Spec 361: each scheduled project, as the daemon last saw it. */
+  schedules: ScheduledProject[];
+}
+
+export interface ScheduledProject {
+  rootPath: string;
+  schedule: ScheduleConfig;
+  /** The machine's zone the times are in. */
+  zone: string;
+  /** `null` while the runner is not running: nothing will run it. */
+  nextCheckAt: string | null;
+  lastCheck: LastPass | null;
 }
 
 export function runnerStatus(deps: ControlDeps): RunnerStatus {
@@ -215,9 +234,38 @@ export function runnerStatus(deps: ControlDeps): RunnerStatus {
       : Math.max(0, Math.floor((deps.now() - started) / 1000)),
     connection,
     retryInSeconds,
-    server: credentials?.server ?? (own ? state.server : null),
+    server: credentials?.server ?? (own ? (state.server ?? null) : null),
     autostart: deps.autostart.installed(deps.host),
+    schedules: scheduledProjects(paths, holder !== null, deps.now()),
   };
+}
+
+/** From `schedule.state.json`: the daemon's view, no config is read here. */
+function scheduledProjects(
+  paths: RunnerPaths,
+  running: boolean,
+  now: number,
+): ScheduledProject[] {
+  const saved = readScheduleState(paths.scheduleState);
+  if (saved === null) return [];
+  const projects: ScheduledProject[] = [];
+  for (const [rootPath, entry] of Object.entries(saved.roots)) {
+    if (entry.schedule === undefined) continue;
+    let next: number | null = null;
+    try {
+      next = running ? nextDueSlot(entry.schedule, now, saved.zone) : null;
+    } catch {
+      // A zone this Node does not know: no time to show.
+    }
+    projects.push({
+      rootPath,
+      schedule: entry.schedule,
+      zone: saved.zone,
+      nextCheckAt: next === null ? null : new Date(next).toISOString(),
+      lastCheck: entry.last ?? null,
+    });
+  }
+  return projects;
 }
 
 /** `demoflow runner status [--json]`. */
@@ -233,12 +281,64 @@ export function statusCommand(
   }
   const lines = [
     `Runner:     ${status.running ? `running (PID ${status.pid}${status.uptimeSeconds === null ? '' : `, up ${formatDuration(status.uptimeSeconds)}`})` : 'not running'}`,
-    `Connection: ${status.connection === 'reconnecting' && status.retryInSeconds !== null ? `reconnecting in ${status.retryInSeconds}s` : status.connection}`,
+    `Connection: ${connectionText(status)}`,
     `Server:     ${status.server ?? 'not logged in'}`,
     `Autostart:  ${status.autostart ? 'installed' : 'not installed'}`,
   ];
+  for (const project of status.schedules) {
+    lines.push(
+      `Schedule:   ${project.rootPath} (${scheduleText(project.schedule)})`,
+      `  next check: ${project.nextCheckAt === null ? 'when the runner is running' : localTime(project.nextCheckAt, project.zone)}`,
+      `  last check: ${lastCheckText(project.lastCheck, project.zone)}`,
+    );
+  }
   io.stdout(`${redact(lines.join('\n'))}\n`);
   return 0;
+}
+
+function connectionText(status: RunnerStatus): string {
+  if (status.connection === 'local') return 'local mode: scheduled checks only';
+  if (status.connection === 'reconnecting' && status.retryInSeconds !== null) {
+    return `reconnecting in ${status.retryInSeconds}s`;
+  }
+  return status.connection;
+}
+
+function scheduleText(schedule: ScheduleConfig): string {
+  const when =
+    schedule.cadence === 'weekly'
+      ? `weekly on ${schedule.weekday ?? '?'}`
+      : schedule.cadence;
+  const excluded = schedule.exclude?.length ?? 0;
+  return `${when} at ${schedule.at}${excluded === 0 ? '' : `, ${excluded} excluded`}`;
+}
+
+function lastCheckText(last: LastPass | null, zone: string): string {
+  if (last === null) return 'none yet';
+  const at = localTime(last.startedAt, zone);
+  if (last.outcome === undefined) return `${at}, no result yet`;
+  if (last.outcome !== 'finished') return `${at}, ${last.outcome}`;
+  return `${at}, ${last.passed ?? 0} passed, ${last.failed ?? 0} failed`;
+}
+
+/** `YYYY-MM-DD HH:MM` in the daemon's zone; the ISO time when the zone is unknown. */
+function localTime(iso: string, zone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).formatToParts(new Date(iso));
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((entry) => entry.type === type)?.value ?? '';
+    return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`;
+  } catch {
+    return iso;
+  }
 }
 
 /** `demoflow runner logs [--follow]`: the current `runner.log`, then what is appended. */

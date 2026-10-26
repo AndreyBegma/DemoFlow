@@ -37,6 +37,8 @@ import {
 } from '../config/index.ts';
 import { nodeLaunchFs } from '../runner/launch/checks.ts';
 import { LIST_MAX_SCENARIOS, listScenarios } from '../runner/launch/list.ts';
+import { runnerPaths } from '../runner/paths.ts';
+import { recordLocalRoot } from '../runner/schedule/local-roots.ts';
 import {
   canonicalRoot,
   defaultReportDeps,
@@ -250,6 +252,8 @@ export async function runCommand(
               runDir,
             }
           : await execute(run, runId, runDir);
+      // Spec 361, Decision 4: the daemon watches this root's schedule.
+      if (index === 0) await recordRoot(root, host);
       // A run whose app never answered was never reported before spec 360; a
       // check reports it, so the stale state sees a readiness failure too.
       if (!('error' in started) || check) {
@@ -417,6 +421,15 @@ async function passFiles(
 }
 
 const SCENARIOS_PREFIX = 'demoflow/';
+
+/** Never throws: a run's outcome does not depend on the local roots file. */
+async function recordRoot(root: string, host: HostEnvironment): Promise<void> {
+  try {
+    recordLocalRoot(runnerPaths(host).localRoots, await canonicalRoot(root));
+  } catch {
+    // A root not recorded waits for the next run.
+  }
+}
 
 type Started = { app: RunningApp } | { error: unknown };
 

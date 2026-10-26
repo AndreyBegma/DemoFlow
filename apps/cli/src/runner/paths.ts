@@ -14,6 +14,10 @@ export interface RunnerPaths {
   stop: string;
   /** Server run id → run directory, one JSON line per reported run (spec 192). */
   reportedRuns: string;
+  /** Every root `demoflow run` ran in, one JSON line each (spec 361, Decision 4). */
+  localRoots: string;
+  /** Per scheduled root: its schedule and last check pass (spec 361, Decision 3). */
+  scheduleState: string;
 }
 
 export function runnerPaths(host: HostEnvironment): RunnerPaths {
@@ -26,5 +30,7 @@ export function runnerPaths(host: HostEnvironment): RunnerPaths {
     state: p.join(dir, 'runner.state.json'),
     stop: p.join(dir, 'runner.stop'),
     reportedRuns: p.join(dir, 'reported-runs.jsonl'),
+    localRoots: p.join(dir, 'local-roots.jsonl'),
+    scheduleState: p.join(dir, 'schedule.state.json'),
   };
 }

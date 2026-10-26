@@ -77,6 +77,11 @@ export interface ConnectionDeps {
   artifacts?: ArtifactsPort;
   /** Answers `scenarios.list` and `run.*` (spec 248); without it, logged as unknown. */
   launches?: LaunchPort;
+  /**
+   * Spec 361, Decision 6: the current `schedules.sync`, sent after
+   * `launches.sync`; `null` while the scheduler has not looked yet.
+   */
+  schedules?: () => Record<string, unknown> | null;
 }
 
 export type ConnectionOutcome = 'stopped' | 'revoked';
@@ -149,6 +154,13 @@ export class RunnerConnection {
     return this.done;
   }
 
+  /** Spec 361, Decision 6: a watched schedule changed; tell an open socket. */
+  syncSchedules(): void {
+    if (!this.opened || this.stopping) return;
+    const frame = this.deps.schedules?.() ?? null;
+    if (frame !== null) this.send(frame);
+  }
+
   private connect(): void {
     if (this.stopping) return;
     this.opened = false;
@@ -194,6 +206,7 @@ export class RunnerConnection {
       'info',
       `announced ${running.length} running launch${running.length === 1 ? '' : 'es'}`,
     );
+    this.syncSchedules();
     this.resetIdle();
     this.schedulePing();
   }
