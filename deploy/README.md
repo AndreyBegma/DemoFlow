@@ -273,6 +273,26 @@ The app asks for `read:user user:email` only, and keeps no GitHub token. The
 client secret also signs the short-lived `df_oauth` cookie, so rotating it
 only fails sign-ins that are in flight.
 
+### Shared videos on staging
+
+A share link (ADR-0019, spec #347) keeps a copy of one render and its poster
+on the server, so the link plays while the Runner is offline. The API writes
+them to `SHARE_DIR`, which `docker-compose.yml` sets to `/data/shares`: the
+named volume `demoflow-staging_shares`. The image creates that directory
+owned by `node`, so a new volume starts writable.
+
+- **Limits.** `SHARE_MAX_FILE_BYTES` (default 200 MB) caps one render, and
+  `SHARE_USER_QUOTA_BYTES` (default 2 GB) caps one account's shares, posters
+  included. Both are in `env/api.env`; a change needs an API restart. A value
+  that is not a positive whole number stops the API at boot.
+- **Cleanup.** Every 10 minutes, and at boot, the API deletes expired shares
+  and their files, fails uploads stuck for 15 minutes, and removes directories
+  no share row points at. At boot it also marks a ready share whose file is
+  missing as lost. Each pass logs one `share.sweep` line.
+- **Not backed up.** Losing the volume loses every shared video; the rows
+  turn `lost` at the next boot and their owners share again. Watch its size
+  with `docker system df -v | grep shares`.
+
 ## Production — https://demoflow.luna-realm.com
 
 Every push to `main` runs the pipeline. Once `check`, `build` and the full
@@ -297,6 +317,7 @@ nothing with it:
 | Compose project | `demoflow-staging` | `demoflow-production` |
 | Network | `demoflow-staging_staging` | `demoflow-production` |
 | Postgres volume | `demoflow-staging_pgdata` | `demoflow-production_pgdata` |
+| Shares volume | `demoflow-staging_shares` | `demoflow-production_shares` |
 | Containers | `demoflow-staging-*` | `demoflow-production-*` |
 | Images | `demoflow-{api,web}:staging` | `demoflow-{api,web}:production` |
 | Tunnel | `demoflow-app` | `demoflow-prod` |
