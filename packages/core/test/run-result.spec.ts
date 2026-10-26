@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   deriveRunStatus,
+  MAX_CHAPTERS,
   RunResultSchema,
   type RunStatus,
   STAGE_NAMES,
@@ -137,6 +138,40 @@ describe('RunResultSchema', () => {
   it('reads a render written before spec 133, without a format, as MP4', () => {
     const parsed = RunResultSchema.parse(result);
     expect(parsed.renders[0]?.format).toBe('mp4');
+  });
+
+  it('reads a render without chapters, and keeps the chapters of one (spec 349)', () => {
+    const [render] = result.renders;
+    expect(RunResultSchema.parse(result).renders[0]?.chapters).toBeUndefined();
+    const chapters = [
+      { title: 'Sign in', atMs: 2000 },
+      { title: 'Create a project', atMs: 9500 },
+    ];
+    expect(
+      RunResultSchema.parse({ ...result, renders: [{ ...render, chapters }] })
+        .renders[0]?.chapters,
+    ).toEqual(chapters);
+  });
+
+  it('rejects a chapter that is empty, too long, negative or one too many', () => {
+    const [render] = result.renders;
+    const parses = (chapters: unknown) =>
+      RunResultSchema.safeParse({
+        ...result,
+        renders: [{ ...render, chapters }],
+      }).success;
+    expect(parses([{ title: '', atMs: 0 }])).toBe(false);
+    expect(parses([{ title: 'x'.repeat(201), atMs: 0 }])).toBe(false);
+    expect(parses([{ title: 'x'.repeat(200), atMs: 0 }])).toBe(true);
+    expect(parses([{ title: 'Intro', atMs: -1 }])).toBe(false);
+    expect(parses([{ title: 'Intro', atMs: 1.5 }])).toBe(false);
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        title: `Scene ${index}`,
+        atMs: index * 1000,
+      }));
+    expect(parses(many(MAX_CHAPTERS))).toBe(true);
+    expect(parses(many(MAX_CHAPTERS + 1))).toBe(false);
   });
 
   it('keeps each render format, in order, and rejects an unknown one', () => {

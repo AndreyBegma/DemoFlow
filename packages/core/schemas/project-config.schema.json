@@ -375,6 +375,17 @@
         }
       },
       "additionalProperties": false
+    },
+    "share": {
+      "type": "object",
+      "properties": {
+        "allowMcp": {
+          "default": false,
+          "description": "Let the MCP server (share_demo) publish the video of a run as a public link without asking anyone. Off by default; anyone with the link can watch until it expires or is revoked.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": ["baseUrl"],

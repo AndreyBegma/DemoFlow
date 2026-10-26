@@ -269,6 +269,18 @@ export const RenderConfigSchema = z
   .prefault({});
 export type RenderConfig = z.infer<typeof RenderConfigSchema>;
 
+/**
+ * Share links (spec 349, ADR-0019 §6). Off unless committed: an agent may
+ * then publish a video outside the machine without asking.
+ */
+export const ShareConfigSchema = z.strictObject({
+  allowMcp: z.boolean().default(false).meta({
+    description:
+      'Let the MCP server (share_demo) publish the video of a run as a public link without asking anyone. Off by default; anyone with the link can watch until it expires or is revoked.',
+  }),
+});
+export type ShareConfig = z.infer<typeof ShareConfigSchema>;
+
 const PORT_TEMPLATE =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: `${PORT}` is the config's own syntax.
   '${PORT} is the port of the run: --port, else PORT from the environment, else the default in ${PORT:-3000}. $${ is a literal ${.';
@@ -306,6 +318,7 @@ export const ProjectConfigSchema = z
         'Where the fragments scenarios include live, relative to the project root. Default demoflow/fragments.',
     }),
     render: RenderConfigSchema,
+    share: ShareConfigSchema.optional(),
   })
   .transform(({ allowedOrigins, ...config }) => {
     const origin = new URL(config.baseUrl).origin;
