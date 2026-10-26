@@ -28,12 +28,15 @@ export const getSessionUser = cache(async (): Promise<AccountUser | null> => {
   return result.ok ? result.data.user : null;
 });
 
-/** The signed-in user's paired machines, or null when the API fails. */
-export async function getRunners(): Promise<Runner[] | null> {
+/**
+ * The signed-in user's paired machines, or null when the API fails. Cached
+ * per request, so the shell's machine status and a page share one call.
+ */
+export const getRunners = cache(async (): Promise<Runner[] | null> => {
   const cookie = (await cookies()).toString();
   const result = await listRunners({ baseUrl: apiUrl(), cookie });
   return result.ok ? result.data.runners : null;
-}
+});
 
 /**
  * A pending device code: the request, `'not_found'` for an unknown, expired or

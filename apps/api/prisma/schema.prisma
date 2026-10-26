@@ -20,6 +20,7 @@ model User {
   githubIdentity  GithubIdentity?
   runners         Runner[]
   projects        Project[]
+  shares          Share[]
 }
 
 // The GitHub account a user signs in with (spec #126). At most one per user,
@@ -123,6 +124,10 @@ enum RunStatus {
   failed
 }
 
+enum RunKind {
+  check
+}
+
 // The metadata of one `demoflow run`. Never a video, a frame or a step value:
 // values can hold secrets, and videos stay on the machine (ADR-0008).
 model Run {
@@ -150,9 +155,55 @@ model Run {
   renders            Json?
   failureStage       String?
   failureMessage     String?
+  // Spec 360: `check` for a run made with `demoflow run --check`; null otherwise.
+  kind               RunKind?
   createdAt          DateTime  @default(now())
+  shares             Share[]
 
   @@index([projectId, startedAt(sort: Desc), id(sort: Desc)])
+}
+
+enum ShareStatus {
+  uploading
+  ready
+  failed
+  lost
+}
+
+// One render of a run behind a public link (spec #347, ADR-0019). The files
+// live under `SHARE_DIR/<id>/`, never in the database. One per run and format.
+model Share {
+  id           String      @id @default(cuid())
+  // 32 random bytes, base64url (`generateToken`). Stored as is: the owner
+  // copies the link again (ADR-0019, Consequences).
+  token        String      @unique
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runId        String
+  run          Run         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  format       String
+  status       ShareStatus @default(uploading)
+  // The scenario's name at share time, and what the daemon sent (#349).
+  title        String
+  description  String?
+  // `[{ title, atMs }]`, at most 100.
+  chapters     Json        @default("[]")
+  sizeBytes    Int         @default(0)
+  posterBytes  Int         @default(0)
+  width        Int?
+  height       Int?
+  durationMs   Int?
+  // argon2id (`PasswordHasher`), null without a password.
+  passwordHash String?
+  expiresAt    DateTime
+  views        Int         @default(0)
+  failure      String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([runId, format])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([expiresAt])
 }
 
 // A pending `demoflow login` (RFC 8628). Only the SHA-256 hash of the polling

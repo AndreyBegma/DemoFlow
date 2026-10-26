@@ -67,8 +67,13 @@ export async function main(
 
   program
     .command('run')
-    .description('Run a scenario and render its video')
-    .argument('<scenario>', 'path to a .demo.json file')
+    .description(
+      'Run a scenario and render its video; with --check, run and verify only',
+    )
+    .argument(
+      '[scenario]',
+      'path to a .demo.json file; required unless --check, which then runs every scenario',
+    )
     .option('--base-url <url>', 'override baseUrl from demoflow.config.json')
     .option(
       '--port <n>',
@@ -88,6 +93,16 @@ export async function main(
         `a file to render, repeatable; replaces render.formats (${RENDER_FORMATS.join(', ')})`,
       ).argParser(collectFormat),
     )
+    .option(
+      '--check',
+      'run and verify against the live app, recording and rendering nothing (demoflow check only validates files)',
+    )
+    .addOption(
+      new Option(
+        '--exclude <id>',
+        'with --check and no scenario: leave out this scenario id, repeatable',
+      ).argParser(collectExclude),
+    )
     .addOption(new Option('--run-id <id>', 'name the run directory').hideHelp())
     .addOption(new Option('--project <dir>', 'the project root').hideHelp())
     .addOption(
@@ -98,7 +113,7 @@ export async function main(
     )
     .action(
       async (
-        scenario: string,
+        scenario: string | undefined,
         flags: {
           baseUrl?: string;
           port?: string;
@@ -107,11 +122,19 @@ export async function main(
           headed?: boolean;
           json?: boolean;
           format?: RenderFormat[];
+          check?: boolean;
+          exclude?: string[];
           runId?: string;
           project?: string;
           progress?: boolean;
         },
+        command: Command,
       ) => {
+        if (scenario === undefined && flags.check !== true) {
+          command.error("error: missing required argument 'scenario'", {
+            code: 'commander.missingArgument',
+          });
+        }
         exitCode = await runCommand(scenario, flags, io);
       },
     );
@@ -263,6 +286,10 @@ function collectFormat(
     throw new InvalidArgumentError(`${format} is given twice`);
   }
   return [...previous, format];
+}
+
+function collectExclude(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
 }
 
 function isCommanderError(error: unknown): error is CommanderError {

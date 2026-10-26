@@ -500,6 +500,7 @@ describe('RunnerConnection and the video relay', () => {
       running: ids,
       runOptions: ['formats'],
       features: [],
+      checks: true,
     });
     expect(logger.text()).toContain('announced 1 running launch');
     first.serverClose(1006);
@@ -514,6 +515,7 @@ describe('RunnerConnection and the video relay', () => {
         running: [],
         runOptions: ['formats'],
         features: [],
+        checks: true,
       },
     ]);
   });

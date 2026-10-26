@@ -192,6 +192,7 @@ describe('the daemon with a website-started run', () => {
         running: [],
         runOptions: ['formats'],
         features: ['projects'],
+        checks: true,
       });
       first.receive({
         type: 'run.start',
@@ -232,6 +233,7 @@ describe('the daemon with a website-started run', () => {
         running: [REQUEST],
         runOptions: ['formats'],
         features: ['projects'],
+        checks: true,
       });
       await stop(next);
     });
@@ -248,6 +250,7 @@ describe('the daemon with a website-started run', () => {
           running: [],
           runOptions: ['formats'],
           features: ['projects'],
+          checks: true,
         },
       ]);
     });

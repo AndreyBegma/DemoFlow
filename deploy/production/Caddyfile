@@ -25,6 +25,20 @@
 		}
 	}
 
+	# A share's file and poster (spec #348) live on the share page's own path,
+	# so a link reads well in a README. Exactly these two go to the API
+	# unchanged; the page itself, /s/<token>, is the web app's. The token is
+	# `generateToken()`'s 43 base64url characters.
+	@share_file path_regexp ^/s/[A-Za-z0-9_-]{43}/(file|poster)$
+	handle @share_file {
+		reverse_proxy api:8370 {
+			lb_try_duration 60s
+			lb_try_interval 250ms
+			health_uri /health
+			health_interval 2s
+		}
+	}
+
 	handle {
 		reverse_proxy web:3670 {
 			lb_try_duration 60s

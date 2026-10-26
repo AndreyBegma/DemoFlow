@@ -188,7 +188,14 @@ export class RunnerConnection {
     const runOptions = this.deps.launches !== undefined ? [...RUN_OPTIONS] : [];
     // Spec 377, Decision 9: what else this daemon answers.
     const features = this.deps.projects !== undefined ? ['projects'] : [];
-    this.send({ type: 'launches.sync', running, runOptions, features });
+    this.send({
+      type: 'launches.sync',
+      running,
+      runOptions,
+      features,
+      // Spec 360, Decision 6: a daemon that handles launches runs check passes.
+      ...(this.deps.launches !== undefined ? { checks: true } : {}),
+    });
     this.deps.logger.log(
       'info',
       `announced ${running.length} running launch${running.length === 1 ? '' : 'es'}`,

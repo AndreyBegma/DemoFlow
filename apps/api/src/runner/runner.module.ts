@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { ShareStorageModule } from '../shares/share-storage';
 import { AccountController } from '../users/account.controller';
 import { AccountService } from '../users/account.service';
 import { DeviceCodeService } from './device-code.service';
@@ -18,7 +19,7 @@ import { RunnersService } from './runners.service';
  * would close an import cycle with `AuthModule`.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, ShareStorageModule],
   controllers: [RunnerController, RunnersController, AccountController],
   providers: [
     AccountService,
