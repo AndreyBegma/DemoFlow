@@ -11,9 +11,9 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@demoflow/shared'],
   // The docs pages are `page.mdx` (spec #179).
   pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
-  // The DemoFlow runner opens the dev server on 127.0.0.1
-  // (demoflow.config.json); Next 16 blocks its dev resources from any host but
-  // localhost, so the page would never hydrate. Dev only, ignored by builds.
+  // DemoFlow records this site at 127.0.0.1 (demoflow.config.json). The dev
+  // server blocks its scripts and HMR socket for any host but localhost, so
+  // without this the page never hydrates and no client control responds.
   allowedDevOrigins: ['127.0.0.1'],
   // `/api` is reserved for the API. Stripping the prefix matches Caddy, so
   // the browser sees one origin locally and on staging alike.
