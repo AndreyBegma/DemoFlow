@@ -202,6 +202,7 @@ typed value. Secret fills are left as recorded.
 | `demoflow run <scenario>` | run it in a browser and render the video |
 | `demoflow run --check [scenario]` | run and verify one scenario, or all of them, without a video |
 | `demoflow render <runId>` | render an existing run again with the current config |
+| `demoflow share <runId>` | share a render of a reported run as a link on the website |
 | `demoflow list` | list recent runs of the current project, newest first |
 | `demoflow runs list` | list every run on this machine, with its size |
 | `demoflow runs delete <id…>` / `prune` | delete runs by id, or by age and state |
@@ -336,11 +337,40 @@ fragments of URLs are removed, the project path becomes `<project>`, the home
 directory becomes `~`, and the text is cut to 1,000 characters. It can still
 contain text from the page under test or other paths.
 
-Videos, frames and step values never leave the machine.
+Videos, frames and step values never leave the machine, unless you share a
+render (below).
 
 The report waits at most two seconds and fails silently; the run's output and
 exit code are never affected. It is off without `demoflow login`, under `CI`,
 and with `DEMOFLOW_NO_REPORT=1`.
+
+## Share a render
+
+```sh
+npx demoflow share <runId>
+```
+
+Makes a link to one render of a run that this machine reported, so anyone with
+the link can watch it without an account. The runner uploads the file, so it
+must be running (`demoflow runner start`). The command prints the share page's
+link and, without a password, the file's own link, then exits 0 once the
+upload is done.
+
+- `--format <format>` picks the render (default: the run's first one).
+- `--expires <days>`: 7, 30 (default) or 90 days.
+- `--password` asks for a password twice on the terminal, without echo;
+  without a terminal it reads `DEMOFLOW_SHARE_PASSWORD`. It is never a flag
+  value, so it never lands in your shell history. A protected share has no file
+  link (it would skip the password), so only the page link is printed.
+- `--json` prints the share as one object on stdout.
+- A render already shared keeps its link; the command prints it. Revoke it on
+  the website to share the render again.
+- Only that render leaves the machine, with its poster frame, the chapters
+  (the scene cards) and the scenario's `description`.
+- It exits 2 when the share cannot be made (not logged in, a run this
+  machine did not report, no such render, the runner offline or too old, the
+  file over the size limit, the quota full), 1 when the upload fails or is
+  still going after 10 minutes, and 3 when the server cannot be reached.
 
 ## With Claude Code
 
@@ -349,7 +379,18 @@ claude mcp add demoflow -- npx demoflow mcp
 ```
 
 The server offers `generate_demo`, `get_task`, `cancel_task`,
-`validate_scenario`, `list_demos` and `check_project`.
+`validate_scenario`, `list_demos`, `check_project` and `share_demo`.
+
+`share_demo` shares a render of a reported run, like `demoflow share` without
+a password. It is refused (`share-not-allowed`) unless the run's project allows
+it in `demoflow.config.json`, which you commit:
+
+```json
+{ "share": { "allowMcp": true } }
+```
+
+It waits up to 50 seconds for the upload; when the answer is still
+`uploading`, call it again later for the same link.
 
 ## Updates
 
