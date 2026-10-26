@@ -35,6 +35,8 @@ export interface RunView {
   cliVersion: string;
   /** When the machine deleted the run's directory (spec #233); null while it is there. */
   artifactsDeletedAt: Date | null;
+  /** `check` for a check run (spec 360); null for an ordinary run. */
+  kind: 'check' | null;
 }
 
 export interface ProjectView {
@@ -81,6 +83,7 @@ export function toRunView(run: Run): RunView {
     failedStep: run.failedStep,
     cliVersion: run.cliVersion,
     artifactsDeletedAt: run.artifactsDeletedAt,
+    kind: run.kind,
   };
 }
 
@@ -249,6 +252,7 @@ export class ProjectsService {
             : Prisma.DbNull,
           failureStage: report.failure?.stage ?? null,
           failureMessage: report.failure?.message ?? null,
+          kind: report.kind ?? null,
         },
         select: { id: true },
       });

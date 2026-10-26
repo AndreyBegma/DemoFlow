@@ -690,6 +690,7 @@ describe('run video through the runner relay (integration)', () => {
           failedStep: null,
           cliVersion: '0.4.0',
           artifactsDeletedAt: null,
+          kind: null,
           stages: null,
           renders: null,
           failure: null,
