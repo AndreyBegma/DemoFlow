@@ -38,6 +38,7 @@ import {
 import { nodeLaunchFs } from '../runner/launch/checks.ts';
 import { LIST_MAX_SCENARIOS, listScenarios } from '../runner/launch/list.ts';
 import {
+  canonicalRoot,
   defaultReportDeps,
   type ReportDeps,
   reportRun,
@@ -391,7 +392,9 @@ async function passFiles(
   exclude: readonly string[],
   io: Io,
 ): Promise<string[]> {
-  const listing = await listScenarios(root, nodeLaunchFs, fragmentsDir);
+  // The listing compares real paths: a Windows 8.3 root would list nothing.
+  const real = await canonicalRoot(root);
+  const listing = await listScenarios(real, nodeLaunchFs, fragmentsDir);
   const excluded = new Set(
     exclude.map((id) =>
       id.startsWith(SCENARIOS_PREFIX) ? id : `${SCENARIOS_PREFIX}${id}`,
@@ -409,7 +412,7 @@ async function passFiles(
   }
   return listing.scenarios
     .filter((scenario) => !excluded.has(scenario.id))
-    .map((scenario) => path.join(root, ...scenario.id.split('/')));
+    .map((scenario) => path.join(real, ...scenario.id.split('/')));
 }
 
 const SCENARIOS_PREFIX = 'demoflow/';
