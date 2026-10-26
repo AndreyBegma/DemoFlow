@@ -29,6 +29,18 @@ export function idleStretches(
   return mergeSorted(idle);
 }
 
+/** `intervals` less every one of `removed`. */
+export function subtractIntervals(
+  intervals: readonly Interval[],
+  removed: readonly Interval[],
+): Interval[] {
+  let pieces = intervals.map((interval) => ({ ...interval }));
+  for (const window of removed) {
+    pieces = pieces.flatMap((piece) => subtract(piece, window));
+  }
+  return pieces;
+}
+
 function subtract(piece: Interval, cut: Interval): Interval[] {
   if (cut.endMs <= piece.startMs || cut.startMs >= piece.endMs) return [piece];
   const out: Interval[] = [];
@@ -57,13 +69,18 @@ function mergeSorted(intervals: Interval[]): Interval[] {
 
 /**
  * The time map: source `[startMs, endMs]` in order, real time except the idle
- * stretches, which each play in `compressToMs`. Output 0 is source `startMs`.
+ * stretches, which each play in `compressToMs`, and the cuts (spec 354,
+ * Decision 2), which play in 0 ms: a segment with a source span and no
+ * output, so every instant inside a cut maps to the join. A cut is taken out
+ * of the idle stretches first; what is left of a stretch still plays in
+ * `compressToMs`. Output 0 is source `startMs`.
  */
 export function buildTimeMap(
   idle: readonly Interval[],
   endMs: number,
   compressToMs: number,
   startMs = 0,
+  cuts: readonly Interval[] = [],
 ): TimeSegment[] {
   const segments: TimeSegment[] = [];
   let source = startMs;
@@ -79,12 +96,19 @@ export function buildTimeMap(
     source = sourceEndMs;
     output += outputLength;
   };
-  for (const stretch of idle) {
+  const stretches = [
+    ...subtractIntervals(idle, cuts).map((piece) => ({ ...piece, cut: false })),
+    ...cuts.map((cut) => ({ ...cut, cut: true })),
+  ].sort((a, b) => a.startMs - b.startMs);
+  for (const stretch of stretches) {
     if (stretch.startMs >= endMs) break;
     const stretchStart = Math.max(stretch.startMs, source);
     push(stretchStart, stretchStart - source);
     const stretchEnd = Math.min(stretch.endMs, endMs);
-    push(stretchEnd, Math.min(compressToMs, stretchEnd - stretchStart));
+    push(
+      stretchEnd,
+      stretch.cut ? 0 : Math.min(compressToMs, stretchEnd - stretchStart),
+    );
   }
   push(endMs, endMs - source);
   return segments;

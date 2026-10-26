@@ -2,7 +2,7 @@ import type { Navigation, TimelineEvent } from '@demoflow/core';
 import type { PlacedCard } from './cards.ts';
 import { maskBoxAt } from './frame.ts';
 import { shiftPastCards } from './time-map.ts';
-import type { MaskSpan, NavigationHold } from './types.ts';
+import type { Interval, MaskSpan, NavigationHold } from './types.ts';
 
 /**
  * The holds of a run's page loads, in page ms (spec 114). Each navigation
@@ -29,6 +29,9 @@ import type { MaskSpan, NavigationHold } from './types.ts';
  * A hold carries every mask active from the frame held — or one source frame
  * before it — to its navigation's start, at its box on the frame held: that
  * frame shows that page, whatever the live page's masks do meanwhile.
+ *
+ * A frame held inside a cut (spec 354) never showed: the hold takes the frame
+ * a lead before the cut instead.
  */
 export function planHolds(input: {
   navigations: readonly Navigation[];
@@ -46,8 +49,11 @@ export function planHolds(input: {
   /** The plan's mask lead: the same sync uncertainty, budgeted for masks. */
   maskLeadMs: number;
   durationMs: number;
+  /** The trim and the cuts, timeline ms. */
+  removed?: readonly Interval[];
 }): NavigationHold[] {
   const { navigations, events, out, pageEndMs } = input;
+  const removed = input.removed ?? [];
   const leadMs = Math.max(input.maskLeadMs, 2 * input.sourceFrameMs);
   // Steps that take time: a marker is no action of its own.
   const steps = events.filter((event) => event.endMs > event.startMs);
@@ -56,8 +62,21 @@ export function planHolds(input: {
     const first = index === 0;
     // After a failure the page has ended: this load never showed.
     if (!first && out(navigation.startMs) >= pageEndMs) break;
+    // The timeline ms of the frame held, before every cut it falls in.
+    let heldMs = navigation.startMs - leadMs;
+    let beforeCut = false;
+    for (const span of [...removed].reverse()) {
+      if (
+        Number.isFinite(span.startMs) &&
+        span.startMs <= heldMs &&
+        heldMs < span.endMs
+      ) {
+        heldMs = span.startMs - leadMs;
+        beforeCut = true;
+      }
+    }
     // The page ms of the frame held.
-    const heldAtMs = out(navigation.startMs - leadMs);
+    const heldAtMs = out(heldMs);
     const startMs = first
       ? 0
       : Math.max(
@@ -95,7 +114,9 @@ export function planHolds(input: {
             // later than the frame's own time.
             sourceMs: Math.max(
               input.sourceStartMs,
-              input.toSource(navigation.startMs) - leadMs,
+              beforeCut
+                ? input.toSource(heldMs)
+                : input.toSource(navigation.startMs) - leadMs,
             ),
           }),
       masks: first
@@ -115,6 +136,63 @@ export function planHolds(input: {
     });
   }
   return holds;
+}
+
+/**
+ * `holds` with a dissolve at every cut (spec 354, Decision 4), in page ms: at
+ * the join the frame held — the last source frame before the cut — dissolves
+ * into the page after it over `durationMs`, never past the next hold, the
+ * next join or the end of the page. A join inside a page load's hold or
+ * dissolve has none: the load already hides it. Like a load's, the hold
+ * carries every mask on the frame held, at its box there.
+ */
+export function withCutHolds(
+  holds: readonly NavigationHold[],
+  input: {
+    /** In page order: the join, the source frame held, and its page ms. */
+    joins: readonly { atMs: number; sourceMs: number; heldAtMs: number }[];
+    /** In page ms, before the cards are inserted. */
+    masks: readonly MaskSpan[];
+    pageEndMs: number;
+    sourceFrameMs: number;
+    durationMs: number;
+  },
+): NavigationHold[] {
+  const { joins, pageEndMs } = input;
+  if (joins.length === 0) return [...holds];
+  const all = [...holds];
+  for (const [index, join] of joins.entries()) {
+    const { atMs, heldAtMs } = join;
+    if (holds.some((hold) => hold.startMs <= atMs && atMs < hold.fadeEndMs)) {
+      continue;
+    }
+    const fadeEndMs = Math.min(
+      atMs + input.durationMs,
+      holds.find((hold) => hold.startMs > atMs)?.startMs ?? Infinity,
+      joins[index + 1]?.atMs ?? Infinity,
+      pageEndMs,
+    );
+    if (fadeEndMs <= atMs) continue;
+    all.push({
+      startMs: atMs,
+      endMs: atMs,
+      fadeEndMs,
+      fadeMs: fadeEndMs - atMs,
+      sourceMs: join.sourceMs,
+      masks: input.masks
+        .filter(
+          (mask) =>
+            mask.startMs <= atMs && mask.endMs > heldAtMs - input.sourceFrameMs,
+        )
+        .map((mask) =>
+          maskBoxAt(
+            mask,
+            Math.min(Math.max(heldAtMs, mask.startMs), mask.endMs),
+          ),
+        ),
+    });
+  }
+  return all.sort((a, b) => a.startMs - b.startMs);
 }
 
 /**

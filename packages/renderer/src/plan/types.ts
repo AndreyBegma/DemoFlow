@@ -169,8 +169,9 @@ export interface SourceSpec {
 
 /**
  * One piece of the time map. Output time maps linearly onto source time: a
- * piece whose spans differ is an idle stretch played fast, and one with no
- * source span is a card, the page held on that frame behind it.
+ * piece whose spans differ is an idle stretch played fast, one with no
+ * source span is a card, the page held on that frame behind it, and one with
+ * no output span is a cut (spec 354), source that never plays.
  */
 export interface TimeSegment {
   outputStartMs: number;
@@ -254,6 +255,8 @@ export interface CardSpec {
  * instead — with `masks` drawn on it; at `endMs` the page is ready and the
  * held frame dissolves into it over `fadeMs` of page time, until `fadeEndMs`.
  * Cursor, rings, captions and badges keep following page time throughout.
+ * A cut (spec 354, Decision 4) is a hold with `startMs` at `endMs`: the last
+ * frame before the cut dissolves into the first after it.
  */
 export interface NavigationHold {
   startMs: number;
