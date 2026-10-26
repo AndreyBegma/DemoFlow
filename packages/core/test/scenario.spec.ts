@@ -369,6 +369,30 @@ describe('parseScenario — every action', () => {
       );
     });
 
+    it.each([100, 10_000])('accepts hold %d (spec 365)', (hold) => {
+      const result = parseScenario(scenario({ action, ...valid, hold }));
+      expect(result).toMatchObject({
+        ok: true,
+        value: { steps: [expect.objectContaining({ hold })] },
+      });
+    });
+
+    it.each([99, 10_001, 500.5])('rejects hold %d at steps[0].hold', (hold) => {
+      expect(errorsOf(scenario({ action, ...valid, hold }))).toContainEqual(
+        expect.objectContaining({ path: 'steps[0].hold' }),
+      );
+    });
+
+    it('rejects hold on an off-camera step (spec 365)', () => {
+      expect(
+        errorsOf(scenario({ action, ...valid, hold: 1500, record: false })),
+      ).toContainEqual({
+        path: 'steps[0].hold',
+        code: 'custom',
+        message: 'expected no hold on an off-camera step (record: false)',
+      });
+    });
+
     it('rejects an unknown field at its path', () => {
       expect(
         errorsOf(scenario({ action, ...valid, colour: 'red' })),
