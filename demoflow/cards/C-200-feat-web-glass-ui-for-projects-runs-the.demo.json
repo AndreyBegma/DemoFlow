@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "name": "Glass UI for projects and machines",
+  "description": "Sign in off camera, then walk the redesigned Projects page with its page header and solid project list, and the Machines page with its Glass table and status pills, in the dark and the light theme.",
+  "viewport": { "width": 1280, "height": 720 },
+  "setup": [
+    {
+      "action": "include",
+      "fragment": "sign-in",
+      "with": { "next": "/app/projects" }
+    }
+  ],
+  "steps": [
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Projects", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Machines", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Machines", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Account menu" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "menuitemradio", "name": "Light", "exact": true }
+    },
+    { "action": "press", "key": "Escape" },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Projects", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Projects", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Account menu" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "menuitemradio", "name": "Dark", "exact": true }
+    },
+    { "action": "press", "key": "Escape" }
+  ]
+}

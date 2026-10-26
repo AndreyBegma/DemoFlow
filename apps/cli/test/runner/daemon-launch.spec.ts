@@ -244,7 +244,10 @@ describe('the daemon with a website-started run', () => {
       // Let the launcher settle: the run.finished has no socket and is dropped.
       await new Promise((r) => setTimeout(r, 50));
       const next = await reconnect();
-      expect(next.sent).toEqual([
+      // Spec 361: `schedules.sync` follows; it is not about this run.
+      expect(
+        next.sent.filter((frame) => frame.type !== 'schedules.sync'),
+      ).toEqual([
         {
           type: 'launches.sync',
           running: [],

@@ -252,6 +252,7 @@ describe('starting and cancelling a run from the website (integration)', () => {
       expect(res.status).toBe(202);
       const launch = {
         id: ask.requestId,
+        kind: 'run',
         scenarioId: SCENARIO,
         scenarioName: 'Checkout',
         state: 'running',
@@ -260,6 +261,8 @@ describe('starting and cancelling a run from the website (integration)', () => {
         runId: null,
         progress: null,
         formats: null,
+        passed: null,
+        failed: null,
       };
       expect(res.body).toEqual({ launch });
       expect((await latest()).body).toEqual({ launch });

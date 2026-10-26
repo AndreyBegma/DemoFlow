@@ -67,7 +67,12 @@ export function SignInForm({ next }: { next?: string }) {
         autoComplete="current-password"
         error={state.errors.password}
       />
-      <Button type="submit" full disabled={pending || state.done}>
+      <Button
+        type="submit"
+        variant="solid"
+        full
+        disabled={pending || state.done}
+      >
         {pending || state.done
           ? t('auth.signIn.submitting')
           : t('auth.signIn.submit')}
