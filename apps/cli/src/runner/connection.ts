@@ -183,7 +183,13 @@ export class RunnerConnection {
     // Spec 326, Decision 1: a connection without a launcher ignores run.start,
     // so it claims no options.
     const runOptions = this.deps.launches !== undefined ? [...RUN_OPTIONS] : [];
-    this.send({ type: 'launches.sync', running, runOptions });
+    this.send({
+      type: 'launches.sync',
+      running,
+      runOptions,
+      // Spec 360, Decision 6: a daemon that handles launches runs check passes.
+      ...(this.deps.launches !== undefined ? { checks: true } : {}),
+    });
     this.deps.logger.log(
       'info',
       `announced ${running.length} running launch${running.length === 1 ? '' : 'es'}`,
