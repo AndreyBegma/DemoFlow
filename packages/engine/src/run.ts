@@ -53,6 +53,12 @@ export interface RunOptions {
   env?: Readonly<Record<string, string | undefined>>;
   /** Defaults to `true`. */
   headless?: boolean;
+  /**
+   * Defaults to `true`. With `false` (a check run, ADR-0021 §1) the steps run
+   * in a context with no video, no sync mark is recorded and the `recording`
+   * stage is `skipped`.
+   */
+  record?: boolean;
   observers?: readonly EngineObserver[];
 }
 
@@ -80,6 +86,7 @@ export async function runScenario(
   };
 
   const startedAt = timestamp();
+  const record = options.record ?? true;
   const stages = pendingStages();
   const recording = recordingOptions(scenario, options.runDir);
   const baseUrl = scenario.baseUrl ?? options.baseUrl;
@@ -184,10 +191,12 @@ export async function runScenario(
       }
     }
 
-    stages.recording = { status: 'running', startedAt: timestamp() };
+    stages.recording = record
+      ? { status: 'running', startedAt: timestamp() }
+      : { status: 'skipped' };
     const session = await openSession(browser, scenario, guard, {
       options: {
-        ...toContextOptions(recording, browser.version()),
+        ...toContextOptions(recording, browser.version(), { video: record }),
         ...(start === undefined ? {} : { storageState: start.storageState }),
       },
     });
@@ -198,7 +207,8 @@ export async function runScenario(
     if (start !== undefined && /^https?:/.test(start.url)) {
       failure = await reopen(page, start.url, hidden - 1, steps, scrub);
     }
-    const syncMark = await recordSyncMark(page, clock);
+    // The sync mark is read from the video; a check records none.
+    const syncMark = record ? await recordSyncMark(page, clock) : undefined;
 
     const events: TimelineEvent[] = [];
     failure ??= await execute(
@@ -220,19 +230,23 @@ export async function runScenario(
 
     // Closing the context finalises the video, also after a failed step.
     await context.close();
-    const video = page.video();
+    const video = record ? page.video() : null;
     let videoPath: string | undefined;
-    try {
-      videoPath = video === null ? undefined : await video.path();
-      stages.recording = finish(
-        stages.recording,
-        videoPath === undefined ? 'failed' : 'passed',
-        videoPath === undefined ? { message: 'no video recorded' } : undefined,
-      );
-    } catch (error) {
-      stages.recording = finish(stages.recording, 'failed', {
-        message: errorMessage(error),
-      });
+    if (record) {
+      try {
+        videoPath = video === null ? undefined : await video.path();
+        stages.recording = finish(
+          stages.recording,
+          videoPath === undefined ? 'failed' : 'passed',
+          videoPath === undefined
+            ? { message: 'no video recorded' }
+            : undefined,
+        );
+      } catch (error) {
+        stages.recording = finish(stages.recording, 'failed', {
+          message: errorMessage(error),
+        });
+      }
     }
 
     const outcome = conclude(startedAt, stages, events, {

@@ -124,6 +124,10 @@ enum RunStatus {
   failed
 }
 
+enum RunKind {
+  check
+}
+
 // The metadata of one `demoflow run`. Never a video, a frame or a step value:
 // values can hold secrets, and videos stay on the machine (ADR-0008).
 model Run {
@@ -151,6 +155,8 @@ model Run {
   renders            Json?
   failureStage       String?
   failureMessage     String?
+  // Spec 360: `check` for a run made with `demoflow run --check`; null otherwise.
+  kind               RunKind?
   createdAt          DateTime  @default(now())
   shares             Share[]
 
