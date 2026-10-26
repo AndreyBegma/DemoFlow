@@ -6,6 +6,7 @@ import { jsonSchemas } from '../src/index.ts';
 describe('committed JSON Schemas', () => {
   it('publishes the scenario, fragment and project config schemas', () => {
     expect(Object.keys(jsonSchemas()).sort()).toEqual([
+      'edits.schema.json',
       'fragment.schema.json',
       'project-config.schema.json',
       'scenario.schema.json',

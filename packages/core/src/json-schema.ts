@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RunEditsSchema } from './edits.ts';
 import { FragmentSchema } from './fragment.ts';
 import { ProjectConfigSchema } from './project-config.ts';
 import { ScenarioSchema } from './scenario.ts';
@@ -12,6 +13,7 @@ export function jsonSchemas(): Record<string, z.core.JSONSchema.BaseSchema> {
   return {
     'scenario.schema.json': z.toJSONSchema(ScenarioSchema, options),
     'fragment.schema.json': z.toJSONSchema(FragmentSchema, options),
+    'edits.schema.json': z.toJSONSchema(RunEditsSchema, options),
     'project-config.schema.json': withoutUriFormat(
       z.toJSONSchema(ProjectConfigSchema, options),
     ),
