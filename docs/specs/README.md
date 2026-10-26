@@ -178,3 +178,22 @@ Work traced to an ADR, the vision or spec 179 that no phase had picked up.
 | [#329](https://github.com/AndreyBegma/DemoFlow/issues/329) | [`scenarios.list` truncation test times out on the Windows runner](329-scenarios-list-windows-flake.md) | — |
 | [#288](https://github.com/AndreyBegma/DemoFlow/issues/288) | [Luna Player `VideoPlayer` adapter](288-luna-video-player.md) — ADR-0009 §2, Phase 6 | luna-player 0.2.0 |
 | [#337](https://github.com/AndreyBegma/DemoFlow/issues/337) | [`${PORT}` templating, `--port` and `--fresh-app` for parallel runs](337-port-templating.md) — Nautelle ADR-0090 | — |
+| [#347](https://github.com/AndreyBegma/DemoFlow/issues/347) | [Share a run's video: the Share model, disk storage, upload through the runner socket](347-share-storage-api.md) — ADR-0019, Phase 8 | — |
+| [#348](https://github.com/AndreyBegma/DemoFlow/issues/348) | [Public share endpoints: page data, file, poster, password, views, expiry](348-share-public-endpoints.md) — ADR-0019, Phase 8 | #347 |
+| [#349](https://github.com/AndreyBegma/DemoFlow/issues/349) | [The runner uploads a render for a share; `demoflow share` and the MCP `share_demo` tool](349-cli-share.md) — ADR-0019, Phase 8 | #347 |
+| [#350](https://github.com/AndreyBegma/DemoFlow/issues/350) | [Share dialog on the run page and the `/app/shares` list](350-web-share-dialog.md) — ADR-0019, Phase 8 | #347 |
+| [#351](https://github.com/AndreyBegma/DemoFlow/issues/351) | [Public share page `/s/[token]`: player, chapters, download, password](351-web-share-page.md) — ADR-0019, Phase 8 | #348 |
+| [#352](https://github.com/AndreyBegma/DemoFlow/issues/352) | [Docs: sharing a video](352-docs-sharing.md) — ADR-0019, Phase 8 | #349, #350, #351 |
+| [#353](https://github.com/AndreyBegma/DemoFlow/issues/353) | [`edits.json`: captions, zoom, cards and style applied at render](353-edits-schema-and-render.md) — ADR-0020, Phase 8 | — |
+| [#354](https://github.com/AndreyBegma/DemoFlow/issues/354) | [Trim and cut segments from `edits.json`](354-trim-and-cuts.md) — ADR-0020, Phase 8 | #353 |
+| [#355](https://github.com/AndreyBegma/DemoFlow/issues/355) | [The Runner serves and saves a run's edits, re-renders on request, and exports patches](355-runner-edits-and-rerender.md) — ADR-0020, Phase 8 | #353 |
+| [#356](https://github.com/AndreyBegma/DemoFlow/issues/356) | [Editor relay (API): edit model, save, re-render, progress, update a share](356-editor-relay-api.md) — ADR-0020, Phase 8 | #347, #355 |
+| [#357](https://github.com/AndreyBegma/DemoFlow/issues/357) | [Timeline editor with an in-browser preview on the run page](357-timeline-editor.md) — ADR-0020, Phase 8 | #356 |
+| [#358](https://github.com/AndreyBegma/DemoFlow/issues/358) | [Export edits to the scenario and the config, reset edits, update the share](358-edits-export-reset-share.md) — ADR-0020, Phase 8 | #350, #357 |
+| [#359](https://github.com/AndreyBegma/DemoFlow/issues/359) | [Docs: editing a video on the website](359-editor-docs.md) — ADR-0020, Phase 8 | #353, #358 |
+| [#360](https://github.com/AndreyBegma/DemoFlow/issues/360) | [`demoflow run --check`: run and verify without recording or rendering](360-run-check-mode.md) — ADR-0021, Phase 8 | — |
+| [#361](https://github.com/AndreyBegma/DemoFlow/issues/361) | [`schedule` in `demoflow.config.json`: the runner daemon runs check passes on a schedule](361-config-schedule.md) — ADR-0021, Phase 8 | #360 |
+| [#362](https://github.com/AndreyBegma/DemoFlow/issues/362) | [Check schedules in the API: scheduler, check passes started from the website, stale state](362-check-schedules-api.md) — ADR-0021, Phase 8 | #360 |
+| [#363](https://github.com/AndreyBegma/DemoFlow/issues/363) | [Check schedules on the project page, and stale badges](363-check-schedules-web.md) — ADR-0021, Phase 8 | #362 |
+| [#364](https://github.com/AndreyBegma/DemoFlow/issues/364) | [Website docs: scheduled checks and stale demos](364-checks-docs.md) — ADR-0021, Phase 8 | #361, #363 |
+| [#365](https://github.com/AndreyBegma/DemoFlow/issues/365) | [Hold the result on screen](365-hold-the-result.md) — Phase 8 | — |
