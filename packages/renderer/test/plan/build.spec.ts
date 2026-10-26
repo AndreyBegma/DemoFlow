@@ -2,7 +2,11 @@ import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { RunResultSchema } from '@demoflow/core';
+import {
+  CardsConfigSchema,
+  type RenderFormat,
+  RunResultSchema,
+} from '@demoflow/core';
 import type { EngineObserver } from '@demoflow/engine';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -10,6 +14,7 @@ import {
   DEFAULT_OFFSET_MS,
   frameAt,
   frameCount,
+  PLAN_INPUTS,
   parseProbe,
   probeVideo,
   type RenderPlan,
@@ -479,6 +484,50 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
     const first = frameAt(plan, 0).sourceMs ?? 0;
     expect(first).toBeGreaterThan(0);
     expect(isMark(decoded[Math.round(first / DRIFT_FRAME_MS)])).toBe(false);
+  });
+
+  it('plans every fixture run with an empty edits.json as without one', async () => {
+    const options = {
+      cards: CardsConfigSchema.parse({ outro: { title: 'Thanks' } }),
+      scenario: { description: 'A fixture run' },
+      formats: ['mp4', 'mp4-vertical'] as RenderFormat[],
+    };
+    for (const [name, runDir] of Object.entries({ customers, failing, tour })) {
+      const edited = path.join(parent, `${name}-edited`);
+      await cp(runDir, edited, { recursive: true });
+      await writeFile(
+        path.join(edited, PLAN_INPUTS.edits),
+        JSON.stringify({ schemaVersion: 1 }),
+      );
+      expect(await buildRenderPlan(edited, options), name).toEqual(
+        await buildRenderPlan(runDir, options),
+      );
+    }
+  });
+
+  it('applies an edits.json beside a real run', async () => {
+    const edited = path.join(parent, 'customers-captions');
+    await cp(customers, edited, { recursive: true });
+    const { events } = JSON.parse(
+      await readFile(path.join(customers, 'timeline.json'), 'utf8'),
+    ) as { events: { startMs: number; endMs: number }[] };
+    const last = events.at(-1);
+    if (last === undefined) throw new Error('customers run has no events');
+    await writeFile(
+      path.join(edited, PLAN_INPUTS.edits),
+      JSON.stringify({
+        schemaVersion: 1,
+        captions: [
+          {
+            startMs: Math.round(last.startMs),
+            endMs: Math.round(last.endMs) + 500,
+            text: 'Edited',
+          },
+        ],
+      }),
+    );
+    const plan = await buildRenderPlan(edited);
+    expect(plan.captions.map((caption) => caption.text)).toEqual(['Edited']);
   });
 
   it('keeps the defaults when the mark is not in the video', async () => {

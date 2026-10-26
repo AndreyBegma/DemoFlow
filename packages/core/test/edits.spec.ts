@@ -70,7 +70,10 @@ describe('RunEditsSchema', () => {
     ['schemaVersion 2', { schemaVersion: 2 }],
     ['an empty caption span', { captions: [caption(100, 100)] }],
     ['a caption ending before it starts', { captions: [caption(100, 50)] }],
-    ['overlapping captions', { captions: [caption(0, 200), caption(100, 300)] }],
+    [
+      'overlapping captions',
+      { captions: [caption(0, 200), caption(100, 300)] },
+    ],
     ['unordered captions', { captions: [caption(500, 600), caption(0, 100)] }],
     [
       '201 captions',
@@ -80,7 +83,10 @@ describe('RunEditsSchema', () => {
         ),
       },
     ],
-    ['a 121-character caption', { captions: [caption(0, 10, 'x'.repeat(121))] }],
+    [
+      'a 121-character caption',
+      { captions: [caption(0, 10, 'x'.repeat(121))] },
+    ],
     ['a blank caption', { captions: [caption(0, 10, '   ')] }],
     ['a fractional time', { captions: [caption(0.5, 10)] }],
     [
@@ -94,7 +100,10 @@ describe('RunEditsSchema', () => {
     ],
     ['zoom 4', { zoom: [{ stepIndex: 1, zoom: 4 }] }],
     ['an outro without title', { cards: { outro: { cta: 'example.com' } } }],
-    ['an 81-character card title', { cards: { intro: { title: 'x'.repeat(81) } } }],
+    [
+      'an 81-character card title',
+      { cards: { intro: { title: 'x'.repeat(81) } } },
+    ],
     ['a negative frame radius', { frame: { radius: -1 } }],
     ['a frame margin', { frame: { marginRatio: 0.1 } }],
     ['an image background', { background: { image: 'a.png' } }],
