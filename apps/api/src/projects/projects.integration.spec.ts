@@ -90,6 +90,7 @@ describe('projects (integration)', () => {
         rootPath: ROOT,
         runner: { id: laptop.runnerId, name: 'Laptop' },
         runCount: 1,
+        staleCount: 0,
         lastRun: {
           id: res.body.runId,
           scenarioName: 'checkout',
@@ -128,6 +129,7 @@ describe('projects (integration)', () => {
         expect.objectContaining({
           name: 'shop',
           runCount: 2,
+          staleCount: 1,
           lastRun: expect.objectContaining({
             id: second.body.runId,
             status: 'failed',
@@ -313,8 +315,15 @@ describe('projects (integration)', () => {
           rootPath: ROOT,
           runner: { id: laptop.runnerId, name: 'Laptop' },
           runCount: 2,
+          staleCount: 0,
         }),
       );
+      expect(
+        await t.prisma.scenarioHealth.findMany({
+          where: { projectId: body.project.id },
+          select: { scenarioPath: true, state: true },
+        }),
+      ).toEqual([{ scenarioPath: 'demos/checkout.yaml', state: 'passed' }]);
       expect(
         await t.prisma.project.findUnique({
           where: { id: auto1.body.projectId },

@@ -30,6 +30,8 @@ export const START_TIMEOUT_MS = 15 * 1000;
 export const CANCEL_TIMEOUT_MS = 30 * 1000;
 /** No `run.finished` this long after `run.started`: `lost`. The daemon's own cap is 15 min. */
 export const RUN_TIMEOUT_MS = 20 * 60 * 1000;
+/** No `check.finished` this long after `check.started`: `lost`. The daemon caps a pass at 2 h (spec 360). */
+export const CHECK_TIMEOUT_MS = 2 * 60 * 60 * 1000 + 5 * 60 * 1000;
 /** A finished launch is kept this long for `GET` (Decision 9). */
 export const LAUNCH_RETENTION_MS = 10 * 60 * 1000;
 /** A detached launch whose machine has no new socket this long is `lost` (spec #284, Decision 3). */
@@ -59,10 +61,15 @@ export interface RunProgress {
   steps: number | null;
 }
 
+/** A run of one scenario, or a check pass of the whole project (spec #362, Decision 5). */
+export type LaunchKind = 'run' | 'check';
+
 /** What the browser polls (Decision 1). */
 export interface LaunchView {
   id: string;
-  scenarioId: string;
+  kind: LaunchKind;
+  /** Null for a check pass. */
+  scenarioId: string | null;
   scenarioName: string | null;
   state: LaunchState;
   startedAt: string;
@@ -72,6 +79,9 @@ export interface LaunchView {
   progress: RunProgress | null;
   /** The formats the browser chose; null for the project's own (spec #325, Decision 5). */
   formats: RunFormat[] | null;
+  /** A finished check pass's counts (`check.finished`); null otherwise. */
+  passed: number | null;
+  failed: number | null;
 }
 
 export interface ScenarioList {
@@ -130,6 +140,10 @@ const TIMEOUT: Failure = {
   status: HttpStatus.GATEWAY_TIMEOUT,
   error: 'runner-timeout',
 };
+const BUSY: Failure = RUNNER_ERRORS.busy;
+
+/** How `startCheckPass` ended: started, or why not (`runner-busy`, `runner-offline`, …). */
+export type CheckPassStart = { ok: true } | { ok: false; error: string };
 
 function runnerFailure(code: string): Failure {
   return Object.hasOwn(RUNNER_ERRORS, code)
@@ -148,9 +162,10 @@ interface PendingList {
 
 interface Launch {
   id: string;
+  kind: LaunchKind;
   projectId: string;
   runnerId: string;
-  scenarioId: string;
+  scenarioId: string | null;
   scenarioName: string | null;
   /** Set at start, never changed. */
   formats: RunFormat[] | null;
@@ -170,6 +185,8 @@ interface Launch {
   detachedAt: number | null;
   /** The latest valid `run.progress`, kept across a detach (spec #301, Decision 6). */
   progress: RunProgress | null;
+  passed: number | null;
+  failed: number | null;
   /** The `POST` waiting while `starting`. */
   settle?: (outcome: Outcome<LaunchView>) => void;
 }
@@ -254,24 +271,8 @@ export class LaunchesService
       throw runError(HttpStatus.CONFLICT, 'runner-busy');
     }
     const outcome = await new Promise<Outcome<LaunchView>>((settle) => {
-      const now = this.now();
-      const launch: Launch = {
-        id: randomUUID(),
-        projectId: target.projectId,
-        runnerId: target.runnerId,
-        scenarioId,
-        scenarioName: null,
-        formats: formats ?? null,
-        state: 'starting',
-        startedAt: now,
-        since: now,
-        finishedAt: null,
-        runId: null,
-        finishing: false,
-        detachedAt: null,
-        progress: null,
-        settle,
-      };
+      const launch = this.newLaunch('run', target, scenarioId, settle);
+      launch.formats = formats ?? null;
       this.launches.set(launch.id, launch);
       const sent = this.connections.sendTo(target.runnerId, {
         type: 'run.start',
@@ -289,6 +290,39 @@ export class LaunchesService
       throw runError(outcome.status, outcome.error);
     }
     return outcome.value;
+  }
+
+  /**
+   * Sends `check.start` for the whole project (spec #362, Decision 5) and
+   * settles once the machine says it started. The same one-launch-per-Runner
+   * rule as `start`; never throws: the scheduler decides what to do next.
+   */
+  async startCheckPass(
+    target: LaunchTarget,
+    exclude: string[],
+  ): Promise<CheckPassStart> {
+    if (this.busy(target.runnerId)) {
+      return { ok: false, error: BUSY.error };
+    }
+    const outcome = await new Promise<Outcome<LaunchView>>((settle) => {
+      const launch = this.newLaunch('check', target, null, settle);
+      this.launches.set(launch.id, launch);
+      const sent = this.connections.sendTo(target.runnerId, {
+        type: 'check.start',
+        requestId: launch.id,
+        rootPath: target.rootPath,
+        exclude,
+      });
+      if (!sent) {
+        this.failStart(launch, OFFLINE, OFFLINE.error);
+      }
+    });
+    return outcome.ok ? { ok: true } : { ok: false, error: outcome.error };
+  }
+
+  /** Whether the machine has an active launch: a run or a check pass. */
+  isBusy(runnerId: string): boolean {
+    return this.busy(runnerId);
   }
 
   /** The project's latest launch, or null. */
@@ -353,27 +387,60 @@ export class LaunchesService
         return true;
       }
       case 'run.started':
-      case 'run.error': {
+      case 'run.error':
+      case 'check.started':
+      case 'check.error': {
         const launch = this.launches.get(message.requestId);
-        if (launch?.runnerId !== runnerId || launch.state !== 'starting') {
+        if (
+          launch?.runnerId !== runnerId ||
+          launch.state !== 'starting' ||
+          launch.kind !== kindOf(message.type)
+        ) {
           return false;
         }
-        if (message.type === 'run.error') {
+        if (message.type === 'run.error' || message.type === 'check.error') {
           this.failStart(launch, runnerFailure(message.code), message.code);
           return true;
         }
         launch.state = 'running';
         launch.since = this.now();
-        launch.scenarioName = message.scenarioName;
+        if (message.type === 'run.started') {
+          launch.scenarioName = message.scenarioName;
+        }
         const settle = launch.settle;
         launch.settle = undefined;
         settle?.({ ok: true, value: toView(launch) });
+        return true;
+      }
+      case 'check.finished': {
+        const launch = this.launches.get(message.requestId);
+        if (
+          launch?.runnerId !== runnerId ||
+          launch.kind !== 'check' ||
+          (launch.state !== 'running' && launch.state !== 'cancelling') ||
+          launch.finishing
+        ) {
+          return false;
+        }
+        launch.passed = message.passed;
+        launch.failed = message.failed;
+        // A pass that verified nothing did not pass: cancelled, timed out or crashed.
+        this.end(
+          launch,
+          launch.state === 'cancelling'
+            ? 'cancelled'
+            : message.failed > 0 || message.passed === 0
+              ? 'failed'
+              : 'passed',
+          null,
+        );
         return true;
       }
       case 'run.finished': {
         const launch = this.launches.get(message.requestId);
         if (
           launch?.runnerId !== runnerId ||
+          launch.kind !== 'run' ||
           (launch.state !== 'running' && launch.state !== 'cancelling') ||
           launch.finishing
         ) {
@@ -499,7 +566,9 @@ export class LaunchesService
           }
           break;
         case 'running':
-          if (age >= RUN_TIMEOUT_MS) {
+          if (
+            age >= (launch.kind === 'check' ? CHECK_TIMEOUT_MS : RUN_TIMEOUT_MS)
+          ) {
             this.end(launch, 'lost', null);
           }
           break;
@@ -565,6 +634,35 @@ export class LaunchesService
         launch.detachedAt !== null &&
         !launch.finishing,
     );
+  }
+
+  private newLaunch(
+    kind: LaunchKind,
+    target: LaunchTarget,
+    scenarioId: string | null,
+    settle: (outcome: Outcome<LaunchView>) => void,
+  ): Launch {
+    const now = this.now();
+    return {
+      id: randomUUID(),
+      kind,
+      projectId: target.projectId,
+      runnerId: target.runnerId,
+      scenarioId,
+      scenarioName: null,
+      formats: null,
+      state: 'starting',
+      startedAt: now,
+      since: now,
+      finishedAt: null,
+      runId: null,
+      finishing: false,
+      detachedAt: null,
+      progress: null,
+      passed: null,
+      failed: null,
+      settle,
+    };
   }
 
   /** A `run.cancel` the machine cannot get leaves the launch `lost`. */
@@ -669,6 +767,7 @@ export class LaunchesService
     this.logger.log(
       JSON.stringify({
         event: 'launch',
+        kind: launch.kind,
         projectId: launch.projectId,
         runnerId: launch.runnerId,
         outcome: label,
@@ -687,6 +786,7 @@ export class LaunchesService
 function toView(launch: Launch): LaunchView {
   return {
     id: launch.id,
+    kind: launch.kind,
     scenarioId: launch.scenarioId,
     scenarioName: launch.scenarioName,
     state: launch.state,
@@ -698,7 +798,13 @@ function toView(launch: Launch): LaunchView {
     runId: launch.runId,
     progress: launch.state === 'running' ? launch.progress : null,
     formats: launch.formats,
+    passed: launch.passed,
+    failed: launch.failed,
   };
+}
+
+function kindOf(type: LaunchMessage['type']): LaunchKind {
+  return type.startsWith('check.') ? 'check' : 'run';
 }
 
 /**

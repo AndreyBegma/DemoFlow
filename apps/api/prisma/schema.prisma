@@ -114,6 +114,8 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   runs      Run[]
+  schedules CheckSchedule[]
+  health    ScenarioHealth[]
 
   @@unique([runnerId, rootPath])
   @@index([userId])
@@ -204,6 +206,57 @@ model Share {
   @@unique([runId, format])
   @@index([userId, createdAt(sort: Desc)])
   @@index([expiresAt])
+}
+
+enum ScheduleSource {
+  site
+  config
+}
+
+enum ScheduleCadence {
+  daily
+  weekdays
+  weekly
+}
+
+// When a project's scenarios are checked (spec #362, ADR-0021). A `site` row
+// is set on the website and run by the API; a `config` row is what the daemon
+// reported from `demoflow.config.json`, stored only to be shown.
+model CheckSchedule {
+  id           String          @id @default(uuid())
+  projectId    String
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source       ScheduleSource
+  cadence      ScheduleCadence
+  // `mon`…`sun`; set only for `weekly`.
+  weekday      String?
+  // `HH:MM`, 24-hour, in `timeZone`.
+  at           String
+  timeZone     String
+  exclude      String[]
+  // `config-schedule`, `no-machine` or `cli-too-old`; null while it runs.
+  pausedReason String?
+  // The latest slot a pass was started for (site rows only).
+  lastSlotAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@unique([projectId, source])
+}
+
+// The state of a project's scenario after its latest reported run (spec #362,
+// ADR-0021 §6). `failed` is "stale". `since` is the start of the run that made
+// the last transition; `lastRunId` is a plain column: deleting a run keeps it.
+model ScenarioHealth {
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenarioPath String
+  state        RunStatus
+  since        DateTime
+  lastRunId    String
+
+  @@id([projectId, scenarioPath])
+  @@index([projectId, state])
 }
 
 // A pending `demoflow login` (RFC 8628). Only the SHA-256 hash of the polling
