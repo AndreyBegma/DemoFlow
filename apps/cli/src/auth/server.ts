@@ -1,7 +1,7 @@
 import { CliError } from '../config/index.ts';
 
-/** Staging, until production exists (spec 135, Decision 9). */
-export const DEFAULT_SERVER = 'https://demoflow-app.luna-realm.com';
+/** Production; staging is reachable with `--server` or `DEMOFLOW_SERVER`. */
+export const DEFAULT_SERVER = 'https://demoflow.luna-realm.com';
 
 /** `--server`, then `DEMOFLOW_SERVER`, then the default. Returns an origin-and-path without a trailing slash. */
 export function resolveServer(

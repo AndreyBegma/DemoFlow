@@ -195,7 +195,7 @@ export async function main(
     .description('Pair this machine with your DemoFlow account')
     .option(
       '--server <url>',
-      'the DemoFlow server (default: DEMOFLOW_SERVER or staging)',
+      'the DemoFlow server (default: DEMOFLOW_SERVER or production)',
     )
     .option('--force', 'pair again, revoking the stored token first')
     .option('--start', 'start the runner afterwards, without asking')
