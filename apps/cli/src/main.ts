@@ -27,6 +27,11 @@ import { type RenderFlags, renderCommand } from './commands/render.ts';
 import { runCommand } from './commands/run.ts';
 import { registerRunsCommands } from './commands/runs.ts';
 import { setupCommand } from './commands/setup.ts';
+import {
+  PASSWORD_ENV,
+  type ShareFlags,
+  shareCommand,
+} from './commands/share.ts';
 import { validateCommand } from './commands/validate.ts';
 import { mcpCommand } from './mcp/command.ts';
 import {
@@ -154,6 +159,32 @@ export async function main(
     .addOption(new Option('--project <dir>', 'the project root').hideHelp())
     .action(async (runId: string, flags: RenderFlags) => {
       exitCode = await renderCommand(runId, flags, io);
+    });
+
+  program
+    .command('share')
+    .description('Share a render of a reported run as a link on the website')
+    .argument('<runId>', 'the run directory under <home>/runs/')
+    .addOption(
+      new Option(
+        '--format <format>',
+        `the render to share (default: the run's first; ${RENDER_FORMATS.join(', ')})`,
+      ).argParser(parseFormat),
+    )
+    .option(
+      '--expires <days>',
+      'how long the link works: 7, 30 or 90 days',
+      '30',
+    )
+    .option(
+      '--password',
+      `protect the link with a password, asked for on the terminal (else ${PASSWORD_ENV})`,
+    )
+    .option('--json', 'print the share as one JSON object on stdout')
+    .option('--out <dir>', 'artifacts directory (the home of runs/)')
+    .addOption(new Option('--project <dir>', 'the project root').hideHelp())
+    .action(async (runId: string, flags: ShareFlags) => {
+      exitCode = await shareCommand(runId, flags, io);
     });
 
   program
@@ -286,6 +317,11 @@ function collectFormat(
     throw new InvalidArgumentError(`${format} is given twice`);
   }
   return [...previous, format];
+}
+
+/** `--format` of `share`: one known format. */
+function parseFormat(value: string): RenderFormat {
+  return collectFormat(value)[0] as RenderFormat;
 }
 
 function collectExclude(value: string, previous: string[] = []): string[] {

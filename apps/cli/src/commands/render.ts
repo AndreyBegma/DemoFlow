@@ -78,22 +78,7 @@ export async function renderCommand(
   io: Io,
   deps: RenderDeps = defaultRenderDeps(),
 ): Promise<number> {
-  const { host } = deps;
-  assertSafeRunId(runId);
-  const root =
-    flags.project === undefined
-      ? projectRootAbove(deps.cwd)
-      : projectRootAt(path.resolve(deps.cwd, flags.project));
-  const config = loadProjectConfig(root);
-  const { home } = resolveHome({
-    ...host,
-    out: flags.out,
-    cwd: deps.cwd,
-    projectRoot: root,
-    projectConfig: config,
-    globalConfig: loadGlobalConfig(host),
-  });
-  const runDir = runDirFor(home, runId, host.platform);
+  const { root, config, runDir } = locateRun(runId, flags, deps);
   const result = await readRenderable(runDir);
 
   io.stderr('Rendering\n');
@@ -126,6 +111,34 @@ export async function renderCommand(
   const code = exitCodeFor(settled);
   // A failure before the renderer recorded the stage must not read as success.
   return code === 0 && renderError !== undefined ? EXIT_STAGE_FAILED : code;
+}
+
+/**
+ * Where `<runId>` lives (spec 255, Decisions 1–2): under the home of the
+ * project above the cwd, or of `--project`. Throws for an unsafe id or a
+ * missing project; the run directory itself may not exist.
+ */
+export function locateRun(
+  runId: string,
+  flags: { out?: string; project?: string },
+  deps: { host: HostEnvironment; cwd: string },
+): { root: string; config: ProjectConfig; runDir: string } {
+  const { host } = deps;
+  assertSafeRunId(runId);
+  const root =
+    flags.project === undefined
+      ? projectRootAbove(deps.cwd)
+      : projectRootAt(path.resolve(deps.cwd, flags.project));
+  const config = loadProjectConfig(root);
+  const { home } = resolveHome({
+    ...host,
+    out: flags.out,
+    cwd: deps.cwd,
+    projectRoot: root,
+    projectConfig: config,
+    globalConfig: loadGlobalConfig(host),
+  });
+  return { root, config, runDir: runDirFor(home, runId, host.platform) };
 }
 
 /**
