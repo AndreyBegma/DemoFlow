@@ -281,7 +281,10 @@ describe('checkRunEdits', () => {
 
     it('reports trim-hides-failure for a cut over the failed step', () => {
       expect(check({ cuts: [cut(1_300, 1_350)] }, undefined, 1)).toEqual([
-        expect.objectContaining({ path: 'cuts[0]', code: 'trim-hides-failure' }),
+        expect.objectContaining({
+          path: 'cuts[0]',
+          code: 'trim-hides-failure',
+        }),
       ]);
       // Touching the step is not over it.
       expect(check({ cuts: [cut(100, 800)] }, undefined, 1)).toEqual([]);
