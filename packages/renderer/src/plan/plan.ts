@@ -87,7 +87,7 @@ const TIMING = {
   maskLeadMs: 200,
   /** Masks end this late, for the same reason: an early end leaks, a late one is safe (#48). */
   maskTrailMs: 200,
-  /** A successful run keeps this much video after its last event. */
+  /** A successful run keeps this much video after its last event, when its timeline names no `endHoldMs`. */
   tailMs: 1_000,
   /** A target box fills at most this share of the zoomed view. */
   targetFill: 0.9,
@@ -218,12 +218,16 @@ export function planRender(
       ? undefined
       : events.find((event) => event.stepIndex === failure.stepIndex);
   const lastEvent = events.at(-1);
+  // The engine's end hold (C-203) follows the last event's own dwell.
+  const holdFromMs =
+    lastEvent === undefined ? 0 : lastEvent.endMs + (lastEvent.dwellMs ?? 0);
+  const endHoldMs = timeline.endHoldMs ?? TIMING.tailMs;
   const sourceEndMs =
     failure !== undefined
       ? toSource(failedEvent?.endMs ?? lastEvent?.endMs ?? source.durationMs)
       : lastEvent === undefined
         ? source.durationMs
-        : toSource(lastEvent.endMs + TIMING.tailMs);
+        : toSource(holdFromMs + endHoldMs);
 
   const active: Interval[] = events
     .filter((event) => ACTIVE.has(event.action))
@@ -231,6 +235,20 @@ export function planRender(
       startMs: toSource(event.startMs),
       endMs: toSource(event.endMs),
     }));
+  // A dwell and the end hold are there to be watched: the idle trim never cuts them (C-203).
+  for (const event of events) {
+    if (event.dwellMs === undefined) continue;
+    active.push({
+      startMs: toSource(event.endMs),
+      endMs: toSource(event.endMs + event.dwellMs),
+    });
+  }
+  if (timeline.endHoldMs !== undefined && lastEvent !== undefined) {
+    active.push({
+      startMs: toSource(holdFromMs),
+      endMs: toSource(holdFromMs + timeline.endHoldMs),
+    });
+  }
   const idle = idleStretches(source.freezes, active, thresholdMs, sourceEndMs);
   // Page time: the map before cards. Overlays are planned in it, then moved
   // past the cards, so no lead or trail is ever measured across a card.

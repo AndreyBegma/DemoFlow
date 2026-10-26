@@ -78,15 +78,17 @@ function plan(
     failed?: Parameters<typeof result>[0];
     maskedElements?: MaskedElement[];
     annotations?: Annotation[];
+    endHoldMs?: number;
   } = {},
 ): RenderPlan {
-  const { failed, maskedElements, annotations, ...rest } = options;
+  const { failed, maskedElements, annotations, endHoldMs, ...rest } = options;
   return planRender(
     {
       timeline: {
         ...timeline(events),
         ...(maskedElements === undefined ? {} : { maskedElements }),
         ...(annotations === undefined ? {} : { annotations }),
+        ...(endHoldMs === undefined ? {} : { endHoldMs }),
       },
       result: result(failed),
       source: {
@@ -252,6 +254,38 @@ describe('time map', () => {
     }
     // The run ends 1 000 ms after its last event; that tail is frozen too.
     expect(source).toBe(8000);
+  });
+
+  it('keeps a frozen dwell at real speed, and still compresses a wait (C-203)', () => {
+    const rendered = plan(
+      [
+        { ...click(0, 1000, { x: 300, y: 200 }), dwellMs: 1500 },
+        event({ action: 'wait', startMs: 2500, endMs: 5000 }),
+        click(5000, 5600, { x: 900, y: 500 }),
+      ],
+      [{ startMs: 1000, endMs: 5000 }],
+    );
+    // The dwell plays 1:1; only the wait after it is compressed.
+    expect(toOutputMs(rendered.timeMap, 2500)).toBe(2500);
+    expect(toOutputMs(rendered.timeMap, 5000)).toBe(2900);
+  });
+
+  it("ends a passed run at the engine's end hold, after the last dwell (C-203)", () => {
+    const rendered = plan(
+      [{ ...click(0, 1000, { x: 300, y: 200 }), dwellMs: 500 }],
+      // The page is frozen from the click on: dwell and hold are kept whole.
+      [{ startMs: 1000, endMs: 20_000 }],
+      { endHoldMs: 3500 },
+    );
+    expect(rendered.durationMs).toBe(1000 + 500 + 3500);
+    expect(toOutputMs(rendered.timeMap, 5000)).toBe(5000);
+  });
+
+  it('ends at the last event when the end hold is 0', () => {
+    const rendered = plan([click(0, 1000, { x: 300, y: 200 })], [], {
+      endHoldMs: 0,
+    });
+    expect(rendered.durationMs).toBe(1000);
   });
 
   it('applies the clock offset: source = timeline + offsetMs', () => {
