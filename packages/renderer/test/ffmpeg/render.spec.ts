@@ -35,7 +35,7 @@ import {
   checkLayout,
   type LayoutReport,
 } from '../visual/layout.ts';
-import { countFrames, sampleFrames } from './sample-frames.ts';
+import { countFrames, sampleFrames, selectFrames } from './sample-frames.ts';
 
 if (!hasFfmpeg) {
   console.warn('no usable FFmpeg: skipping the FFmpeg compositor tests');
@@ -48,7 +48,7 @@ async function extractFrames(
   plan: RenderPlan,
 ): Promise<Uint8Array[]> {
   const raw = `${file}.${numbers[0]}.rgb`;
-  const select = numbers.map((n) => `eq(n\\,${n})`).join('+');
+  const select = selectFrames(numbers);
   await runFfmpeg([
     '-y',
     '-i',
