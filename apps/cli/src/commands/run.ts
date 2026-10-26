@@ -283,6 +283,7 @@ export async function runCommand(
       allowedOrigins: config.allowedOrigins,
       env: host.env,
       headless: flags.headed !== true,
+      endHoldMs: check ? 0 : config.render.endHoldMs,
       record: !check,
       observers: [
         createCaptureObserver({ scenarioId: run.id, runId }),

@@ -63,12 +63,14 @@ export async function recordFixtureRun(
 /**
  * Records a scenario given inline — validated as a scenario file is — against
  * the fixture, into `<parentDir>/<name>`, and returns that run directory.
+ * No end hold unless `endHoldMs` asks for one (spec 365): it only lengthens a run.
  */
 export async function recordInlineRun(
   name: string,
   input: unknown,
   parentDir: string,
   observers: readonly EngineObserver[] = [],
+  endHoldMs = 0,
 ): Promise<string> {
   const parsed = parseScenario(input);
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
@@ -81,6 +83,7 @@ export async function recordInlineRun(
       baseUrl: fixture.origin,
       allowedOrigins: [fixture.origin],
       env: { FIXTURE_PASSWORD },
+      endHoldMs,
       observers: [
         ...observers,
         createCaptureObserver({ scenarioId: `demoflow/${name}.demo.json` }),

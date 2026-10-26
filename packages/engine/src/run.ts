@@ -1,4 +1,5 @@
 import { mkdir } from 'node:fs/promises';
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   type Annotation,
   deriveRunStatus,
@@ -60,6 +61,11 @@ export interface RunOptions {
    */
   record?: boolean;
   observers?: readonly EngineObserver[];
+  /**
+   * Milliseconds the recording goes on after the last step of a successful
+   * run (`render.endHoldMs`, spec 365). Defaults to 0: the video ends there.
+   */
+  endHoldMs?: number;
 }
 
 const ASSERTIONS = new Set(['assertVisible', 'assertText']);
@@ -137,7 +143,7 @@ export async function runScenario(
     }
     const execute = (
       session: Session,
-      range: { from: number; to: number },
+      range: { from: number; to: number; endHoldMs?: number },
       events: TimelineEvent[],
     ): Promise<Failure | undefined> =>
       executeSteps({
@@ -157,6 +163,7 @@ export async function runScenario(
         annotations: session.annotations,
         scrub,
         emit,
+        endHoldMs: range.endHoldMs ?? 0,
       });
 
     // The opening off-camera steps run in a context of their own with no
@@ -213,7 +220,7 @@ export async function runScenario(
     const events: TimelineEvent[] = [];
     failure ??= await execute(
       session,
-      { from: hidden, to: steps.length },
+      { from: hidden, to: steps.length, endHoldMs: options.endHoldMs },
       events,
     );
     // Before the context closes: a document's clock exchange may still be running on it.
@@ -357,6 +364,8 @@ interface ExecuteInput {
     hook: K,
     event: Parameters<NonNullable<EngineObserver[K]>>[0],
   ) => Promise<void>;
+  /** Slept after the last step when every step passed. */
+  endHoldMs: number;
 }
 
 interface Failure {
@@ -369,6 +378,15 @@ interface Failure {
 /** Runs the steps in order and returns the first failure, if any. */
 async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
   const { clock, emit, scrub } = input;
+  // Keeps the page on camera; a field that shows up meanwhile is masked from
+  // then, and a page that leaves meanwhile is the step's failure (spec 365).
+  const hold = async (ms: number): Promise<string | undefined> => {
+    const fromMs = clock.now();
+    await sleep(ms);
+    const sightings = await input.masks.look();
+    input.masks.record(sightings, fromMs, Math.max(fromMs, clock.now()));
+    return input.navigation.take();
+  };
   let pointer = input.pointer;
   for (let stepIndex = input.from; stepIndex < input.to; stepIndex++) {
     const step = input.steps[stepIndex];
@@ -439,6 +457,19 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
     if (step.action === 'fill') {
       await input.masks.track(event, step.target);
     }
+    // A failed step does not hold; an off-camera one has nothing to show.
+    if (
+      failure === undefined &&
+      step.hold !== undefined &&
+      step.record !== false
+    ) {
+      event.holdMs = step.hold;
+      const left = await hold(step.hold);
+      if (left !== undefined) {
+        failure = new StepFailure('execution', originNotAllowed(left));
+        event.error = { message: scrub(failure.message) };
+      }
+    }
     input.events.push(event);
     await emit('onStepFinished', { stepIndex, step, event });
 
@@ -448,6 +479,20 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
         message: scrub(failure.message),
         stepIndex,
         origin: step.origin,
+      };
+    }
+  }
+  const last = input.events.at(-1);
+  if (input.endHoldMs > 0 && last !== undefined) {
+    const left = await hold(input.endHoldMs);
+    if (left !== undefined) {
+      const message = scrub(originNotAllowed(left));
+      last.error = { message };
+      return {
+        stage: 'execution',
+        message,
+        stepIndex: last.stepIndex,
+        origin: last.origin,
       };
     }
   }

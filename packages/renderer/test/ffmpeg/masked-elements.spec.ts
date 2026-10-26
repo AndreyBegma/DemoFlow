@@ -14,7 +14,7 @@ import {
   toOutputMs,
 } from '../../src/index.ts';
 import { hasFfmpeg, recordFixtureRun } from '../plan/fixture-runs.ts';
-import { countFrames } from './sample-frames.ts';
+import { countFrames, selectFrames } from './sample-frames.ts';
 
 interface Region {
   x0: number;
@@ -41,7 +41,7 @@ async function extractCropped(
   crop: Crop,
 ): Promise<Uint8Array[]> {
   const raw = `${file}.crop.rgb`;
-  const select = numbers.map((n) => `eq(n\\,${n})`).join('+');
+  const select = selectFrames(numbers);
   await runFfmpeg([
     '-y',
     '-i',

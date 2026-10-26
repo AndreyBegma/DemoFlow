@@ -158,7 +158,10 @@ export const TimelineEventSchema = z
     origin: StepOriginSchema.optional(),
     action: StepActionSchema,
     startMs: msSchema,
+    // The end of the action; a `hold` follows it (spec 365).
     endMs: msSchema,
+    // The step's `hold`, slept after `endMs`: `[endMs, endMs + holdMs]` is on screen.
+    holdMs: z.number().int().positive().optional(),
     target: z.strictObject({ box: BoxSchema }).optional(),
     // The real pointer path (ADR-0004 §2).
     pointer: z.strictObject({ from: PointSchema, to: PointSchema }).optional(),

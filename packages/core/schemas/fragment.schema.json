@@ -84,10 +84,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action"],
             "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            },
             "oneOf": [
               {
                 "required": ["path"]
@@ -227,10 +244,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "target"],
             "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            },
             "not": {
               "required": ["state", "zoom"],
               "properties": {
@@ -357,10 +391,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "target"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
           },
           {
             "type": "object",
@@ -493,10 +544,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "target"],
             "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            },
             "oneOf": [
               {
                 "required": ["value"]
@@ -626,10 +694,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "target", "option"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
           },
           {
             "type": "object",
@@ -748,10 +833,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "target"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
           },
           {
             "type": "object",
@@ -881,10 +983,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "key"],
             "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            },
             "dependentRequired": {
               "zoom": ["target"]
             }
@@ -1091,10 +1210,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action"],
             "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            },
             "oneOf": [
               {
                 "required": ["to"]
@@ -1221,10 +1357,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "target"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
           },
           {
             "type": "object",
@@ -1360,10 +1513,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "target", "text"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
           },
           {
             "type": "object",
@@ -1397,10 +1567,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "name"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
           },
           {
             "type": "object",
@@ -1439,10 +1626,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "title"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
           },
           {
             "type": "object",
@@ -1469,10 +1673,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "ms"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
           },
           {
             "type": "object",
@@ -1506,10 +1727,27 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "hold": {
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
               }
             },
             "required": ["action", "name"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "dependentSchemas": {
+              "hold": {
+                "properties": {
+                  "record": {
+                    "not": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
           },
           {
             "type": "object",

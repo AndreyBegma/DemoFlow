@@ -14,6 +14,28 @@ export function sampleFrames(from: number, to: number, step: number): number[] {
 }
 
 /**
+ * An FFmpeg `select` expression that passes exactly the frames `numbers`
+ * (ascending, distinct). Each run of consecutive frames is one
+ * `between(n,a,b)` term, so a long run stays one term: one `eq(n,…)` per
+ * frame grew past what FFmpeg can allocate once the end hold lengthened
+ * the video (#365).
+ */
+export function selectFrames(numbers: readonly number[]): string {
+  const terms: string[] = [];
+  let start = 0;
+  for (let i = 1; i <= numbers.length; i++) {
+    if (i < numbers.length && numbers[i] === numbers[i - 1] + 1) continue;
+    const from = numbers[start];
+    const to = numbers[i - 1];
+    terms.push(
+      from === to ? `eq(n\\,${from})` : `between(n\\,${from}\\,${to})`,
+    );
+    start = i;
+  }
+  return terms.join('+');
+}
+
+/**
  * The number of video frames in `file`, counted by decoding it: with
  * `-c copy` the pinned FFmpeg reports no `frame=` progress.
  */

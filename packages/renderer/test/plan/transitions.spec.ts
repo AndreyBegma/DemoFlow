@@ -485,7 +485,8 @@ describe('a masked field across a document navigation (spec 146)', () => {
       expect(
         plan({ ...options, events: UNMEASURED, navigations: undefined }).masks,
       ).toEqual([
-        { startMs: 600, endMs: 6000, keys: [{ atMs: 600, box: MASKED }] },
+        // To the end of the page: the last event plus the end hold (spec 365).
+        { startMs: 600, endMs: 7500, keys: [{ atMs: 600, box: MASKED }] },
       ]);
     }
   });
