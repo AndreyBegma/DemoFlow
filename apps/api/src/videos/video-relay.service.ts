@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { createWriteStream, type WriteStream } from 'node:fs';
+import { rename, rm } from 'node:fs/promises';
 import {
   Injectable,
   Logger,
@@ -14,6 +16,7 @@ import {
   type VideoSink,
 } from '../runner/runner-connections.service';
 import type {
+  VideoAsset,
   VideoChunk,
   VideoMessage,
   VideoRange,
@@ -52,23 +55,200 @@ const RUNNER_ERRORS: Record<string, { status: number; error: string }> = {
 };
 const UNKNOWN_RUNNER_ERROR = { status: 502, error: 'runner-error' };
 
+interface Head {
+  size: number;
+  start: number;
+  end: number;
+}
+
+/**
+ * Where one stream's bytes go: a playback response, or a share's file (spec
+ * #347, Decision 4). The relay owns the protocol — spans, timeouts, credit —
+ * and a sink only takes what passed it.
+ */
+interface StreamSink {
+  /** Logged with the stream's outcome. */
+  readonly kind: 'play' | 'download' | 'upload';
+  /** The head passed the span check. An error code refuses it. */
+  head(head: Head, expected: number): string | null;
+  /** In order. `taken` once the sink holds the bytes: they are acknowledged then. */
+  write(bytes: Buffer, taken: () => void): void;
+  /** Every byte the head announced came. */
+  end(): void;
+  /** Failed: `status` and `headers` count only for a response not yet started. */
+  fail(status: number, error: string, headers?: Record<string, string>): void;
+}
+
+/** The HTTP response of `GET /runs/:id/video/:format` (spec #191). */
+class ResponseSink implements StreamSink {
+  readonly kind: 'play' | 'download';
+  /** Chunks the response has not taken yet, acknowledged on `drain`. */
+  private unacked: Array<() => void> = [];
+
+  constructor(
+    private readonly res: Response,
+    private readonly format: RunFormat,
+    private readonly range: VideoRange | null,
+    /** Set for `?download=1`: the head says `attachment` (spec #299). */
+    private readonly download: { fileName: string } | undefined,
+  ) {
+    this.kind = download ? 'download' : 'play';
+  }
+
+  head(head: Head, expected: number): null {
+    const partial = this.range !== null;
+    this.res.writeHead(partial ? 206 : 200, {
+      ...COMMON_HEADERS,
+      'Content-Type': VIDEO_CONTENT_TYPES[this.format],
+      'Content-Length': String(expected),
+      'Content-Disposition': this.download
+        ? `attachment; filename="${this.download.fileName}"`
+        : 'inline',
+      ...(partial
+        ? { 'Content-Range': `bytes ${head.start}-${head.end}/${head.size}` }
+        : {}),
+    });
+    return null;
+  }
+
+  write(bytes: Buffer, taken: () => void): void {
+    const took = this.res.write(bytes);
+    if (took && this.unacked.length === 0) {
+      taken();
+      return;
+    }
+    this.unacked.push(taken);
+    if (this.unacked.length === 1) {
+      this.res.once('drain', () => {
+        for (const ack of this.unacked.splice(0)) {
+          ack();
+        }
+      });
+    }
+  }
+
+  end(): void {
+    this.res.end();
+  }
+
+  /** `{ error }` before the head; after it, the status is sent: destroy. */
+  fail(
+    status: number,
+    error: string,
+    headers: Record<string, string> = {},
+  ): void {
+    if (this.res.headersSent) {
+      this.res.destroy();
+      return;
+    }
+    this.res
+      .status(status)
+      .set({ ...COMMON_HEADERS, ...headers })
+      .json({ error });
+  }
+}
+
+/** What an upload into a file settles with: the file's size, or an error code. */
+export type UploadOutcome =
+  | { ok: true; size: number }
+  | { ok: false; error: string };
+
+export interface UploadVideo {
+  runnerId: string;
+  runId: string;
+  format: RunFormat;
+  /** The share's poster instead of the render. */
+  asset?: VideoAsset;
+  /** Where the file lands. Bytes go to `<path>.part` until the last one came. */
+  path: string;
+  /** Checks the head's size before a byte is written; an error code refuses it. */
+  accept: (size: number) => string | null;
+}
+
+/**
+ * A share's file (spec #347, Decision 2): written to `<path>.part`, renamed
+ * once every announced byte is on disk, deleted on anything else.
+ */
+class FileSink implements StreamSink {
+  readonly kind = 'upload';
+  private file: WriteStream | undefined;
+  private failed = false;
+
+  constructor(
+    private readonly path: string,
+    private readonly accept: (size: number) => string | null,
+    /** The disk failed under the stream: the relay cancels it. */
+    private readonly broken: () => void,
+    private readonly settle: (outcome: UploadOutcome) => void,
+  ) {}
+
+  private get part(): string {
+    return `${this.path}.part`;
+  }
+
+  head({ size }: Head): string | null {
+    const refused = this.accept(size);
+    if (refused !== null) {
+      return refused;
+    }
+    this.file = createWriteStream(this.part);
+    this.file.once('error', () => this.broken());
+    return null;
+  }
+
+  write(bytes: Buffer, taken: () => void): void {
+    this.file?.write(bytes, (error) => {
+      if (!error) {
+        taken();
+      }
+    });
+  }
+
+  end(): void {
+    const file = this.file;
+    if (!file) {
+      return;
+    }
+    // `close`, not `finish`: the descriptor is released before the rename.
+    file.once('close', () => {
+      if (this.failed) {
+        return;
+      }
+      rename(this.part, this.path).then(
+        () => this.settle({ ok: true, size: file.bytesWritten }),
+        () => this.discard('io'),
+      );
+    });
+    file.end();
+  }
+
+  fail(_status: number, error: string): void {
+    this.failed = true;
+    this.file?.destroy();
+    this.discard(error);
+  }
+
+  private discard(error: string): void {
+    rm(this.part, { force: true }).then(
+      () => this.settle({ ok: false, error }),
+      () => this.settle({ ok: false, error }),
+    );
+  }
+}
+
 interface Stream {
   id: string;
   runnerId: string;
   runId: string;
   format: RunFormat;
   range: VideoRange | null;
-  /** Set for `?download=1`: the head says `attachment` (spec #299). */
-  download: { fileName: string } | undefined;
-  res: Response;
+  sink: StreamSink;
   /** Clock ms. */
   openedAt: number;
   lastChunkAt: number;
   /** `end - start + 1` of the head; null until it came. */
   expected: number | null;
   relayed: number;
-  /** Sizes of chunks the response has not taken yet, acknowledged on `drain`. */
-  unacked: number[];
 }
 
 export interface OpenVideo {
@@ -84,7 +264,7 @@ export interface OpenVideo {
  * Plays a run's video from the machine that recorded it (spec #191, ADR-0009
  * §1): asks the Runner over its socket for the bytes and relays them into the
  * HTTP response, acknowledging each chunk once the response has taken it.
- * Nothing is stored here.
+ * A share's upload (spec #347) pulls the same way into a file instead.
  *
  * Works only on the instance that holds the Runner's socket. Staging runs one
  * API instance; more would need sticky routing or a broker (Decision 10).
@@ -115,7 +295,7 @@ export class VideoRelay
     clearInterval(this.timer);
   }
 
-  /** Streams open to the machine right now. */
+  /** Streams open to the machine right now, uploads included. */
   openTo(runnerId: string): number {
     let count = 0;
     for (const stream of this.streams.values()) {
@@ -128,22 +308,13 @@ export class VideoRelay
 
   /** Sends `video.open`; the response is answered from here on. */
   open({ runnerId, runId, format, range, download, res }: OpenVideo): void {
-    const now = this.clock.now().getTime();
-    const stream: Stream = {
-      id: randomUUID(),
+    const stream = this.start(
       runnerId,
       runId,
       format,
       range,
-      download,
-      res,
-      openedAt: now,
-      lastChunkAt: now,
-      expected: null,
-      relayed: 0,
-      unacked: [],
-    };
-    this.streams.set(stream.id, stream);
+      new ResponseSink(res, format, range, download),
+    );
     // Seeked or left: the Runner stops reading (Decision 6).
     res.on('close', () => {
       if (this.streams.get(stream.id) === stream) {
@@ -151,16 +322,37 @@ export class VideoRelay
         this.finish(stream, 'aborted');
       }
     });
-    const sent = this.connections.sendTo(runnerId, {
-      type: 'video.open',
-      streamId: stream.id,
-      runId,
-      format,
-      range,
+    this.send(stream, undefined);
+  }
+
+  /**
+   * Pulls the whole file into `path` (spec #347, Decision 4), with the
+   * playback's timeouts and credit. Settles once the file is in place or gone.
+   */
+  upload({
+    runnerId,
+    runId,
+    format,
+    asset,
+    path,
+    accept,
+  }: UploadVideo): Promise<UploadOutcome> {
+    return new Promise((settle) => {
+      let stream: Stream | undefined;
+      const sink = new FileSink(
+        path,
+        accept,
+        () => {
+          if (stream && this.streams.get(stream.id) === stream) {
+            this.cancel(stream);
+            this.fail(stream, 500, 'io');
+          }
+        },
+        settle,
+      );
+      stream = this.start(runnerId, runId, format, null, sink);
+      this.send(stream, asset);
     });
-    if (!sent) {
-      this.fail(stream, 503, 'runner-offline');
-    }
   }
 
   message(runnerId: string, message: VideoMessage): void {
@@ -194,20 +386,16 @@ export class VideoRelay
     // Bytes beyond the head's span must never pass as the file (Decision 7).
     if (stream.relayed + bytes.length > stream.expected) {
       this.cancel(stream);
-      this.destroy(stream, 'overrun');
+      this.fail(stream, 502, 'overrun');
       return true;
     }
     stream.relayed += bytes.length;
     stream.lastChunkAt = this.clock.now().getTime();
-    const taken = stream.res.write(bytes);
-    if (taken && stream.unacked.length === 0) {
-      this.ack(stream, bytes.length);
-      return true;
-    }
-    stream.unacked.push(bytes.length);
-    if (stream.unacked.length === 1) {
-      stream.res.once('drain', () => this.drained(stream));
-    }
+    stream.sink.write(bytes, () => {
+      if (this.streams.get(stream.id) === stream) {
+        this.ack(stream, bytes.length);
+      }
+    });
     return true;
   }
 
@@ -231,15 +419,51 @@ export class VideoRelay
         }
       } else if (now - stream.lastChunkAt >= CHUNK_TIMEOUT_MS) {
         this.cancel(stream);
-        this.destroy(stream, 'stalled');
+        this.fail(stream, 504, 'stalled');
       }
     }
   }
 
-  private head(
-    stream: Stream,
-    head: { size: number; start: number; end: number },
-  ): void {
+  private start(
+    runnerId: string,
+    runId: string,
+    format: RunFormat,
+    range: VideoRange | null,
+    sink: StreamSink,
+  ): Stream {
+    const now = this.clock.now().getTime();
+    const stream: Stream = {
+      id: randomUUID(),
+      runnerId,
+      runId,
+      format,
+      range,
+      sink,
+      openedAt: now,
+      lastChunkAt: now,
+      expected: null,
+      relayed: 0,
+    };
+    this.streams.set(stream.id, stream);
+    return stream;
+  }
+
+  /** `asset` only for an upload: a daemon without `share` never sees the field. */
+  private send(stream: Stream, asset: VideoAsset | undefined): void {
+    const sent = this.connections.sendTo(stream.runnerId, {
+      type: 'video.open',
+      streamId: stream.id,
+      runId: stream.runId,
+      format: stream.format,
+      range: stream.range,
+      ...(asset ? { asset } : {}),
+    });
+    if (!sent) {
+      this.fail(stream, 503, 'runner-offline');
+    }
+  }
+
+  private head(stream: Stream, head: Head): void {
     // A second head, or one that is not the span asked for, is a broken daemon.
     const span = spanOf(stream.range, head.size);
     if (
@@ -252,20 +476,15 @@ export class VideoRelay
       this.fail(stream, 502, 'runner-error');
       return;
     }
-    stream.expected = head.end - head.start + 1;
+    const expected = head.end - head.start + 1;
+    const refused = stream.sink.head(head, expected);
+    if (refused !== null) {
+      this.cancel(stream);
+      this.fail(stream, 502, refused);
+      return;
+    }
+    stream.expected = expected;
     stream.lastChunkAt = this.clock.now().getTime();
-    const partial = stream.range !== null;
-    stream.res.writeHead(partial ? 206 : 200, {
-      ...COMMON_HEADERS,
-      'Content-Type': VIDEO_CONTENT_TYPES[stream.format],
-      'Content-Length': String(stream.expected),
-      'Content-Disposition': stream.download
-        ? `attachment; filename="${stream.download.fileName}"`
-        : 'inline',
-      ...(partial
-        ? { 'Content-Range': `bytes ${head.start}-${head.end}/${head.size}` }
-        : {}),
-    });
   }
 
   private end(stream: Stream): void {
@@ -274,11 +493,11 @@ export class VideoRelay
       return;
     }
     if (stream.relayed !== stream.expected) {
-      this.destroy(stream, 'short');
+      this.fail(stream, 502, 'short');
       return;
     }
     this.finish(stream, 'complete');
-    stream.res.end();
+    stream.sink.end();
   }
 
   private runnerError(
@@ -287,7 +506,7 @@ export class VideoRelay
     size: number | undefined,
   ): void {
     if (stream.expected !== null) {
-      this.destroy(stream, `runner ${code}`.slice(0, 80));
+      this.fail(stream, 502, `runner ${code}`.slice(0, 80));
       return;
     }
     if (code === 'bad-range' && size !== undefined) {
@@ -298,15 +517,6 @@ export class VideoRelay
     }
     const { status, error } = RUNNER_ERRORS[code] ?? UNKNOWN_RUNNER_ERROR;
     this.fail(stream, status, error);
-  }
-
-  private drained(stream: Stream): void {
-    if (this.streams.get(stream.id) !== stream) {
-      return;
-    }
-    for (const bytes of stream.unacked.splice(0)) {
-      this.ack(stream, bytes);
-    }
   }
 
   private ack(stream: Stream, bytes: number): void {
@@ -324,28 +534,18 @@ export class VideoRelay
     });
   }
 
-  /** Answers `{ error }` before the head; after it, the status is sent: destroy. */
+  /**
+   * Ends the stream with `error`. A short or broken body must never pass as a
+   * complete one (Decision 7): a started response is destroyed, a file deleted.
+   */
   private fail(
     stream: Stream,
     status: number,
     error: string,
     headers: Record<string, string> = {},
   ): void {
-    if (stream.res.headersSent) {
-      this.destroy(stream, error);
-      return;
-    }
     this.finish(stream, error);
-    stream.res
-      .status(status)
-      .set({ ...COMMON_HEADERS, ...headers })
-      .json({ error });
-  }
-
-  /** A short or broken body must never pass as a complete one (Decision 7). */
-  private destroy(stream: Stream, outcome: string): void {
-    this.finish(stream, outcome);
-    stream.res.destroy();
+    stream.sink.fail(status, error, headers);
   }
 
   private finish(stream: Stream, outcome: string): void {
@@ -356,7 +556,8 @@ export class VideoRelay
         event: 'video.stream',
         runId: stream.runId,
         format: stream.format,
-        download: stream.download !== undefined,
+        download: stream.sink.kind === 'download',
+        upload: stream.sink.kind === 'upload',
         bytes: stream.relayed,
         outcome,
         durationMs: this.clock.now().getTime() - stream.openedAt,
