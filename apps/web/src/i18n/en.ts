@@ -520,6 +520,44 @@ export const en = {
       body: 'Deleted from the machine on {date}.',
     },
   },
+  sharePage: {
+    download: 'Download',
+    madeWith: 'Made with DemoFlow',
+    playbackFailed: 'The video could not be played. Try Download instead.',
+    chapters: {
+      title: 'Chapters',
+      seek: 'Play from {time}: {title}',
+    },
+    locked: {
+      title: 'This video is protected',
+      body: 'Enter the password you were given to watch it.',
+      password: 'Password',
+      submit: 'Unlock',
+      submitting: 'Unlocking…',
+      wrongPassword: 'Wrong password.',
+      rateLimited: 'Too many attempts, try again in a few minutes.',
+      failed: 'We could not check the password. Try again in a moment.',
+    },
+    expired: {
+      title: 'This link has expired',
+      body: 'Ask the person who shared it for a new link.',
+    },
+    unavailable: {
+      title: 'This video is no longer available',
+      body: 'Ask the person who shared it to share it again.',
+    },
+    notFound: {
+      title: 'This link does not exist',
+      body: 'Check the address, or ask the person who shared it for the link again.',
+    },
+    failed: {
+      title: 'We could not load this video',
+      body: 'Try again in a moment.',
+    },
+    meta: {
+      locked: 'A shared DemoFlow video',
+    },
+  },
   meta: {
     title: 'DemoFlow',
   },
