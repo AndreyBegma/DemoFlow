@@ -5,12 +5,12 @@ import { notFound } from 'next/navigation';
 import { RunPlayback } from '@/components/player/run-playback';
 import { DeleteRun } from '@/components/projects/delete-run';
 import { RunAgain } from '@/components/projects/run-again';
-import { RunBreadcrumbs } from '@/components/projects/run-breadcrumbs';
 import {
   RunDetails,
   RunFailureBanner,
 } from '@/components/projects/run-details';
 import { RunStatus } from '@/components/projects/run-status';
+import { CrumbName } from '@/components/shell/crumb-names';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format-date';
 import { formatDuration } from '@/lib/format-duration';
@@ -27,11 +27,7 @@ export default async function RunPage({
   const detail = await getRunDetail(runId);
   if (detail === 'not_found') notFound();
   if (detail === 'error') {
-    return (
-      <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 p-6">
-        <Banner tone="danger">{t('runPage.pageFailed')}</Banner>
-      </main>
-    );
+    return <Banner tone="danger">{t('runPage.pageFailed')}</Banner>;
   }
   const { run, project, machine } = detail;
   if (project.id !== id) notFound();
@@ -44,12 +40,9 @@ export default async function RunPage({
     scenarioPath: run.scenarioPath,
   });
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 p-6">
-      <RunBreadcrumbs
-        projectId={project.id}
-        projectName={project.name}
-        runName={run.scenarioName}
-      />
+    <>
+      <CrumbName segment={project.id} name={project.name} />
+      <CrumbName segment={run.id} name={run.scenarioName} />
       <Card pad="lg">
         <h1 className="break-words text-2xl font-semibold">
           {t('runPage.title', { name: run.scenarioName })}
@@ -139,6 +132,6 @@ export default async function RunPage({
         />
       </Card>
       <RunDetails stages={run.stages} renders={run.renders} />
-    </main>
+    </>
   );
 }

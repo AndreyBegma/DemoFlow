@@ -1,3 +1,4 @@
+import { Badge } from '@andrewbehma/glass-ui/badge';
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Card } from '@andrewbehma/glass-ui/card';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
@@ -44,13 +45,15 @@ export function MachinesSummary({ runners }: { runners: Runner[] | null }) {
 
 function MachineRow({ runner }: { runner: Runner }) {
   return (
-    <li className="flex flex-wrap items-center justify-between gap-2 border-t border-current/10 py-3 first:border-t-0 first:pt-0">
+    <li className="flex flex-wrap items-center justify-between gap-2 border-t border-line py-3 first:border-t-0 first:pt-0">
       <span className="min-w-0 break-words font-semibold">{runner.name}</span>
       <span className="flex items-center gap-3 text-sm">
         <span className="inline-flex items-center gap-2">
-          <span
+          <Badge
+            dot
+            tone={runner.online ? 'ok' : 'neutral'}
             aria-hidden="true"
-            className={`size-2.5 rounded-full ${runner.online ? 'bg-green-500' : 'bg-gray-400'}`}
+            className="size-2"
           />
           {runner.online
             ? t('machines.status.online')

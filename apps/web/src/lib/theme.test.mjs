@@ -30,10 +30,22 @@ test('system follows the preference; dark and light ignore it', () => {
 });
 
 test('a stored mode is read back; anything else is system', () => {
-  assert.equal(readStoredTheme(() => memoryStorage({ 'df-theme': 'light' })), 'light');
-  assert.equal(readStoredTheme(() => memoryStorage({ 'df-theme': 'dark' })), 'dark');
-  assert.equal(readStoredTheme(() => memoryStorage({ 'df-theme': 'neon' })), 'system');
-  assert.equal(readStoredTheme(() => memoryStorage()), 'system');
+  assert.equal(
+    readStoredTheme(() => memoryStorage({ 'df-theme': 'light' })),
+    'light',
+  );
+  assert.equal(
+    readStoredTheme(() => memoryStorage({ 'df-theme': 'dark' })),
+    'dark',
+  );
+  assert.equal(
+    readStoredTheme(() => memoryStorage({ 'df-theme': 'neon' })),
+    'system',
+  );
+  assert.equal(
+    readStoredTheme(() => memoryStorage()),
+    'system',
+  );
 });
 
 test('system clears the key; dark and light store it', () => {
@@ -73,9 +85,7 @@ function boot({ storage, prefersLight }) {
   const window = { matchMedia: () => query };
   // A browser that blocks storage throws on any use of `localStorage`.
   const localStorage =
-    storage === 'blocked'
-      ? new Proxy({}, { get: blocked })
-      : storage;
+    storage === 'blocked' ? new Proxy({}, { get: blocked }) : storage;
   new Function('document', 'window', 'localStorage', THEME_BOOTSTRAP_SCRIPT)(
     { documentElement: root },
     window,
