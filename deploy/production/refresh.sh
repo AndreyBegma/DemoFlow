@@ -108,6 +108,20 @@ while :; do
   waited=$((waited + 5))
 done
 
+# The web image must serve apps/web/public; the poster stands for all of it.
+# Asked from inside the container, so it does not depend on the tunnel.
+echo "Waiting for the web app to serve /demo/landing-poster.png (up to ${HEALTH_TIMEOUT}s)..."
+waited=0
+until docker exec demoflow-production-web node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3670)+'/demo/landing-poster.png').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))" 2>/dev/null; do
+  if [ "$waited" -ge "$HEALTH_TIMEOUT" ]; then
+    echo "demoflow-production-web does not serve /demo/landing-poster.png after ${HEALTH_TIMEOUT}s" >&2
+    docker logs --tail 60 demoflow-production-web >&2 || true
+    exit 1
+  fi
+  sleep 5
+  waited=$((waited + 5))
+done
+
 {
   echo "DEPLOYED_SHA=${CI_COMMIT_SHA:-unknown}"
   echo "DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"

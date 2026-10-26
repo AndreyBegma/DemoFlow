@@ -53,6 +53,9 @@ ENV HOSTNAME=0.0.0.0
 
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+# The standalone output leaves public/ out; server.js serves it from next to
+# itself, so without this every file under it (the landing video) is a 404.
+COPY --from=builder /app/apps/web/public ./apps/web/public
 
 RUN mkdir -p /app/apps/web/.next/cache && chown -R node:node /app/apps/web/.next
 
