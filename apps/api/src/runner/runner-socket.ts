@@ -75,6 +75,8 @@ export type ServerMessage =
       runId: string;
       format: string;
       range: VideoRange | null;
+      /** The share's poster instead of the render (spec #347), only to a daemon with `share`. */
+      asset?: VideoAsset;
     }
   | { type: 'video.ack'; streamId: string; bytes: number }
   | { type: 'video.cancel'; streamId: string }
@@ -88,7 +90,11 @@ export type ServerMessage =
       /** Only when the browser chose formats (spec #325): the default frame is unchanged. */
       options?: RunStartOptions;
     }
-  | { type: 'run.cancel'; requestId: string };
+  | { type: 'run.cancel'; requestId: string }
+  | { type: 'share.prepare'; requestId: string; runId: string; format: string };
+
+/** What `video.open` may ask for besides the render itself (spec #347). */
+export type VideoAsset = 'poster';
 
 /** What a website-started run may choose (ADR-0017): the output formats, nothing else. */
 export interface RunStartOptions {
@@ -102,7 +108,8 @@ export type ClientMessage =
   | ByeMessage
   | VideoMessage
   | ArtifactsMessage
-  | LaunchMessage;
+  | LaunchMessage
+  | ShareMessage;
 
 export type VideoMessage =
   | VideoHeadMessage
@@ -129,6 +136,15 @@ export type LaunchMessage =
   | RunProgressMessage
   | LaunchesSyncMessage;
 
+/** A Runner's answer to `share.prepare` (spec #347, Decision 4). */
+export type ShareMessage = SharePreparedMessage | ShareErrorMessage;
+
+/** `share.prepared` limits (Decision 4). */
+export const SHARE_DESCRIPTION_MAX = 2000;
+export const SHARE_CHAPTERS_MAX = 100;
+export const SHARE_CHAPTER_TITLE_MAX = 200;
+export const SHARE_POSTER_MAX_BYTES = 1024 * 1024;
+
 /** `scenarios.listed` carries this many entries at most. */
 export const MAX_LISTED_SCENARIOS = 100;
 /** `launches.sync` carries this many launch ids at most. */
@@ -151,6 +167,15 @@ export type RunOption = (typeof RUN_OPTIONS)[number];
 /** `launches.sync` announces this many options at most, each this long at most. */
 export const MAX_RUN_OPTIONS = 8;
 export const RUN_OPTION_MAX_LENGTH = 32;
+/**
+ * The capabilities this API knows a daemon may announce (ADR-0019 §7): `share`
+ * answers `share.prepare` and `video.open` with an `asset`.
+ */
+export const FEATURES = ['share'] as const;
+export type Feature = (typeof FEATURES)[number];
+/** `launches.sync` announces this many features at most, each this long at most. */
+export const MAX_FEATURES = 8;
+export const FEATURE_MAX_LENGTH = 32;
 
 class PingMessage {
   @IsIn(['ping'])
@@ -379,9 +404,9 @@ class RunProgressMessage {
 
 /**
  * The daemon's first frame on every socket (spec #284, Decision 1): the
- * launch ids whose child it still has, possibly none, and the `run.start`
- * options it accepts (spec #325). Unknown options pass here and are dropped
- * when the frame is routed.
+ * launch ids whose child it still has, possibly none, the `run.start`
+ * options it accepts (spec #325) and its features (spec #347). Unknown
+ * options and features pass here and are dropped when the frame is routed.
  */
 class LaunchesSyncMessage {
   @IsIn(['launches.sync'])
@@ -399,6 +424,67 @@ class LaunchesSyncMessage {
   @IsString({ each: true })
   @MaxLength(RUN_OPTION_MAX_LENGTH, { each: true })
   runOptions?: string[];
+
+  /** Absent from a daemon before #349: it can do none. Unknown ones are dropped. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_FEATURES)
+  @IsString({ each: true })
+  @MaxLength(FEATURE_MAX_LENGTH, { each: true })
+  features?: string[];
+}
+
+class ShareChapter {
+  @IsString()
+  @Length(1, SHARE_CHAPTER_TITLE_MAX)
+  title!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  atMs!: number;
+}
+
+/** The daemon has the render and its poster; the bytes follow over `video.open`. */
+class SharePreparedMessage {
+  @IsIn(['share.prepared'])
+  type!: 'share.prepared';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  /** The scenario's description, read from its file at share time (ADR-0019 §2). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(SHARE_DESCRIPTION_MAX)
+  description?: string;
+
+  @IsArray()
+  @ArrayMaxSize(SHARE_CHAPTERS_MAX)
+  @ValidateNested({ each: true })
+  @Type(() => ShareChapter)
+  chapters!: ShareChapter[];
+
+  @IsInt()
+  @Min(1)
+  @Max(SHARE_POSTER_MAX_BYTES)
+  posterSize!: number;
+}
+
+/**
+ * `not-found`, `no-render` or `io`. Any string, so a code a newer daemon adds
+ * still ends the request instead of being dropped.
+ */
+class ShareErrorMessage {
+  @IsIn(['share.error'])
+  type!: 'share.error';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @MaxLength(64)
+  code!: string;
 }
 
 const CLIENT_MESSAGES: Record<
@@ -421,6 +507,8 @@ const CLIENT_MESSAGES: Record<
   'run.finished': RunFinishedMessage,
   'run.progress': RunProgressMessage,
   'launches.sync': LaunchesSyncMessage,
+  'share.prepared': SharePreparedMessage,
+  'share.error': ShareErrorMessage,
 };
 
 /** A binary frame: part of a stream's file, in order. */

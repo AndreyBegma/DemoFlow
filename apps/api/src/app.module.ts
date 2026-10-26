@@ -8,6 +8,7 @@ import { LaunchesModule } from './launches/launches.module';
 import { MailModule } from './mail/mail.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RunnerModule } from './runner/runner.module';
+import { SharesModule } from './shares/shares.module';
 import { VideosModule } from './videos/videos.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { VideosModule } from './videos/videos.module';
     ProjectsModule,
     VideosModule,
     LaunchesModule,
+    SharesModule,
   ],
   controllers: [HealthController],
 })

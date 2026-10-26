@@ -700,6 +700,7 @@ describe('run video through the runner relay (integration)', () => {
           name: 'Laptop',
           online: true,
           runOptions: [],
+          features: [],
         },
       });
     });
@@ -711,6 +712,7 @@ describe('run video through the runner relay (integration)', () => {
         name: 'Laptop',
         online: false,
         runOptions: [],
+        features: [],
       });
     });
 
@@ -722,6 +724,17 @@ describe('run video through the runner relay (integration)', () => {
       expect(res.body.machine).toMatchObject({
         online: true,
         runOptions: ['formats'],
+      });
+    });
+
+    it('shows the known features an online machine announced (spec #347)', async () => {
+      const socket = await daemon();
+      socket.sync([], undefined, ['later', 'share']);
+      await socket.roundTrip();
+      const res = await page().expect(200);
+      expect(res.body.machine).toMatchObject({
+        online: true,
+        features: ['share'],
       });
     });
 

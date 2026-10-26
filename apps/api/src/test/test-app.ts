@@ -8,6 +8,7 @@ import { Clock } from '../common/clock';
 import { PrismaService } from '../database/prisma.service';
 import { Mailer } from '../mail/mailer';
 import { RecordingMailer } from '../mail/recording.mailer';
+import { ShareSweeper } from '../shares/share-sweeper';
 
 /** A clock the test moves by hand. */
 export class FakeClock extends Clock {
@@ -63,7 +64,12 @@ export async function createTestApp(
     .overrideProvider(Mailer)
     .useValue(mailer)
     .overrideProvider(Clock)
-    .useValue(clock);
+    .useValue(clock)
+    // The sweeper acts on every share in the shared test database: a pass on
+    // boot in each parallel suite would delete and mark other suites' shares.
+    // Its spec builds one and calls `sweep` itself.
+    .overrideProvider(ShareSweeper)
+    .useValue({});
   for (const { provide, useValue } of overrides) {
     builder.overrideProvider(provide).useValue(useValue);
   }

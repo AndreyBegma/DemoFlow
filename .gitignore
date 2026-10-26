@@ -39,3 +39,6 @@ Thumbs.db
 
 # Prisma
 prisma/generated/
+
+# Shared videos stored by the API in development (SHARE_DIR)
+apps/api/data/
