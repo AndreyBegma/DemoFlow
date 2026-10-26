@@ -3,10 +3,16 @@ type NavLabel =
   | 'app.shell.nav.overview'
   | 'app.shell.nav.projects'
   | 'app.shell.nav.machines'
+  | 'app.shell.nav.shares'
   | 'app.shell.nav.settings';
 
 /** Names an icon the sidebar draws; kept out of this module so it stays pure. */
-export type NavIcon = 'overview' | 'projects' | 'machines' | 'settings';
+export type NavIcon =
+  | 'overview'
+  | 'projects'
+  | 'machines'
+  | 'shares'
+  | 'settings';
 
 export interface NavItem {
   id: string;
@@ -17,7 +23,7 @@ export interface NavItem {
 
 /**
  * The app's sidebar, in order (spec #373, Decision 2). A later page adds its
- * entry here with one line; Shares arrives with #350.
+ * entry here with one line.
  */
 export const NAV_ITEMS: readonly NavItem[] = [
   {
@@ -37,6 +43,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: '/app/machines',
     label: 'app.shell.nav.machines',
     icon: 'machines',
+  },
+  {
+    id: 'shares',
+    href: '/app/shares',
+    label: 'app.shell.nav.shares',
+    icon: 'shares',
   },
   {
     id: 'settings',

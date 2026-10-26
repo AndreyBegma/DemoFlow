@@ -23,6 +23,7 @@ function crumbLabels(): Record<CrumbKind, string> {
     project: t('app.shell.crumbs.project'),
     run: t('app.shell.crumbs.run'),
     machines: t('app.shell.nav.machines'),
+    shares: t('app.shell.nav.shares'),
     settings: t('app.shell.nav.settings'),
     device: t('app.shell.crumbs.device'),
   };

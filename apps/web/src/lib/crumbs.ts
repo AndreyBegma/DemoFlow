@@ -5,6 +5,7 @@ export type CrumbKind =
   | 'project'
   | 'run'
   | 'machines'
+  | 'shares'
   | 'settings'
   | 'device';
 
@@ -21,6 +22,7 @@ export type CrumbNames = ReadonlyMap<string, string>;
 const SECTIONS: Readonly<Record<string, CrumbKind>> = {
   projects: 'projects',
   machines: 'machines',
+  shares: 'shares',
   settings: 'settings',
   device: 'device',
 };
