@@ -23,6 +23,7 @@ import {
   LAST_SEEN_WRITE_INTERVAL_MS,
   type LaunchMessage,
   PING_INTERVAL_MS,
+  type ProjectMessage,
   parseClientMessage,
   RUN_OPTIONS,
   type RunOption,
@@ -56,6 +57,8 @@ interface Connection {
   features: Feature[];
   /** A `share.*` answer for no pending request was logged on this socket. */
   warnedStrayShare: boolean;
+  /** A `project.*` answer for no pending request was logged on this socket. */
+  warnedStrayProject: boolean;
 }
 
 /**
@@ -102,6 +105,16 @@ export interface ShareSink {
 }
 
 /**
+ * Where folder requests (spec #378) hear from the sockets. `message` answers
+ * false for a request it does not hold.
+ */
+export interface ProjectSink {
+  message(runnerId: string, message: ProjectMessage): boolean;
+  /** The machine's socket is gone: closed, replaced, revoked or shut down. */
+  closed(runnerId: string): void;
+}
+
+/**
  * The open runner sockets of this API instance (one today, #120): online is
  * "has an entry here", never a column. One socket per machine — a second one
  * replaces the first with `4409`. Heartbeats run on the injected clock, so
@@ -119,6 +132,7 @@ export class RunnerConnections
   private artifactsSink: ArtifactsSink | undefined;
   private launchSink: LaunchSink | undefined;
   private shareSink: ShareSink | undefined;
+  private projectSink: ProjectSink | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -207,6 +221,11 @@ export class RunnerConnections
     this.shareSink = sink;
   }
 
+  /** Folder requests' hook (spec #378). One sink per instance. */
+  setProjectSink(sink: ProjectSink): void {
+    this.projectSink = sink;
+  }
+
   /** An authenticated socket, straight after the upgrade. */
   async accept(
     socket: WebSocket,
@@ -226,6 +245,7 @@ export class RunnerConnections
       runOptions: [],
       features: [],
       warnedStrayShare: false,
+      warnedStrayProject: false,
     };
     // Listeners first: a frame that arrives during the writes below counts.
     socket.on('message', (data, isBinary) =>
@@ -403,6 +423,12 @@ export class RunnerConnections
       case 'share.error':
         this.relayShare(connection, message);
         return;
+      case 'project.inspected':
+      case 'project.initialised':
+      case 'project.registered':
+      case 'project.error':
+        this.relayProject(connection, message);
+        return;
     }
   }
 
@@ -426,6 +452,19 @@ export class RunnerConnections
     }
     if (!connection.warnedStrayShare) {
       connection.warnedStrayShare = true;
+      this.logger.warn(
+        `Dropped ${message.type} from runner ${connection.runnerId} for a request that is not pending`,
+      );
+    }
+  }
+
+  /** As `relayArtifacts`, with its own once-per-socket warning. */
+  private relayProject(connection: Connection, message: ProjectMessage): void {
+    if (this.projectSink?.message(connection.runnerId, message)) {
+      return;
+    }
+    if (!connection.warnedStrayProject) {
+      connection.warnedStrayProject = true;
       this.logger.warn(
         `Dropped ${message.type} from runner ${connection.runnerId} for a request that is not pending`,
       );
@@ -456,6 +495,7 @@ export class RunnerConnections
     this.artifactsSink?.closed(runnerId);
     this.launchSink?.closed(runnerId);
     this.shareSink?.closed(runnerId);
+    this.projectSink?.closed(runnerId);
   }
 
   private touch(connection: Connection): void {

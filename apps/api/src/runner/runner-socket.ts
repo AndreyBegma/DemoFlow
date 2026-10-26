@@ -11,6 +11,7 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -24,7 +25,7 @@ import {
 } from 'class-validator';
 import type { RawData } from 'ws';
 import { IsScenarioId } from '../launches/scenario-id';
-import type { RunFormat } from '../projects/projects.dto';
+import { PATH_MAX, type RunFormat } from '../projects/projects.dto';
 import type { RunnerContext } from './runner-token';
 
 /**
@@ -91,7 +92,12 @@ export type ServerMessage =
       options?: RunStartOptions;
     }
   | { type: 'run.cancel'; requestId: string }
-  | { type: 'share.prepare'; requestId: string; runId: string; format: string };
+  | { type: 'share.prepare'; requestId: string; runId: string; format: string }
+  | {
+      type: 'project.inspect' | 'project.init' | 'project.register';
+      requestId: string;
+      path: string;
+    };
 
 /** What `video.open` may ask for besides the render itself (spec #347). */
 export type VideoAsset = 'poster';
@@ -109,7 +115,8 @@ export type ClientMessage =
   | VideoMessage
   | ArtifactsMessage
   | LaunchMessage
-  | ShareMessage;
+  | ShareMessage
+  | ProjectMessage;
 
 export type VideoMessage =
   | VideoHeadMessage
@@ -138,6 +145,18 @@ export type LaunchMessage =
 
 /** A Runner's answer to `share.prepare` (spec #347, Decision 4). */
 export type ShareMessage = SharePreparedMessage | ShareErrorMessage;
+
+/** A Runner's answers to `project.*` (spec #377, Decision 4; spec #378). */
+export type ProjectMessage =
+  | ProjectInspectedMessage
+  | ProjectInitialisedMessage
+  | ProjectRegisteredMessage
+  | ProjectErrorMessage;
+
+/** A file name `project.initialised` lists, relative to the folder. */
+const INIT_FILE_MAX = 512;
+/** `demoflow init` writes two files; room for a newer template. */
+const MAX_INIT_FILES = 16;
 
 /** `share.prepared` limits (Decision 4). */
 export const SHARE_DESCRIPTION_MAX = 2000;
@@ -169,9 +188,10 @@ export const MAX_RUN_OPTIONS = 8;
 export const RUN_OPTION_MAX_LENGTH = 32;
 /**
  * The capabilities this API knows a daemon may announce (ADR-0019 §7): `share`
- * answers `share.prepare` and `video.open` with an `asset`.
+ * answers `share.prepare` and `video.open` with an `asset`; `projects` answers
+ * `project.*` (ADR-0022 §6).
  */
-export const FEATURES = ['share'] as const;
+export const FEATURES = ['share', 'projects'] as const;
 export type Feature = (typeof FEATURES)[number];
 /** `launches.sync` announces this many features at most, each this long at most. */
 export const MAX_FEATURES = 8;
@@ -487,6 +507,109 @@ class ShareErrorMessage {
   code!: string;
 }
 
+/**
+ * What a Runner says about a folder (spec #377, Decision 5): never a file's
+ * contents nor a config value. `githubUrl` is any string here; the API keeps
+ * it only when it is a plain `https://github.com/<owner>/<repo>`.
+ */
+export class FolderInspection {
+  /** Canonical: the folder's real path. */
+  @IsString()
+  @Length(1, PATH_MAX)
+  rootPath!: string;
+
+  /** The folder's base name. */
+  @IsString()
+  @MaxLength(PATH_MAX)
+  name!: string;
+
+  @IsBoolean()
+  hasConfig!: boolean;
+
+  @IsBoolean()
+  configValid!: boolean;
+
+  @IsArray()
+  @ArrayMaxSize(MAX_LISTED_SCENARIOS)
+  @ValidateNested({ each: true })
+  @Type(() => ListedScenario)
+  scenarios!: ListedScenario[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(PATH_MAX)
+  githubUrl?: string;
+}
+
+class ProjectInspectedMessage {
+  @IsIn(['project.inspected'])
+  type!: 'project.inspected';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => FolderInspection)
+  inspection!: FolderInspection;
+}
+
+/** `demoflow init`'s files: those written now, and those already there. */
+class ProjectInitialisedMessage {
+  @IsIn(['project.initialised'])
+  type!: 'project.initialised';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsArray()
+  @ArrayMaxSize(MAX_INIT_FILES)
+  @IsString({ each: true })
+  @Length(1, INIT_FILE_MAX, { each: true })
+  created!: string[];
+
+  @IsArray()
+  @ArrayMaxSize(MAX_INIT_FILES)
+  @IsString({ each: true })
+  @Length(1, INIT_FILE_MAX, { each: true })
+  kept!: string[];
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => FolderInspection)
+  inspection!: FolderInspection;
+}
+
+/** The folder is in the machine's registry; `rootPath` is its canonical path. */
+class ProjectRegisteredMessage {
+  @IsIn(['project.registered'])
+  type!: 'project.registered';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @Length(1, PATH_MAX)
+  rootPath!: string;
+}
+
+/**
+ * `path-not-allowed`, `config-missing`, `config-invalid`, `busy` or
+ * `internal`. Any string, so a code a newer daemon adds still ends the
+ * request instead of being dropped; the API maps it to `runner-error`.
+ */
+class ProjectErrorMessage {
+  @IsIn(['project.error'])
+  type!: 'project.error';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @MaxLength(64)
+  code!: string;
+}
+
 const CLIENT_MESSAGES: Record<
   ClientMessage['type'],
   ClassConstructor<ClientMessage>
@@ -509,6 +632,10 @@ const CLIENT_MESSAGES: Record<
   'launches.sync': LaunchesSyncMessage,
   'share.prepared': SharePreparedMessage,
   'share.error': ShareErrorMessage,
+  'project.inspected': ProjectInspectedMessage,
+  'project.initialised': ProjectInitialisedMessage,
+  'project.registered': ProjectRegisteredMessage,
+  'project.error': ProjectErrorMessage,
 };
 
 /** A binary frame: part of a stream's file, in order. */

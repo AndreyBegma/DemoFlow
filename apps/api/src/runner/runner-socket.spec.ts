@@ -364,3 +364,86 @@ describe('launches.sync (spec #284)', () => {
     });
   });
 });
+
+describe('project messages (spec #378)', () => {
+  const requestId = randomUUID();
+  const inspection = {
+    rootPath: '/home/u/app',
+    name: 'app',
+    hasConfig: true,
+    configValid: true,
+    scenarios: [{ id: 'demoflow/checkout.demo.json', name: 'Checkout' }],
+    githubUrl: 'https://github.com/acme/app',
+  };
+
+  function parse(message: unknown) {
+    return parseClientMessage(Buffer.from(JSON.stringify(message)), false);
+  }
+
+  it('reads the four replies', () => {
+    for (const message of [
+      { type: 'project.inspected', requestId, inspection },
+      {
+        type: 'project.inspected',
+        requestId,
+        inspection: { ...inspection, githubUrl: undefined, scenarios: [] },
+      },
+      {
+        type: 'project.initialised',
+        requestId,
+        created: ['demoflow.config.json'],
+        kept: [],
+        inspection,
+      },
+      { type: 'project.registered', requestId, rootPath: '/home/u/app' },
+      { type: 'project.error', requestId, code: 'path-not-allowed' },
+      { type: 'project.error', requestId, code: 'a-code-from-a-newer-cli' },
+    ]) {
+      expect(parse(message)).toEqual({
+        ok: true,
+        message: expect.objectContaining(message),
+      });
+    }
+  });
+
+  it.each([
+    [
+      'an inspection without a request id',
+      { type: 'project.inspected', inspection },
+    ],
+    ['a missing inspection', { type: 'project.inspected', requestId }],
+    [
+      'a non-boolean hasConfig',
+      {
+        type: 'project.inspected',
+        requestId,
+        inspection: { ...inspection, hasConfig: 'yes' },
+      },
+    ],
+    [
+      'a scenario without a name',
+      {
+        type: 'project.inspected',
+        requestId,
+        inspection: { ...inspection, scenarios: [{ id: 'x' }] },
+      },
+    ],
+    [
+      'an empty created file',
+      {
+        type: 'project.initialised',
+        requestId,
+        created: [''],
+        kept: [],
+        inspection,
+      },
+    ],
+    [
+      'an empty rootPath',
+      { type: 'project.registered', requestId, rootPath: '' },
+    ],
+    ['an error without a code', { type: 'project.error', requestId }],
+  ])('refuses %s', (_label, message) => {
+    expect(parse(message).ok).toBe(false);
+  });
+});
