@@ -196,6 +196,7 @@ export async function runCommand(
       allowedOrigins: config.allowedOrigins,
       env: host.env,
       headless: flags.headed !== true,
+      endHoldMs: config.render.endHoldMs,
       observers: [
         createCaptureObserver({ scenarioId: scenarioId(root, file), runId }),
         ...(progress ? [progressObserver(io)] : []),
