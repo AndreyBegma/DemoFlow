@@ -5,6 +5,7 @@ import { Button } from '@andrewbehma/glass-ui/button';
 import { Card } from '@andrewbehma/glass-ui/card';
 import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
+import { SectionHeader } from '@andrewbehma/glass-ui/section-header';
 import { Select } from '@andrewbehma/glass-ui/select';
 import { Spinner } from '@andrewbehma/glass-ui/spinner';
 import { useCallback, useEffect, useState } from 'react';
@@ -17,7 +18,7 @@ import { FormatChoice, formatList } from './format-choice';
 import { LaunchStatus } from './launch-status';
 
 /**
- * The "Run a scenario" card: pick a scenario of the project's machine, start
+ * The "Run a scenario" section: pick a scenario of the project's machine, start
  * it, follow it and cancel it (spec #249). With no folder or no machine it
  * only says so and makes no request.
  */
@@ -82,14 +83,19 @@ export function StartRun({
 
   if (!enabled) {
     return (
-      <Card pad="lg">
-        <h2 className="text-lg font-semibold">{t('projects.launch.title')}</h2>
-        <p className="mt-2 text-sm text-ink-2">
-          {rootPath === null
-            ? t('projects.launch.unbound')
-            : t('projects.launch.removed')}
-        </p>
-      </Card>
+      <section aria-labelledby="start-run" className="flex flex-col gap-3">
+        <SectionHeader
+          title={t('projects.launch.title')}
+          headingId="start-run"
+        />
+        <Card pad="md">
+          <p className="text-sm text-ink-2">
+            {rootPath === null
+              ? t('projects.launch.unbound')
+              : t('projects.launch.removed')}
+          </p>
+        </Card>
+      </section>
     );
   }
 
@@ -98,9 +104,9 @@ export function StartRun({
   const locked = active || starting;
 
   return (
-    <Card pad="lg">
-      <h2 className="text-lg font-semibold">{t('projects.launch.title')}</h2>
-      <div className="mt-3 flex flex-col gap-3">
+    <section aria-labelledby="start-run" className="flex flex-col gap-3">
+      <SectionHeader title={t('projects.launch.title')} headingId="start-run" />
+      <Card pad="md" className="flex flex-col gap-3">
         {error ? <Banner tone="danger">{t(error)}</Banner> : null}
         {loading && list === null ? (
           <Spinner size="sm" label={t('projects.launch.loading')} />
@@ -175,7 +181,7 @@ export function StartRun({
             onCancel={() => void cancel()}
           />
         ) : null}
-      </div>
+      </Card>
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
@@ -196,6 +202,6 @@ export function StartRun({
         busy={starting}
         onConfirm={() => void confirmStart()}
       />
-    </Card>
+    </section>
   );
 }

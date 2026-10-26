@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "name": "Glass UI auth, device and settings",
+  "description": "Sign in off camera, then walk the restyled pages: the device code entry with a wrong code in a danger banner, account settings with its three sections, then sign out to the glass sign-in and sign-up cards.",
+  "viewport": { "width": 1280, "height": 720 },
+  "setup": [
+    {
+      "action": "include",
+      "fragment": "sign-in",
+      "with": { "next": "/app/device" }
+    }
+  ],
+  "steps": [
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Pair a machine", "exact": true }
+    },
+    {
+      "action": "fill",
+      "target": { "label": "Code", "exact": true },
+      "value": "ZZZZ-9999",
+      "caption": "A code the API does not know"
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Continue", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": {
+        "role": "heading",
+        "name": "This code is not valid",
+        "exact": true
+      }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Settings", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Account settings", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Profile", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Sign-in methods", "exact": true }
+    },
+    {
+      "action": "scroll",
+      "target": { "role": "heading", "name": "Danger zone", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Danger zone", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Account menu" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "menuitem", "name": "Sign out", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Sign in", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Create an account", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": {
+        "role": "heading",
+        "name": "Create your account",
+        "exact": true
+      }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Sign in", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Sign in", "exact": true }
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import {
   type Runner,
   type RunStatus,
 } from '@prisma/client';
+import { rebuildHealth, recordHealth } from '../checks/health/health';
 import { PrismaService } from '../database/prisma.service';
 import { ShareStorage } from '../shares/share-storage';
 import {
@@ -59,6 +60,8 @@ export interface ProjectView {
   /** `website` when added through the folder dialog (spec #378). */
   source: ProjectSource;
   runCount: number;
+  /** Scenarios whose latest run failed (spec #362, Decision 6). */
+  staleCount: number;
   lastRun: RunView | null;
   createdAt: Date;
   updatedAt: Date;
@@ -77,7 +80,9 @@ const NEWEST_FIRST: Prisma.RunOrderByWithRelationInput[] = [
 const PROJECT_INCLUDE = {
   runner: { select: { id: true, name: true } },
   runs: { orderBy: NEWEST_FIRST, take: 1 },
-  _count: { select: { runs: true } },
+  _count: {
+    select: { runs: true, health: { where: { state: 'failed' } } },
+  },
 } satisfies Prisma.ProjectInclude;
 
 type ProjectWithSummary = Prisma.ProjectGetPayload<{
@@ -208,6 +213,7 @@ function toProjectView(project: ProjectWithSummary): ProjectView {
     githubUrl: project.githubUrl,
     source: project.source,
     runCount: project._count.runs,
+    staleCount: project._count.health,
     lastRun: lastRun ? toRunView(lastRun) : null,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
@@ -272,8 +278,9 @@ export class ProjectsService {
           failureMessage: report.failure?.message ?? null,
           kind: report.kind ?? null,
         },
-        select: { id: true },
+        select: { id: true, scenarioPath: true, status: true, startedAt: true },
       });
+      await recordHealth(tx, project.id, run);
       return { projectId: project.id, runId: run.id };
     });
   }
@@ -396,6 +403,7 @@ export class ProjectsService {
               data: { projectId: id },
             });
             await tx.project.delete({ where: { id: holder.id } });
+            await rebuildHealth(tx, id);
           }
           data.runner = { connect: { id: runner.id } };
           data.rootPath = body.rootPath;

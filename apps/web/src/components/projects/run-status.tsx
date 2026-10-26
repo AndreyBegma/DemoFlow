@@ -1,11 +1,7 @@
-import { Badge } from '@andrewbehma/glass-ui/badge';
-import { t } from '@/i18n';
+import { StatusIndicator } from '@/components/status/status-indicator';
 import type { ProjectRun } from '@/lib/api';
+import { runStatus } from '@/lib/status';
 
 export function RunStatus({ status }: { status: ProjectRun['status'] }) {
-  return status === 'passed' ? (
-    <Badge tone="ok" label={t('projects.status.passed')} />
-  ) : (
-    <Badge tone="danger" label={t('projects.status.failed')} />
-  );
+  return <StatusIndicator status={runStatus(status)} />;
 }

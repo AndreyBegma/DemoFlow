@@ -16,6 +16,7 @@ import {
   IsString,
   IsUUID,
   Length,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -24,6 +25,8 @@ import {
   validateSync,
 } from 'class-validator';
 import type { RawData } from 'ws';
+import { IsTimeZone } from '../checks/schedules/time-zone';
+import { CADENCES, type Cadence, TIME_OF_DAY, WEEKDAYS } from '../checks/slots';
 import { IsScenarioId } from '../launches/scenario-id';
 import { PATH_MAX, type RunFormat } from '../projects/projects.dto';
 import type { RunnerContext } from './runner-token';
@@ -92,6 +95,13 @@ export type ServerMessage =
       options?: RunStartOptions;
     }
   | { type: 'run.cancel'; requestId: string }
+  /** A check pass of the whole project (spec 360), cancelled with `run.cancel`. */
+  | {
+      type: 'check.start';
+      requestId: string;
+      rootPath: string;
+      exclude: string[];
+    }
   | { type: 'share.prepare'; requestId: string; runId: string; format: string }
   | {
       type: 'project.inspect' | 'project.init' | 'project.register';
@@ -116,6 +126,7 @@ export type ClientMessage =
   | ArtifactsMessage
   | LaunchMessage
   | ShareMessage
+  | SchedulesMessage
   | ProjectMessage;
 
 export type VideoMessage =
@@ -141,7 +152,17 @@ export type LaunchMessage =
   | RunErrorMessage
   | RunFinishedMessage
   | RunProgressMessage
-  | LaunchesSyncMessage;
+  | LaunchesSyncMessage
+  | CheckMessage;
+
+/** A machine's project-config schedules (spec 361, Decision 6). */
+export type SchedulesMessage = SchedulesSyncMessage;
+
+/** A Runner's answers to `check.start` (spec 360, Decision 6). */
+export type CheckMessage =
+  | CheckStartedMessage
+  | CheckFinishedMessage
+  | CheckErrorMessage;
 
 /** A Runner's answer to `share.prepare` (spec #347, Decision 4). */
 export type ShareMessage = SharePreparedMessage | ShareErrorMessage;
@@ -196,6 +217,12 @@ export type Feature = (typeof FEATURES)[number];
 /** `launches.sync` announces this many features at most, each this long at most. */
 export const MAX_FEATURES = 8;
 export const FEATURE_MAX_LENGTH = 32;
+/** `schedules.sync` carries this many projects at most (spec 361, Decision 6). */
+export const MAX_SYNCED_SCHEDULES = 500;
+/** A schedule excludes this many scenarios at most (ADR-0021 §5). */
+export const MAX_SCHEDULE_EXCLUDES = 100;
+/** `check.finished` counts this many scenarios at most. */
+const MAX_CHECK_COUNT = 100_000;
 
 class PingMessage {
   @IsIn(['ping'])
@@ -452,6 +479,100 @@ class LaunchesSyncMessage {
   @IsString({ each: true })
   @MaxLength(FEATURE_MAX_LENGTH, { each: true })
   features?: string[];
+
+  /** `true` from a daemon that answers `check.start` (spec 360); absent before. */
+  @IsOptional()
+  @IsBoolean()
+  checks?: boolean;
+}
+
+/** The `demoflow run --check` child is running. `requestId` is the launch id. */
+class CheckStartedMessage {
+  @IsIn(['check.started'])
+  type!: 'check.started';
+
+  @IsUUID('4')
+  requestId!: string;
+}
+
+/** The pass ended; both counts are 0 when it was cancelled, timed out or crashed. */
+class CheckFinishedMessage {
+  @IsIn(['check.finished'])
+  type!: 'check.finished';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(MAX_CHECK_COUNT)
+  passed!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(MAX_CHECK_COUNT)
+  failed!: number;
+}
+
+/** Sent instead of `check.started`; any code string, as for `run.error`. */
+class CheckErrorMessage {
+  @IsIn(['check.error'])
+  type!: 'check.error';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @MaxLength(64)
+  code!: string;
+}
+
+/** A project config's `schedule` block (spec 361, Decision 1). */
+export class SyncedSchedule {
+  @IsIn(CADENCES)
+  cadence!: Cadence;
+
+  @ValidateIf((schedule: SyncedSchedule) => schedule.cadence === 'weekly')
+  @IsIn(WEEKDAYS)
+  weekday?: string;
+
+  @Matches(TIME_OF_DAY)
+  at!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_SCHEDULE_EXCLUDES)
+  @IsScenarioId({ each: true })
+  exclude?: string[];
+}
+
+class SyncedProject {
+  @IsString()
+  @Length(1, PATH_MAX)
+  rootPath!: string;
+
+  @ValidateIf((_, value) => value !== null)
+  @ValidateNested()
+  @Type(() => SyncedSchedule)
+  schedule!: SyncedSchedule | null;
+}
+
+/**
+ * The schedules of a machine's project configs (spec 361, Decision 6), with
+ * the machine's time zone: sent after `launches.sync` and on every change.
+ */
+class SchedulesSyncMessage {
+  @IsIn(['schedules.sync'])
+  type!: 'schedules.sync';
+
+  @IsTimeZone()
+  zone!: string;
+
+  @IsArray()
+  @ArrayMaxSize(MAX_SYNCED_SCHEDULES)
+  @ValidateNested({ each: true })
+  @Type(() => SyncedProject)
+  projects!: SyncedProject[];
 }
 
 class ShareChapter {
@@ -630,6 +751,10 @@ const CLIENT_MESSAGES: Record<
   'run.finished': RunFinishedMessage,
   'run.progress': RunProgressMessage,
   'launches.sync': LaunchesSyncMessage,
+  'check.started': CheckStartedMessage,
+  'check.finished': CheckFinishedMessage,
+  'check.error': CheckErrorMessage,
+  'schedules.sync': SchedulesSyncMessage,
   'share.prepared': SharePreparedMessage,
   'share.error': ShareErrorMessage,
   'project.inspected': ProjectInspectedMessage,

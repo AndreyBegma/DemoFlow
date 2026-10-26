@@ -8,8 +8,13 @@ import type { Logger, LogLevel } from '../../src/runner/log.ts';
 
 /** Timers that only fire when the test advances time. */
 export class FakeClock implements Clock {
-  private time = 0;
+  private time: number;
   private timers: Array<{ at: number; run: () => void; live: boolean }> = [];
+
+  /** `start` is the epoch time `now()` begins at; a schedule needs a real date. */
+  constructor(start = 0) {
+    this.time = start;
+  }
 
   now(): number {
     return this.time;

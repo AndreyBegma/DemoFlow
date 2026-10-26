@@ -47,7 +47,7 @@ export function ForgotPasswordForm() {
         defaultValue={state.email}
         error={state.error}
       />
-      <Button type="submit" full disabled={pending}>
+      <Button type="submit" variant="solid" full disabled={pending}>
         {pending ? t('auth.forgot.submitting') : t('auth.forgot.submit')}
       </Button>
     </form>
