@@ -61,7 +61,7 @@ export type FrameConfig = z.infer<typeof FrameConfigSchema>;
 
 const CardDurationSchema = z.number().int().min(500).max(10_000);
 
-const CardTextSchema = z
+export const CardTextSchema = z
   .string()
   .min(1)
   .max(80)
