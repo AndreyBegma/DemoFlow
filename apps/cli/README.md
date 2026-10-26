@@ -215,7 +215,7 @@ expires after 10 minutes.
 - `demoflow logout` revokes the token on the server, then deletes the file. If
   the server cannot be reached it still deletes the file; the machine stays
   listed under `/app/machines` until you revoke it there.
-- The server is `https://demoflow-app.luna-realm.com` (staging) unless
+- The server is `https://demoflow.luna-realm.com` (production) unless
   `--server <url>` or `DEMOFLOW_SERVER` says otherwise. It is the website's
   origin; the API is under `/api`. `logout` uses the server stored at login.
 - The token is in `credentials.json` (`{ server, token, runnerId }`, mode 0600)
