@@ -59,6 +59,7 @@ fill_if_empty() {
 }
 hex() { od -An -tx1 -N24 /dev/urandom | tr -d ' \n'; }
 fill_if_empty POSTGRES_PASSWORD "$(hex)" "$STAGING_DIR/.env"
+fill_if_empty SHARE_SIGNING_SECRET "$(hex)" "$STAGING_DIR/.env"
 
 # ── stack files: always the commit's own ────────────────────────────────────
 caddy_changed=false
