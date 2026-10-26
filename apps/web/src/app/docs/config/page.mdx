@@ -104,6 +104,7 @@ Every `render` key is optional. These are the defaults:
 | `fps` | 30 | Frames per second. |
 | `idle.thresholdMs` | 1000 | A still stretch longer than this is shortened. |
 | `idle.compressToMs` | 400 | …to this long. |
+| `endHoldMs` | 3500 | How long a successful video stays on screen after the last step, 0 to 10000 ms. The run records it, so a result that shows late is in the video. A failed run ends at the failure. To hold after any step, see [`hold`](/docs/scenarios#hold). |
 | `frame` | on | See below. |
 | `background` | `{ "preset": "ocean" }` | See below. |
 | `cards` | see below | Intro, scene and outro cards. |

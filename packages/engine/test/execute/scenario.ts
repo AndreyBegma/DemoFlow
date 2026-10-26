@@ -7,7 +7,7 @@ import {
 
 /**
  * An inline scenario, validated and with defaults applied. It does not dwell
- * or hold the end unless `pacing` says so (C-203), to keep the suite fast.
+ * unless `pacing` says so (C-203), to keep the suite fast.
  */
 export function scenario(
   steps: ScenarioStepInput[],
@@ -23,7 +23,7 @@ export function scenario(
     schemaVersion: 1,
     name: 'inline',
     viewport: { width: 1280, height: 720 },
-    pacing: { stepDwellMs: 0, endHoldMs: 0 },
+    pacing: { stepDwellMs: 0 },
     ...extra,
     steps,
   });

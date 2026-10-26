@@ -215,6 +215,8 @@ describe('demoflow render', () => {
     expect(d.plans[0]?.dir).toBe(runDir);
     expect(d.plans[0]?.options.formats).toEqual(['mp4', 'webm']);
     expect(d.plans[0]?.options.output?.fps).toBe(24);
+    // The default end hold, as `demoflow run` recorded it (spec 365).
+    expect(d.plans[0]?.options.endHoldMs).toBe(3500);
     expect(io.err).toContain('Rendering\n');
     expect(io.out).toContain(RUN_ID);
     const written = await readResultFile();

@@ -204,6 +204,7 @@ export function renderPlanOptions(
 ): RenderPlanOptions {
   return {
     idle: config.render.idle,
+    endHoldMs: config.render.endHoldMs,
     output: {
       width: config.render.width,
       height: config.render.height,

@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@demoflow/shared'],
   // The docs pages are `page.mdx` (spec #179).
   pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
+  // DemoFlow records this site at 127.0.0.1 (demoflow.config.json). The dev
+  // server blocks its scripts and HMR socket for any host but localhost, so
+  // without this the page never hydrates and no client control responds.
+  allowedDevOrigins: ['127.0.0.1'],
   // `/api` is reserved for the API. Stripping the prefix matches Caddy, so
   // the browser sees one origin locally and on staging alike.
   // A share's file and poster live on the share page's own path (spec #348),

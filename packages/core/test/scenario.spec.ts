@@ -374,6 +374,30 @@ describe('parseScenario — every action', () => {
       );
     });
 
+    it.each([100, 10_000])('accepts hold %d (spec 365)', (hold) => {
+      const result = parseScenario(scenario({ action, ...valid, hold }));
+      expect(result).toMatchObject({
+        ok: true,
+        value: { steps: [expect.objectContaining({ hold })] },
+      });
+    });
+
+    it.each([-1, 10_001, 500.5])('rejects hold %d at steps[0].hold', (hold) => {
+      expect(errorsOf(scenario({ action, ...valid, hold }))).toContainEqual(
+        expect.objectContaining({ path: 'steps[0].hold' }),
+      );
+    });
+
+    it('rejects hold on an off-camera step (spec 365)', () => {
+      expect(
+        errorsOf(scenario({ action, ...valid, hold: 1500, record: false })),
+      ).toContainEqual({
+        path: 'steps[0].hold',
+        code: 'custom',
+        message: 'expected no hold on an off-camera step (record: false)',
+      });
+    });
+
     it('rejects an unknown field at its path', () => {
       expect(
         errorsOf(scenario({ action, ...valid, colour: 'red' })),
@@ -627,7 +651,6 @@ describe('parseScenario — pacing', () => {
     expect(result.value.pacing).toBeUndefined();
     expect(resolvePacing(result.value.pacing)).toEqual({
       stepDwellMs: 1_000,
-      endHoldMs: 3_500,
       typingDelayMs: 80,
     });
   });
@@ -635,28 +658,28 @@ describe('parseScenario — pacing', () => {
   it('fills in the fields a partial pacing leaves out', () => {
     const result = parseScenario({
       ...scenario(click),
-      pacing: { endHoldMs: 0 },
+      pacing: { stepDwellMs: 0 },
     });
     expect(result).toMatchObject({
       ok: true,
       value: {
-        pacing: { stepDwellMs: 1_000, endHoldMs: 0, typingDelayMs: 80 },
+        pacing: { stepDwellMs: 0, typingDelayMs: 80 },
       },
     });
   });
 
-  it('accepts a dwell on any step and a typing delay on a fill', () => {
+  it('accepts a hold (0 turns the dwell off) on any step and a typing delay on a fill', () => {
     const result = parseScenario(
       scenario(
-        { ...click, dwellMs: 0 },
-        { action: 'marker', title: 'Intro', dwellMs: 2_000 },
+        { ...click, hold: 0 },
+        { action: 'marker', title: 'Intro', hold: 2_000 },
         { action: 'fill', target, value: 'Ada', typingDelayMs: 120 },
       ),
     );
     expect(result).toMatchObject({
       ok: true,
       value: {
-        steps: [{ dwellMs: 0 }, { dwellMs: 2_000 }, { typingDelayMs: 120 }],
+        steps: [{ hold: 0 }, { hold: 2_000 }, { typingDelayMs: 120 }],
       },
     });
   });
@@ -666,7 +689,7 @@ describe('parseScenario — pacing', () => {
       errorsOf({ ...scenario(click), pacing: { stepDwellMs: -1 } }),
     ).toEqual([expect.objectContaining({ path: 'pacing.stepDwellMs' })]);
     expect(
-      errorsOf({ ...scenario(click), pacing: { endHoldMs: 10_001 } }),
+      errorsOf({ ...scenario(click), pacing: { endHoldMs: 1_000 } }),
     ).toEqual([expect.objectContaining({ path: 'pacing.endHoldMs' })]);
     expect(
       errorsOf({ ...scenario(click), pacing: { typingDelayMs: 1.5 } }),

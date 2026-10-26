@@ -11,7 +11,8 @@ import {
   type Runner,
 } from './api';
 
-function apiUrl(): string {
+/** The API's internal origin, for server-side calls. */
+export function apiUrl(): string {
   return process.env.API_URL ?? 'http://localhost:8370';
 }
 

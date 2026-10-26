@@ -49,11 +49,25 @@ const common = {
   caption: z.string().max(120).optional(),
   timeoutMs: z.number().int().min(100).max(60_000).default(10_000),
   record: RecordSchema,
-  dwellMs: DwellMsSchema.optional().meta({
+  hold: DwellMsSchema.optional().meta({
     description:
-      "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+      'Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.',
   }),
 };
+
+/** Reports a `hold` on an off-camera step: nothing would show it (spec 365). */
+function holdNeedsCamera(value: object, ctx: z.RefinementCtx): void {
+  if (
+    Reflect.get(value, 'hold') !== undefined &&
+    Reflect.get(value, 'record') === false
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'expected no hold on an off-camera step (record: false)',
+      path: ['hold'],
+    });
+  }
+}
 
 /**
  * Camera zoom on the step's target (ADR-0012): `true` for the renderer's
@@ -81,7 +95,17 @@ function step<A extends StepAction, S extends z.ZodRawShape>(
   action: A,
   shape: S,
 ) {
-  return z.strictObject({ action: z.literal(action), ...shape, ...common });
+  return (
+    z
+      .strictObject({ action: z.literal(action), ...shape, ...common })
+      .superRefine(holdNeedsCamera)
+      // Not both `hold` and `record: false`.
+      .meta({
+        dependentSchemas: {
+          hold: { properties: { record: { not: { const: false } } } },
+        },
+      })
+  );
 }
 
 /** Key names a `press` may send, as Playwright spells them. Typing text is `fill`. */

@@ -8,6 +8,7 @@ import type {
   ClickRing,
   CursorMove,
   FollowKey,
+  Highlight,
   KeyBadge,
   MaskSpan,
 } from './types.ts';
@@ -96,6 +97,7 @@ export function placeCards(input: {
 export interface Overlays {
   cursor: CursorMove[];
   clicks: ClickRing[];
+  highlights: Highlight[];
   camera: CameraKeyframe[];
   /** The vertical output's follow camera (spec 176). */
   follow: FollowKey[];
@@ -133,6 +135,7 @@ export function shiftOverlays(
   return {
     cursor: splitMoves(overlays.cursor, cards).map(span),
     clicks: overlays.clicks.map((ring) => ({ ...ring, atMs: at(ring.atMs) })),
+    highlights: overlays.highlights.map(span),
     camera: holdAcross(overlays.camera, cards, at, (pageMs, atMs) => ({
       atMs,
       ...cameraStateAt(overlays.camera, pageMs),

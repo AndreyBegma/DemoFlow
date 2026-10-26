@@ -35,7 +35,7 @@ import {
   checkLayout,
   type LayoutReport,
 } from '../visual/layout.ts';
-import { countFrames, sampleFrames } from './sample-frames.ts';
+import { countFrames, sampleFrames, selectFrames } from './sample-frames.ts';
 
 if (!hasFfmpeg) {
   console.warn('no usable FFmpeg: skipping the FFmpeg compositor tests');
@@ -48,7 +48,7 @@ async function extractFrames(
   plan: RenderPlan,
 ): Promise<Uint8Array[]> {
   const raw = `${file}.${numbers[0]}.rgb`;
-  const select = numbers.map((n) => `eq(n\\,${n})`).join('+');
+  const select = selectFrames(numbers);
   await runFfmpeg([
     '-y',
     '-i',
@@ -675,5 +675,81 @@ describe.skipIf(!hasFfmpeg)('the FFmpeg compositor on real runs', () => {
     const blank = changed(cutLate, cutBefore);
     console.info(`page load: frame ${lastHeld} without the hold, ${blank}`);
     expect(blank).toBeGreaterThan(0.01);
+  });
+
+  it('keeps a result that shows after the last step on screen through the end hold (spec 365)', async () => {
+    // A button whose result shows 600 ms after the click: after the last step.
+    const box = { x: 100, y: 120, width: 400, height: 300 };
+    const delayedResult: EngineObserver = {
+      async onPageCreated({ page }) {
+        // A string: this file's `setTimeout` is the Node one, and a function
+        // would have a bare call rewritten into a module reference.
+        await page.addInitScript(`document.addEventListener('DOMContentLoaded', () => {
+  const button = document.createElement('button');
+  button.textContent = 'Reveal';
+  button.style.cssText = 'position:fixed;top:24px;right:24px;z-index:9999;padding:8px 16px';
+  button.addEventListener('click', () => setTimeout(() => {
+    const result = document.createElement('div');
+    result.style.cssText = 'position:fixed;left:${box.x}px;top:${box.y}px;width:${box.width}px;height:${box.height}px;background:#00c853;z-index:9999';
+    document.body.append(result);
+  }, 600));
+  document.body.append(button);
+})`);
+      },
+    };
+    const runDir = await recordInlineRun(
+      'end-hold',
+      {
+        schemaVersion: 1,
+        name: 'End hold',
+        viewport: { width: 1280, height: 720 },
+        steps: [
+          { action: 'navigate', path: '/customers' },
+          { action: 'click', target: { role: 'button', name: 'Reveal' } },
+        ],
+      },
+      parent,
+      [delayedResult],
+      2500,
+    );
+    const plan = await buildRenderPlan(runDir, {
+      frame: { enabled: false },
+      endHoldMs: 2500,
+    });
+    const events = await readEvents(runDir);
+    const clicked = events.at(-1);
+    if (clicked === undefined) throw new Error('no events');
+    const { fps } = plan.output;
+    const toFrame = (ms: number): number => Math.floor((ms * fps) / 1000);
+    const clickEndMs = toOutputMs(plan.timeMap, clicked.endMs + plan.offsetMs);
+    // The video runs on for the end hold after the click.
+    expect(plan.durationMs - clickEndMs).toBeGreaterThanOrEqual(2400);
+
+    const file = renderPath(runDir, 'ffmpeg');
+    await ffmpegRenderer.render(runDir, plan);
+    const numbers = sampleFrames(toFrame(clickEndMs), frameCount(plan), 5);
+    const frames = await extractFrames(file, numbers, plan);
+    // Full-bleed: viewport pixels × 1.5 on the 1920 × 1080 output.
+    const { width } = plan.output;
+    const centre = {
+      x: (box.x + box.width / 2) * 1.5,
+      y: (box.y + box.height / 2) * 1.5,
+    };
+    const shows = frames.map((frame) => {
+      const [r, g, b] = rgb(frame, width, centre.x, centre.y);
+      return r < 80 && g > 150 && b < 140;
+    });
+    const first = shows.indexOf(true);
+    expect(first, 'the result never shows').toBeGreaterThan(-1);
+    console.info(
+      `end hold: the result shows from frame ${numbers[first]} of ${frameCount(plan)}`,
+    );
+    // From the moment it shows to the last frame, and long enough to read.
+    shows.slice(first).forEach((shown, i) => {
+      expect(shown, `frame ${numbers[first + i]}`).toBe(true);
+    });
+    expect(
+      ((frameCount(plan) - numbers[first]) * 1000) / fps,
+    ).toBeGreaterThanOrEqual(1500);
   });
 });

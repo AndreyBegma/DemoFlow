@@ -62,24 +62,22 @@ export async function recordFixtureRun(
 
 /**
  * The pacing these runs record with unless the scenario sets its own: no
- * dwell, a 1 s end hold and 35 ms typing, the timing the plan tests were
- * written against. Pacing itself is tested in the engine and in `plan.spec.ts`.
+ * dwell and 35 ms typing, the timing the plan tests were written against.
+ * Pacing itself is tested in the engine (C-203).
  */
-const TEST_PACING = {
-  stepDwellMs: 0,
-  endHoldMs: 1_000,
-  typingDelayMs: 35,
-} as const;
+const TEST_PACING = { stepDwellMs: 0, typingDelayMs: 35 } as const;
 
 /**
  * Records a scenario given inline — validated as a scenario file is — against
  * the fixture, into `<parentDir>/<name>`, and returns that run directory.
+ * No end hold unless `endHoldMs` asks for one (spec 365): it only lengthens a run.
  */
 export async function recordInlineRun(
   name: string,
   input: unknown,
   parentDir: string,
   observers: readonly EngineObserver[] = [],
+  endHoldMs = 0,
 ): Promise<string> {
   const parsed = parseScenario(
     typeof input === 'object' && input !== null && !('pacing' in input)
@@ -96,6 +94,7 @@ export async function recordInlineRun(
       baseUrl: fixture.origin,
       allowedOrigins: [fixture.origin],
       env: { FIXTURE_PASSWORD },
+      endHoldMs,
       observers: [
         ...observers,
         createCaptureObserver({ scenarioId: `demoflow/${name}.demo.json` }),

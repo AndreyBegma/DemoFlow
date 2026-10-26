@@ -10,6 +10,11 @@ import {
 } from './control.ts';
 import { defaultDaemonDeps, runForeground } from './daemon.ts';
 import { installCommand, uninstallCommand } from './install/commands.ts';
+import {
+  allowCommand,
+  disallowCommand,
+  rootsCommand,
+} from './roots/commands.ts';
 
 /**
  * `demoflow runner`: the background daemon of spec 151. The hidden
@@ -77,6 +82,32 @@ export function registerRunnerCommands(
     .description('Stop starting the runner at login')
     .action(() => {
       setExit(uninstallCommand(io, defaultControlDeps()));
+    });
+
+  const rootsDeps = () => ({ host: currentHost(), cwd: process.cwd() });
+
+  runner
+    .command('allow')
+    .description('Let the website name folders inside this directory')
+    .argument('<dir>', 'an existing directory')
+    .action((dir: string) => {
+      setExit(allowCommand(dir, io, rootsDeps()));
+    });
+
+  runner
+    .command('disallow')
+    .description('Stop the website naming folders inside this directory')
+    .argument('<dir>', 'an allowed root')
+    .action((dir: string) => {
+      setExit(disallowCommand(dir, io, rootsDeps()));
+    });
+
+  runner
+    .command('roots')
+    .description('List the directories the website may name folders in')
+    .option('--json', 'print the roots as one JSON object')
+    .action((flags: { json?: boolean }) => {
+      setExit(rootsCommand(flags, io, rootsDeps()));
     });
 
   return runner;

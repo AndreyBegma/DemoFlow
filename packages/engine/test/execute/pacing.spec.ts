@@ -2,7 +2,6 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  DEFAULT_PACING,
   resolvePacing,
   type Step,
   type StepInput,
@@ -33,7 +32,6 @@ describe('stepPace', () => {
   it('dwells after a visible step and types at the default speed', () => {
     expect(defaults).toEqual({
       stepDwellMs: 1_000,
-      endHoldMs: 3_500,
       typingDelayMs: 80,
     });
     for (const input of [
@@ -65,7 +63,7 @@ describe('stepPace', () => {
 
   it('takes the scenario pacing, and a step overrides it', () => {
     const pacing = resolvePacing({ stepDwellMs: 300, typingDelayMs: 20 });
-    expect(pacing.endHoldMs).toBe(DEFAULT_PACING.endHoldMs);
+    expect(pacing.typingDelayMs).toBe(20);
     const fill = {
       action: 'fill',
       target: { label: 'Name' },
@@ -77,19 +75,19 @@ describe('stepPace', () => {
     });
     expect(
       stepPace(
-        step({ ...fill, dwellMs: 2_000, typingDelayMs: 150 }),
+        step({ ...fill, hold: 2_000, typingDelayMs: 150 }),
         pacing,
         onCamera,
       ),
     ).toEqual({ dwellMs: 2_000, typingDelayMs: 150 });
     // 0 turns the dwell off; a marker may ask for one.
-    expect(stepPace(step({ ...fill, dwellMs: 0 }), pacing, onCamera)).toEqual({
+    expect(stepPace(step({ ...fill, hold: 0 }), pacing, onCamera)).toEqual({
       dwellMs: 0,
       typingDelayMs: 20,
     });
     expect(
       stepPace(
-        step({ action: 'marker', title: 'Scene', dwellMs: 800 }),
+        step({ action: 'marker', title: 'Scene', hold: 800 }),
         pacing,
         onCamera,
       ).dwellMs,
@@ -101,7 +99,7 @@ describe('stepPace', () => {
     const last = { ...onCamera, last: true };
     expect(stepPace(click, defaults, last).dwellMs).toBe(0);
     expect(
-      stepPace({ ...click, dwellMs: 500 } as Step, defaults, last).dwellMs,
+      stepPace({ ...click, hold: 500 } as Step, defaults, last).dwellMs,
     ).toBe(500);
   });
 
@@ -110,7 +108,7 @@ describe('stepPace', () => {
       action: 'fill',
       target: { label: 'Name' },
       value: 'Ada',
-      dwellMs: 2_000,
+      hold: 2_000,
     });
     expect(stepPace(fill, defaults, { ...onCamera, onCamera: false })).toEqual({
       dwellMs: 0,
@@ -122,7 +120,9 @@ describe('stepPace', () => {
         onCamera: false,
       }).typingDelayMs,
     ).toBe(50);
-    expect(stepPace(fill, defaults, { ...onCamera, recording: false })).toEqual(
+    // A check run adds no default dwell; a step's own hold still applies.
+    const plain = { ...fill, hold: undefined } as Step;
+    expect(stepPace(plain, defaults, { ...onCamera, recording: false })).toEqual(
       { dwellMs: 0, typingDelayMs: 80 },
     );
   });
@@ -188,20 +188,20 @@ describe('a paced run', () => {
           { action: 'navigate', path: '/login' },
           fillPassword,
           { action: 'wait', ms: 200 },
-          { ...fillPassword, dwellMs: 0 },
+          { ...fillPassword, hold: 0 },
           { action: 'marker', title: 'Done' },
         ],
-        { pacing: { stepDwellMs: 400, endHoldMs: 700, typingDelayMs: 50 } },
+        { pacing: { stepDwellMs: 400, typingDelayMs: 50 } },
       ),
-      await options({ observers: [observer] }),
+      await options({ observers: [observer], endHoldMs: 700 }),
     );
     expect(outcome.stages.execution.status).toBe('passed');
     const [navigate, fill, wait, refill, marker] = outcome.events;
-    expect(navigate?.dwellMs).toBe(400);
-    expect(fill?.dwellMs).toBe(400);
-    expect(wait?.dwellMs).toBeUndefined();
-    expect(refill?.dwellMs).toBeUndefined();
-    expect(marker?.dwellMs).toBeUndefined();
+    expect(navigate?.holdMs).toBe(400);
+    expect(fill?.holdMs).toBe(400);
+    expect(wait?.holdMs).toBeUndefined();
+    expect(refill?.holdMs).toBeUndefined();
+    expect(marker?.holdMs).toBeUndefined();
     // The next step starts after the dwell, and an explicit wait adds to it.
     expect(
       (fill?.startMs ?? 0) - (navigate?.endMs ?? 0),
@@ -213,7 +213,6 @@ describe('a paced run', () => {
     expect((fill?.endMs ?? 0) - (fill?.startMs ?? 0)).toBeGreaterThanOrEqual(
       100,
     );
-    expect(outcome.endHoldMs).toBe(700);
     expect(
       (times.finishedMs ?? 0) - (times.lastStepMs ?? 0),
     ).toBeGreaterThanOrEqual(700);
@@ -239,29 +238,27 @@ describe('a paced run', () => {
           { action: 'navigate', path: SIGN_IN_PATH },
           { action: 'navigate', path: '/login' },
         ],
-        pacing: { stepDwellMs: 5_000, endHoldMs: 0 },
+        pacing: { stepDwellMs: 5_000 },
       }),
       await options({ observers: [observer] }),
     );
     expect(outcome.stages.execution.status).toBe('passed');
     expect(gapMs).toBeDefined();
     expect(gapMs ?? Infinity).toBeLessThan(2_000);
-    expect(outcome.endHoldMs).toBe(0);
   });
 
   it('neither dwells nor holds in a check run', async () => {
     const outcome = await runScenario(
       scenario([{ action: 'navigate', path: '/login' }, fillPassword], {
-        pacing: { stepDwellMs: 5_000, endHoldMs: 5_000 },
+        pacing: { stepDwellMs: 5_000 },
       }),
-      await options({ record: false }),
+      await options({ record: false, endHoldMs: 0 }),
     );
     expect(outcome.stages.execution.status).toBe('passed');
-    expect(outcome.events.every((event) => event.dwellMs === undefined)).toBe(
+    expect(outcome.events.every((event) => event.holdMs === undefined)).toBe(
       true,
     );
-    expect(outcome.endHoldMs).toBeUndefined();
-    // A 5 s dwell and a 5 s hold would take 10 s.
+    // Two 5 s dwells would take 10 s.
     expect(
       Date.parse(outcome.finishedAt) - Date.parse(outcome.startedAt),
     ).toBeLessThan(8_000);
@@ -279,13 +276,12 @@ describe('a paced run', () => {
             timeoutMs: 300,
           },
         ],
-        { pacing: { stepDwellMs: 0, endHoldMs: 5_000 } },
+        { pacing: { stepDwellMs: 0 } },
       ),
-      await options({ observers: [observer] }),
+      await options({ observers: [observer], endHoldMs: 5_000 }),
     );
     expect(outcome.status).toBe('failed');
-    expect(outcome.events.at(-1)?.dwellMs).toBeUndefined();
-    expect(outcome.endHoldMs).toBeUndefined();
+    expect(outcome.events.at(-1)?.holdMs).toBeUndefined();
     expect((times.finishedMs ?? 0) - (times.lastStepMs ?? 0)).toBeLessThan(
       5_000,
     );

@@ -37,6 +37,7 @@ import type {
   FailureSpec,
   FollowKey,
   FrameSpec,
+  Highlight,
   Interval,
   KeyBadge,
   OutputFile,
@@ -60,6 +61,8 @@ export const DEFAULTS = {
   idleThresholdMs: 1_000,
   idleCompressToMs: 400,
   output: { width: 1920, height: 1080, fps: 30 },
+  /** `render.endHoldMs`'s default (spec 365). */
+  endHoldMs: 2_500,
   /** What `zoom: true` means on a source with at least two pixels per CSS pixel (ADR-0012). */
   zoom: 1.35,
   /** Zoom on a 1× source: past the source pixels already, so kept gentle (spec 4, Risks). */
@@ -87,8 +90,8 @@ const TIMING = {
   maskLeadMs: 200,
   /** Masks end this late, for the same reason: an early end leaks, a late one is safe (#48). */
   maskTrailMs: 200,
-  /** A successful run keeps this much video after its last event, when its timeline names no `endHoldMs`. */
-  tailMs: 1_000,
+  /** An asserted element's outline fades in over this long (spec 365). */
+  highlightFadeMs: 200,
   /** A target box fills at most this share of the zoomed view. */
   targetFill: 0.9,
 } as const;
@@ -102,6 +105,12 @@ const ACTIVE: ReadonlySet<StepAction> = new Set([
   'fill',
   'select',
   'scroll',
+]);
+
+/** Steps whose `zoom` stays on the element through the hold, outlined (spec 365, Decision 5). */
+const ASSERTIONS: ReadonlySet<StepAction> = new Set([
+  'assertVisible',
+  'assertText',
 ]);
 
 export interface PlanInput {
@@ -212,43 +221,36 @@ export function planRender(
   const toSource = (timelineMs: number): number =>
     clamp(timelineMs + offsetMs, 0, source.durationMs);
 
-  // The video ends at the failure, or a little after the last event.
+  // The video ends at the failure, or `endHoldMs` after the last event and
+  // its hold (spec 365). A source that ends sooner, as one recorded before
+  // the end hold did, ends it sooner: `toSource` clamps (Decision 6).
   const failedEvent =
     failure?.stepIndex === undefined
       ? undefined
       : events.find((event) => event.stepIndex === failure.stepIndex);
   const lastEvent = events.at(-1);
-  // The engine's end hold (C-203) follows the last event's own dwell.
-  const holdFromMs =
-    lastEvent === undefined ? 0 : lastEvent.endMs + (lastEvent.dwellMs ?? 0);
-  const endHoldMs = timeline.endHoldMs ?? TIMING.tailMs;
+  const endHoldMs =
+    failure === undefined ? (options.endHoldMs ?? DEFAULTS.endHoldMs) : 0;
+  // Timeline time each event stays on screen until: its hold, and the end
+  // hold after the last.
+  const shownUntil = (event: TimelineEvent): number =>
+    heldUntil(event) + (event === lastEvent ? endHoldMs : 0);
   const sourceEndMs =
     failure !== undefined
       ? toSource(failedEvent?.endMs ?? lastEvent?.endMs ?? source.durationMs)
       : lastEvent === undefined
         ? source.durationMs
-        : toSource(holdFromMs + endHoldMs);
+        : toSource(shownUntil(lastEvent));
 
-  const active: Interval[] = events
-    .filter((event) => ACTIVE.has(event.action))
-    .map((event) => ({
-      startMs: toSource(event.startMs),
-      endMs: toSource(event.endMs),
-    }));
-  // A dwell and the end hold are there to be watched: the idle trim never cuts them (C-203).
-  for (const event of events) {
-    if (event.dwellMs === undefined) continue;
-    active.push({
-      startMs: toSource(event.endMs),
-      endMs: toSource(event.endMs + event.dwellMs),
-    });
-  }
-  if (timeline.endHoldMs !== undefined && lastEvent !== undefined) {
-    active.push({
-      startMs: toSource(holdFromMs),
-      endMs: toSource(holdFromMs + timeline.endHoldMs),
-    });
-  }
+  // A hold is never idle: a page frozen on its result plays at 1:1 (Decision 3).
+  const active: Interval[] = events.flatMap((event) => [
+    ...(ACTIVE.has(event.action)
+      ? [{ startMs: toSource(event.startMs), endMs: toSource(event.endMs) }]
+      : []),
+    ...(shownUntil(event) > event.endMs
+      ? [{ startMs: toSource(event.endMs), endMs: toSource(shownUntil(event)) }]
+      : []),
+  ]);
   const idle = idleStretches(source.freezes, active, thresholdMs, sourceEndMs);
   // Page time: the map before cards. Overlays are planned in it, then moved
   // past the cards, so no lead or trail is ever measured across a card.
@@ -277,6 +279,9 @@ export function planRender(
     transitions: options.transitions?.enabled === true,
     sourceFrameMs: 1000 / source.fps,
   });
+  const cardBackground =
+    frame?.background ??
+    resolveBackground(options.background ?? { preset: 'ocean' });
   const verticalConfig = VerticalConfigSchema.parse(options.vertical ?? {});
   const squareConfig = SquareConfigSchema.parse(options.square ?? {});
   const { follow, squareFollow, ...overlays } = shiftOverlays(
@@ -284,7 +289,14 @@ export function planRender(
       // A phone has no mouse pointer: the click ring is the tap (spec 307).
       cursor: timeline.device === 'phone' ? [] : cursorMoves(events, out),
       clicks: clickRings(events, out),
-      camera: cameraKeyframes(events, out, viewport, defaultZoom),
+      highlights: highlights(
+        events,
+        out,
+        shownUntil,
+        pageEndMs,
+        cardBackground.to,
+      ),
+      camera: cameraKeyframes(events, out, viewport, defaultZoom, shownUntil),
       follow: followKeys(
         events,
         out,
@@ -377,9 +389,7 @@ export function planRender(
     durationMs: videoEndMs + (failureSpec?.endCard.durationMs ?? 0),
     timeMap,
     cards: cards.map(({ atMs: _, ...card }) => card),
-    cardBackground:
-      frame?.background ??
-      resolveBackground(options.background ?? { preset: 'ocean' }),
+    cardBackground,
     ...overlays,
     ...(transitions === undefined ? {} : { transitions }),
     ...(failureSpec === undefined ? {} : { failure: failureSpec }),
@@ -678,6 +688,54 @@ function clickRings(
   );
 }
 
+/** The end of an event's hold, or of the event itself without one. */
+function heldUntil(event: TimelineEvent): number {
+  return event.endMs + (event.holdMs ?? 0);
+}
+
+/** Whether the step asked for a zoom (ADR-0012): `true`, or a strength above 1. */
+function asksForZoom(event: TimelineEvent): boolean {
+  return (
+    event.zoom === true || (typeof event.zoom === 'number' && event.zoom > 1)
+  );
+}
+
+/**
+ * An outline around the element of every assertion with `zoom`, from the end
+ * of the assertion for as long as its hold keeps it on screen (spec 365,
+ * Decision 5).
+ */
+function highlights(
+  events: readonly TimelineEvent[],
+  out: (timelineMs: number) => number,
+  shownUntil: (event: TimelineEvent) => number,
+  videoEndMs: number,
+  colour: string,
+): Highlight[] {
+  return events.flatMap((event) => {
+    if (
+      !ASSERTIONS.has(event.action) ||
+      event.target === undefined ||
+      !asksForZoom(event)
+    ) {
+      return [];
+    }
+    const startMs = out(event.endMs);
+    const endMs = Math.min(videoEndMs, out(shownUntil(event)));
+    return endMs > startMs
+      ? [
+          {
+            startMs,
+            endMs,
+            box: event.target.box,
+            colour,
+            fadeMs: TIMING.highlightFadeMs,
+          },
+        ]
+      : [];
+  });
+}
+
 interface Shot {
   /** The action itself: the press of a click, the whole of a fill or select. */
   startMs: number;
@@ -698,6 +756,7 @@ function cameraKeyframes(
   out: (timelineMs: number) => number,
   viewport: { width: number; height: number },
   defaultZoom: number,
+  shownUntil: (event: TimelineEvent) => number,
 ): CameraKeyframe[] {
   // `null`: a targeted step that does not zoom.
   const shots: (Shot | null)[] = events.flatMap((event) => {
@@ -718,11 +777,17 @@ function cameraKeyframes(
       ),
     );
     if (zoom === 1) return [null];
-    // A click and a press zoom for the moment of the press.
+    // A click and a press zoom for the moment of the press; an assertion
+    // stays on its element through its hold (spec 365, Decision 5).
     const action =
       event.action === 'click' || event.action === 'press'
         ? { startMs: out(pressMs(event)), endMs: out(pressMs(event)) }
-        : { startMs: out(event.startMs), endMs: out(event.endMs) };
+        : {
+            startMs: out(event.startMs),
+            endMs: out(
+              ASSERTIONS.has(event.action) ? shownUntil(event) : event.endMs,
+            ),
+          };
     return [{ ...action, centre: centreOf(box), zoom }];
   });
 

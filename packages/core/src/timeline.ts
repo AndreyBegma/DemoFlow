@@ -158,7 +158,10 @@ export const TimelineEventSchema = z
     origin: StepOriginSchema.optional(),
     action: StepActionSchema,
     startMs: msSchema,
+    // The end of the action; a `hold` follows it (spec 365).
     endMs: msSchema,
+    // The step's `hold`, slept after `endMs`: `[endMs, endMs + holdMs]` is on screen.
+    holdMs: z.number().int().positive().optional(),
     target: z.strictObject({ box: BoxSchema }).optional(),
     // The real pointer path (ADR-0004 §2).
     pointer: z.strictObject({ from: PointSchema, to: PointSchema }).optional(),
@@ -187,8 +190,6 @@ export const TimelineEventSchema = z
     // The step's `zoom`, verbatim: the renderer resolves `true` (ADR-0012).
     zoom: ZoomSchema.optional(),
     error: z.strictObject({ message: z.string() }).optional(),
-    // The pause the engine recorded after `endMs`, before the next step (C-203).
-    dwellMs: msSchema.optional(),
     // Only on a masked `fill`: when its field was on the page (ADR-0004; #18).
     maskVisibility: MaskVisibilitySchema.optional(),
   })
@@ -248,9 +249,6 @@ export const TimelineSchema = z
     maskedElements: z.array(MaskedElementSchema).optional(),
     // Scenes and captions the page set, by engine time; omitted when none was (#201).
     annotations: AnnotationsSchema.optional(),
-    // How long the engine kept recording after the last event of a successful
-    // run (C-203); absent in older timelines, which the renderer gives a 1 s tail.
-    endHoldMs: msSchema.optional(),
   })
   .refine(
     (timeline) => {

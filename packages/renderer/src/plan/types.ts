@@ -50,6 +50,11 @@ export interface RenderPlanOptions {
     compressToMs?: number;
   };
   /**
+   * How long a successful video keeps the page after its last event, before
+   * the outro card (`render.endHoldMs`, spec 365). Default 2 500.
+   */
+  endHoldMs?: number;
+  /**
    * What a step's `zoom: true` resolves to; it does not make a step zoom
    * (ADR-0012). Default 1.35 on a 2× source, 1.25 below.
    */
@@ -189,6 +194,18 @@ export interface ClickRing {
   point: Point;
 }
 
+/** An outline around an asserted element while its hold keeps it on screen (spec 365, Decision 5). */
+export interface Highlight {
+  startMs: number;
+  endMs: number;
+  /** The element's box when the assertion passed, viewport CSS pixels. */
+  box: Box;
+  /** `#rrggbb`: the frame's accent, the background's second stop. */
+  colour: string;
+  /** From transparent to opaque over this long from `startMs`. */
+  fadeMs: number;
+}
+
 /** The camera eases from each keyframe to the next. Zoom 1 shows the whole viewport. */
 export interface CameraKeyframe {
   atMs: number;
@@ -324,6 +341,7 @@ export interface RenderPlan {
   cardBackground: GradientSpec;
   cursor: CursorMove[];
   clicks: ClickRing[];
+  highlights: Highlight[];
   camera: CameraKeyframe[];
   masks: MaskSpan[];
   captions: Caption[];
@@ -352,6 +370,8 @@ export interface FrameState {
   cursor?: Point;
   /** `progress` runs from 0 to 1 over the ring's life. */
   rings: { point: Point; progress: number }[];
+  /** Asserted elements outlined (spec 365): output pixels, `opacity` 0–1 as they fade in. */
+  highlights?: { box: Box; colour: string; opacity: number }[];
   /** Clipped to `content` and to the output frame. */
   masks: Box[];
   caption?: string;

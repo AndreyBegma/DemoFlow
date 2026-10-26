@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sampleFrames } from './sample-frames.ts';
+import { sampleFrames, selectFrames } from './sample-frames.ts';
 
 describe('sampleFrames', () => {
   it('does not repeat the last frame when it falls on a step (#44)', () => {
@@ -33,5 +33,34 @@ describe('sampleFrames', () => {
         }
       }
     }
+  });
+});
+
+describe('selectFrames', () => {
+  it('folds a run of consecutive frames into one between term (#365)', () => {
+    // CI ran out of memory on eq(n,67)+eq(n,68)+…+eq(n,197).
+    const run = Array.from({ length: 131 }, (_, i) => 67 + i);
+    expect(selectFrames(run)).toBe('between(n\\,67\\,197)');
+  });
+
+  it('keeps a lone frame as eq and splits runs at gaps', () => {
+    expect(selectFrames([3, 7, 8, 9, 12, 20, 21])).toBe(
+      'eq(n\\,3)+between(n\\,7\\,9)+eq(n\\,12)+between(n\\,20\\,21)',
+    );
+  });
+
+  it('selects exactly the given frames', () => {
+    const numbers = [0, 1, 2, 5, 6, 10, 15, 16, 17, 18, 30];
+    const terms = selectFrames(numbers)
+      .split('+')
+      .map((term) => term.match(/\d+/g)?.map(Number) ?? []);
+    const selected = Array.from({ length: 40 }, (_, n) => n).filter((n) =>
+      terms.some(([a, b = a]) => n >= a && n <= b),
+    );
+    expect(selected).toEqual(numbers);
+  });
+
+  it('is empty for no frames', () => {
+    expect(selectFrames([])).toBe('');
   });
 });

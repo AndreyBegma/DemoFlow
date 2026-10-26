@@ -1,8 +1,8 @@
 'use client';
 
-import type { PlayerProps } from 'luna-player/player';
-import type { ComponentType } from 'react';
-import { lazy, Suspense, useState } from 'react';
+import type { PlayerHandle, PlayerProps } from 'luna-player/player';
+import type { ForwardRefExoticComponent, RefAttributes } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
 import { t } from '@/i18n';
 import type { PlayerShape } from '@/lib/playback';
 import {
@@ -61,12 +61,33 @@ const labels: PlayerProps['labels'] = {
 };
 
 /** Luna's `<Player>` behind the `VideoPlayer` contract, in the native box. */
-function adapt(Player: ComponentType<PlayerProps>): VideoPlayer {
-  return function Luna({ src, shape, onError }: VideoPlayerProps) {
+function adapt(
+  Player: ForwardRefExoticComponent<PlayerProps & RefAttributes<PlayerHandle>>,
+): VideoPlayer {
+  return function Luna({
+    src,
+    shape,
+    poster,
+    onError,
+    onControls,
+  }: VideoPlayerProps) {
+    // Luna's handle seeks in seconds (`luna-player` 0.2.0, `PlayerHandle`).
+    const ref = useCallback(
+      (handle: PlayerHandle | null) => {
+        if (handle === null || onControls === undefined) return;
+        onControls({
+          seek: (ms) => handle.seekTo(ms / 1000),
+          play: () => handle.play(),
+        });
+      },
+      [onControls],
+    );
     return (
       <div className={boxClass(shape)}>
         <Player
+          ref={ref}
           src={src}
+          poster={poster}
           aspectRatio={lunaAspectRatio(shape)}
           labels={labels}
           storage={null}
@@ -91,7 +112,13 @@ const LazyLuna = lazy(async () => ({
  * when Luna's chunk does not load, or Luna gives up on `src`, the native one
  * plays the same stream; only its failure reaches the page's `onError`.
  */
-export function LunaVideoPlayer({ src, shape, onError }: VideoPlayerProps) {
+export function LunaVideoPlayer({
+  src,
+  shape,
+  poster,
+  onError,
+  onControls,
+}: VideoPlayerProps) {
   const [current, setCurrent] = useState<PlayerKind>('luna');
 
   function handleError() {
@@ -100,13 +127,27 @@ export function LunaVideoPlayer({ src, shape, onError }: VideoPlayerProps) {
   }
 
   if (current === 'native') {
-    return <NativeVideoPlayer src={src} shape={shape} onError={handleError} />;
+    return (
+      <NativeVideoPlayer
+        src={src}
+        shape={shape}
+        poster={poster}
+        onError={handleError}
+        onControls={onControls}
+      />
+    );
   }
   return (
     <Suspense
       fallback={<div className={`${boxClass(shape)} ${ASPECT[shape]}`} />}
     >
-      <LazyLuna src={src} shape={shape} onError={handleError} />
+      <LazyLuna
+        src={src}
+        shape={shape}
+        poster={poster}
+        onError={handleError}
+        onControls={onControls}
+      />
     </Suspense>
   );
 }

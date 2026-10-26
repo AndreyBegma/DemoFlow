@@ -234,6 +234,21 @@ function liveAt(plan: RenderPlan, view: View, atMs: number): FrameState {
       ? [{ point: toOutput(ring.point), progress }]
       : [];
   });
+  const highlights = plan.highlights.flatMap((highlight) => {
+    if (atMs < highlight.startMs || atMs >= highlight.endMs) return [];
+    const corner = toOutput(highlight.box);
+    return [
+      {
+        box: {
+          ...corner,
+          width: highlight.box.width * scale,
+          height: highlight.box.height * scale,
+        },
+        colour: highlight.colour,
+        opacity: Math.min(1, (atMs - highlight.startMs) / highlight.fadeMs),
+      },
+    ];
+  });
   const masks = maskBoxes(
     plan.masks.flatMap((mask) =>
       atMs < mask.startMs || atMs >= mask.endMs ? [] : [maskBoxAt(mask, atMs)],
@@ -256,6 +271,7 @@ function liveAt(plan: RenderPlan, view: View, atMs: number): FrameState {
     ...(stage === undefined ? {} : { frame: stage }),
     ...(cursor === undefined ? {} : { cursor: toOutput(cursor) }),
     rings,
+    ...(highlights.length === 0 ? {} : { highlights }),
     masks,
     ...(caption === undefined ? {} : { caption }),
     ...(badge === undefined

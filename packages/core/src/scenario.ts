@@ -48,24 +48,19 @@ export const DEFAULT_VIEWPORTS: Record<
 /** How fast the recorded steps play when a scenario sets no `pacing` (C-203). */
 export const DEFAULT_PACING = {
   stepDwellMs: 1_000,
-  endHoldMs: 3_500,
   typingDelayMs: 80,
 } as const;
 
 /**
- * How fast a recording plays (C-203): a pause after each visible step, a hold
- * on the final frame, and the typing speed. Setup and off-camera steps are not
+ * How fast a recording plays (C-203): a pause after each visible step and the
+ * typing speed (the final frame is held by `render.endHoldMs`). Setup and off-camera steps are not
  * paced.
  */
 export const PacingSchema = z
   .strictObject({
     stepDwellMs: DwellMsSchema.default(DEFAULT_PACING.stepDwellMs).meta({
       description:
-        'Milliseconds the recording stays on the result of each visible step (navigate, click, hover, fill, select, press, scroll, assertVisible, assertText) before the next one. A step overrides it with dwellMs; 0 turns it off.',
-    }),
-    endHoldMs: DwellMsSchema.default(DEFAULT_PACING.endHoldMs).meta({
-      description:
-        'Milliseconds the recording holds the final frame after the last step of a successful run. 0 ends the video at the last step.',
+        'Milliseconds the recording stays on the result of each visible step (navigate, click, hover, fill, select, press, scroll, assertVisible, assertText) before the next one. A step overrides it with hold; 0 turns it off.',
     }),
     typingDelayMs: TypingDelayMsSchema.default(
       DEFAULT_PACING.typingDelayMs,

@@ -74,7 +74,7 @@ whole string instead of a part of it.
 ## Steps
 
 Every step has an `action`. Every step may also carry a `caption`, a
-`timeoutMs`, a `dwellMs` (see [Pacing](#pacing)) and `"record": false` (see
+`timeoutMs`, a [`hold`](#hold) and `"record": false` (see
 [Off-camera steps](#off-camera-steps)).
 
 | Action | What it does | Fields |
@@ -134,30 +134,29 @@ steps that have a target, `waitFor` for a hidden element excepted, and on
 A recording plays slowly enough to follow. After each visible step
 (`navigate`, `click`, `hover`, `fill`, `select`, `press`, `scroll`,
 `assertVisible`, `assertText`) the video stays on the result for a moment
-before the next step. After the last step of a successful run it holds the
-final frame, so the result of the demo stays on screen. A `fill` types one
-character at a time.
+before the next step, and a `fill` types one character at a time.
 
-The top-level `pacing` object sets these for the whole scenario. Every field is
+The top-level `pacing` object sets this for the whole scenario. Every field is
 optional and has a default:
 
 | Field | Default | Range | What it does |
 |---|---|---|---|
 | `stepDwellMs` | 1000 | 0 to 10000 | Pause after each visible step. `0` turns it off. |
-| `endHoldMs` | 3500 | 0 to 10000 | Hold on the final frame after the last step. `0` ends the video at the last step. |
 | `typingDelayMs` | 80 | 0 to 500 | Pause between two typed characters of a `fill`. |
 
-A step overrides the scenario's pacing for itself: `dwellMs` (0 to 10000) on
-any step, and `typingDelayMs` (0 to 500) on a `fill`. A `dwellMs` also adds a
-pause after a step that has none by default, such as a `marker`. The last step
-does not dwell unless it sets `dwellMs`; the end hold follows it.
+A step overrides the scenario's pacing for itself: [`hold`](#hold) (0 to 10000)
+on any step replaces the dwell, and `typingDelayMs` (0 to 500) on a `fill`. A
+`hold` also adds a pause after a step that has none by default, such as a
+`marker`. The last step does not dwell unless it sets `hold`; the end hold
+follows it. The end hold is [`render.endHoldMs`](/docs/config#render), 3500 ms
+by default.
 
 ```json
 {
-  "pacing": { "stepDwellMs": 700, "endHoldMs": 5000, "typingDelayMs": 60 },
+  "pacing": { "stepDwellMs": 700, "typingDelayMs": 60 },
   "steps": [
     { "action": "fill", "target": { "label": "Title" }, "value": "Hello", "typingDelayMs": 120 },
-    { "action": "click", "target": { "role": "button", "name": "Publish" }, "dwellMs": 2000 },
+    { "action": "click", "target": { "role": "button", "name": "Publish" }, "hold": 2000 },
     { "action": "assertVisible", "target": { "text": "Hello" } }
   ]
 }
@@ -165,9 +164,40 @@ does not dwell unless it sets `dwellMs`; the end hold follows it.
 
 A `wait` still pauses on top of the dwell. Pacing never slows down
 [setup and off-camera steps](#off-camera-steps), and a check run
-(`demoflow run --check`) neither dwells nor holds the end. The renderer keeps the
-dwells and the end hold at real speed: only other frozen stretches, such as a
-long `wait`, are shortened.
+(`demoflow run --check`) neither dwells nor holds the end.
+
+### hold
+
+`hold` keeps the page on screen after the step, for 0 to 10000 ms. The run
+waits that long once the step is done, and the video plays the whole hold at
+real speed: the [idle trim](/docs/config#render) never shortens it. `0` turns the dwell off. A step that
+fails does not hold. `hold` is refused on an off-camera step
+(`"record": false`).
+
+Use `hold`, not `wait`, to show something. A `wait` on a still page is idle
+time, and the render shortens it to `render.idle.compressToMs` (400 ms by
+default).
+
+#### Show the result
+
+Assert the result, zoom in on it and hold it. An assertion with `zoom` keeps the
+camera on the element it found through its hold, and outlines it:
+
+```json
+{
+  "action": "assertVisible",
+  "target": { "text": "My first post" },
+  "zoom": true,
+  "hold": 2000
+}
+```
+
+The outline is drawn where the element was when the assertion passed, so hold
+an element that has stopped moving.
+
+Every successful video also ends on its last frame for
+[`render.endHoldMs`](/docs/config#render) (3500 ms by default), after the last
+step's own `hold`.
 
 ### Scene markers
 
