@@ -2,6 +2,7 @@
 
 import { Breadcrumb } from '@andrewbehma/glass-ui/breadcrumb';
 import { SheetContent, SheetRoot } from '@andrewbehma/glass-ui/sheet';
+import { useBreakpoint } from '@andrewbehma/glass-ui/use-breakpoint';
 import { Menu } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -14,9 +15,6 @@ import { activeNavId, NAV_ITEMS } from '@/lib/nav';
 import { AccountMenu } from './account-menu';
 import { useCrumbNames } from './crumb-names';
 import { Sidebar } from './sidebar';
-
-/** Tailwind's `desktop:` breakpoint, where the rail replaces the drawer. */
-const DESKTOP_QUERY = '(min-width: 1024px)';
 
 function crumbLabels(): Record<CrumbKind, string> {
   return {
@@ -54,14 +52,10 @@ export function TopBar({
   useEffect(() => setNavOpen(false), [pathname]);
 
   // Widening to a desktop closes it too: the rail is on screen there.
+  const breakpoint = useBreakpoint();
   useEffect(() => {
-    const query = window.matchMedia(DESKTOP_QUERY);
-    const close = () => {
-      if (query.matches) setNavOpen(false);
-    };
-    query.addEventListener('change', close);
-    return () => query.removeEventListener('change', close);
-  }, []);
+    if (breakpoint === 'desktop') setNavOpen(false);
+  }, [breakpoint]);
 
   return (
     <header className="glass sticky top-2 z-chrome flex h-14 items-center gap-2 rounded-surface px-2 tablet:px-3">
