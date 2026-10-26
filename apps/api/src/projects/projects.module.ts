@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { RunnerModule } from '../runner/runner.module';
+import { ShareStorageModule } from '../shares/share-storage';
 import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
 import { RunnerRunsController } from './runner-runs.controller';
 
 /** Projects and the demo library (spec #178): metadata only, never video. */
 @Module({
-  imports: [AuthModule, RunnerModule],
+  imports: [AuthModule, RunnerModule, ShareStorageModule],
   controllers: [ProjectsController, RunnerRunsController],
   providers: [ProjectsService],
 })

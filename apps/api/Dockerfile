@@ -52,6 +52,10 @@ COPY --from=builder --chown=node:node /app/node_modules node_modules/
 COPY --from=builder --chown=node:node /app/packages/shared packages/shared/
 COPY --from=builder --chown=node:node /app/apps/api apps/api/
 
+# The shares volume mounts here; a new named volume copies this directory's
+# owner, so the API can write to it as `node` (spec #347).
+RUN mkdir -p /data/shares && chown node:node /data/shares
+
 USER node
 WORKDIR /app/apps/api
 

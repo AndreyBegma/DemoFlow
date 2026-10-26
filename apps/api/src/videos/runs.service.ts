@@ -6,7 +6,8 @@ import {
   toRunDetailView,
 } from '../projects/projects.service';
 import { RunnerConnections } from '../runner/runner-connections.service';
-import type { RunOption } from '../runner/runner-socket';
+import type { Feature, RunOption } from '../runner/runner-socket';
+import { ShareStorage } from '../shares/share-storage';
 
 const RUN_INCLUDE = {
   project: { select: { id: true, name: true } },
@@ -21,13 +22,15 @@ export interface RunPage {
   project: { id: string; name: string };
   /**
    * Null when the machine was removed: deleted or revoked. `runOptions` is
-   * what it accepts on a start, none while offline (spec #325, Decision 7).
+   * what it accepts on a start, none while offline (spec #325, Decision 7);
+   * `features` what its daemon announced, as `share` (spec #347, Decision 6).
    */
   machine: {
     id: string;
     name: string;
     online: boolean;
     runOptions: RunOption[];
+    features: Feature[];
   } | null;
 }
 
@@ -44,6 +47,7 @@ export class RunsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly connections: RunnerConnections,
+    private readonly shareStorage: ShareStorage,
   ) {}
 
   async find(userId: string, id: string): Promise<OwnedRun> {
@@ -68,6 +72,7 @@ export class RunsService {
         name: machine.name,
         online: this.connections.isOnline(machine.id),
         runOptions: [...this.connections.runOptions(machine.id)],
+        features: [...this.connections.features(machine.id)],
       },
     };
   }
@@ -75,8 +80,14 @@ export class RunsService {
   /**
    * Deletes the run's row, never its files (spec #280, Decisions 2–4). One
    * statement: ownership and delete cannot race. Already gone is 404 too.
+   * Its shares cascade; their directories go once the row is gone (spec
+   * #347, Decision 9).
    */
   async remove(userId: string, id: string): Promise<void> {
+    const shares = await this.prisma.share.findMany({
+      where: { runId: id, run: { project: { userId } } },
+      select: { id: true },
+    });
     const { count } = await this.prisma.run.deleteMany({
       where: { id, project: { userId } },
     });
@@ -88,6 +99,7 @@ export class RunsService {
     if (count !== 1) {
       throw runError(HttpStatus.NOT_FOUND, 'not-found');
     }
+    await this.shareStorage.remove(shares.map((share) => share.id));
   }
 }
 

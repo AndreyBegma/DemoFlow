@@ -16,6 +16,8 @@ import {
   CLOSE_REPLACED,
   CLOSE_REVOKED,
   type ClientMessage,
+  FEATURES,
+  type Feature,
   HEARTBEAT_TICK_MS,
   IDLE_TIMEOUT_MS,
   LAST_SEEN_WRITE_INTERVAL_MS,
@@ -25,6 +27,7 @@ import {
   RUN_OPTIONS,
   type RunOption,
   type ServerMessage,
+  type ShareMessage,
   type VideoChunk,
   type VideoMessage,
 } from './runner-socket';
@@ -49,6 +52,10 @@ interface Connection {
   warnedStrayLaunch: boolean;
   /** The known `run.start` options this socket's `launches.sync` announced (spec #325, Decision 4). */
   runOptions: RunOption[];
+  /** The known features the same frame announced (spec #347, Decision 6). */
+  features: Feature[];
+  /** A `share.*` answer for no pending request was logged on this socket. */
+  warnedStrayShare: boolean;
 }
 
 /**
@@ -85,6 +92,16 @@ export interface LaunchSink {
 }
 
 /**
+ * Where share uploads (spec #347) hear from the sockets. `message` answers
+ * false for a request it does not hold.
+ */
+export interface ShareSink {
+  message(runnerId: string, message: ShareMessage): boolean;
+  /** The machine's socket is gone: closed, replaced, revoked or shut down. */
+  closed(runnerId: string): void;
+}
+
+/**
  * The open runner sockets of this API instance (one today, #120): online is
  * "has an entry here", never a column. One socket per machine — a second one
  * replaces the first with `4409`. Heartbeats run on the injected clock, so
@@ -101,6 +118,7 @@ export class RunnerConnections
   private videoSink: VideoSink | undefined;
   private artifactsSink: ArtifactsSink | undefined;
   private launchSink: LaunchSink | undefined;
+  private shareSink: ShareSink | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -154,6 +172,11 @@ export class RunnerConnections
     return this.open.get(runnerId)?.runOptions ?? [];
   }
 
+  /** What the machine's current socket can do (spec #347); none offline or before its sync. */
+  features(runnerId: string): readonly Feature[] {
+    return this.open.get(runnerId)?.features ?? [];
+  }
+
   /** To the machine's current socket; false when it is not online. */
   sendTo(runnerId: string, message: ServerMessage): boolean {
     const connection = this.open.get(runnerId);
@@ -179,6 +202,11 @@ export class RunnerConnections
     this.launchSink = sink;
   }
 
+  /** Share uploads' hook (spec #347). One sink per instance. */
+  setShareSink(sink: ShareSink): void {
+    this.shareSink = sink;
+  }
+
   /** An authenticated socket, straight after the upgrade. */
   async accept(
     socket: WebSocket,
@@ -196,6 +224,8 @@ export class RunnerConnections
       warnedStrayArtifacts: false,
       warnedStrayLaunch: false,
       runOptions: [],
+      features: [],
+      warnedStrayShare: false,
     };
     // Listeners first: a frame that arrives during the writes below counts.
     socket.on('message', (data, isBinary) =>
@@ -360,11 +390,18 @@ export class RunnerConnections
         this.relayLaunch(connection, message);
         return;
       case 'launches.sync':
-        // Unknown options are dropped without a log (spec #325).
+        // Unknown options and features are dropped without a log (specs #325, #347).
         connection.runOptions = RUN_OPTIONS.filter((option) =>
           message.runOptions?.includes(option),
         );
+        connection.features = FEATURES.filter((feature) =>
+          message.features?.includes(feature),
+        );
         this.relayLaunch(connection, message);
+        return;
+      case 'share.prepared':
+      case 'share.error':
+        this.relayShare(connection, message);
         return;
     }
   }
@@ -376,6 +413,19 @@ export class RunnerConnections
     }
     if (!connection.warnedStrayLaunch) {
       connection.warnedStrayLaunch = true;
+      this.logger.warn(
+        `Dropped ${message.type} from runner ${connection.runnerId} for a request that is not pending`,
+      );
+    }
+  }
+
+  /** As `relayArtifacts`, with its own once-per-socket warning. */
+  private relayShare(connection: Connection, message: ShareMessage): void {
+    if (this.shareSink?.message(connection.runnerId, message)) {
+      return;
+    }
+    if (!connection.warnedStrayShare) {
+      connection.warnedStrayShare = true;
       this.logger.warn(
         `Dropped ${message.type} from runner ${connection.runnerId} for a request that is not pending`,
       );
@@ -405,6 +455,7 @@ export class RunnerConnections
     this.videoSink?.closed(runnerId);
     this.artifactsSink?.closed(runnerId);
     this.launchSink?.closed(runnerId);
+    this.shareSink?.closed(runnerId);
   }
 
   private touch(connection: Connection): void {
