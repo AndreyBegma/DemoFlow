@@ -151,6 +151,7 @@ export async function buildRenderPlan(
   const edits = await readEdits(
     path.join(runDir, PLAN_INPUTS.edits),
     timeline,
+    result,
     options.endHoldMs ?? DEFAULTS.endHoldMs,
   );
   const videoFile = path.join(runDir, timeline.videoFile);
@@ -179,6 +180,7 @@ export async function buildRenderPlan(
 async function readEdits(
   file: string,
   timeline: Timeline,
+  result: RunResult,
   tailMs: number,
 ): Promise<RunEdits | undefined> {
   let text: string;
@@ -202,7 +204,9 @@ async function readEdits(
       `${name} is invalid at ${formatPath(issue.path) || '(root)'}: ${issue.message}`,
     );
   }
-  const [issue] = checkRunEdits(parsed.data, timeline, { tailMs });
+  const [issue] = checkRunEdits(parsed.data, timeline, result, {
+    tailMs,
+  });
   if (issue !== undefined) {
     throw new Error(
       `${name} does not fit the run at ${issue.path}: ${issue.message}`,
