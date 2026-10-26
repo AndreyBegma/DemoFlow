@@ -5,7 +5,13 @@ import {
   NonEmptyStringSchema,
   ViewportSchema,
 } from './common.ts';
-import { DataKeySchema, ScenarioStepSchema, SetupStepSchema } from './step.ts';
+import {
+  DataKeySchema,
+  DwellMsSchema,
+  ScenarioStepSchema,
+  SetupStepSchema,
+  TypingDelayMsSchema,
+} from './step.ts';
 
 /** One item of a data list: the fields a `repeat` substitutes. */
 export const DataItemSchema = z.record(
@@ -39,6 +45,46 @@ export const DEFAULT_VIEWPORTS: Record<
   phone: { width: 412, height: 914 },
 };
 
+/** How fast the recorded steps play when a scenario sets no `pacing` (C-203). */
+export const DEFAULT_PACING = {
+  stepDwellMs: 1_000,
+  endHoldMs: 3_500,
+  typingDelayMs: 80,
+} as const;
+
+/**
+ * How fast a recording plays (C-203): a pause after each visible step, a hold
+ * on the final frame, and the typing speed. Setup and off-camera steps are not
+ * paced.
+ */
+export const PacingSchema = z
+  .strictObject({
+    stepDwellMs: DwellMsSchema.default(DEFAULT_PACING.stepDwellMs).meta({
+      description:
+        'Milliseconds the recording stays on the result of each visible step (navigate, click, hover, fill, select, press, scroll, assertVisible, assertText) before the next one. A step overrides it with dwellMs; 0 turns it off.',
+    }),
+    endHoldMs: DwellMsSchema.default(DEFAULT_PACING.endHoldMs).meta({
+      description:
+        'Milliseconds the recording holds the final frame after the last step of a successful run. 0 ends the video at the last step.',
+    }),
+    typingDelayMs: TypingDelayMsSchema.default(
+      DEFAULT_PACING.typingDelayMs,
+    ).meta({
+      description:
+        'Milliseconds between two typed characters of a fill. A fill overrides it with typingDelayMs.',
+    }),
+  })
+  .meta({
+    description:
+      'How fast the recording plays. Every field has a default; setup and off-camera steps are not paced.',
+  });
+export type Pacing = z.infer<typeof PacingSchema>;
+
+/** The scenario's pacing with every default filled in. */
+export function resolvePacing(pacing: Partial<Pacing> | undefined): Pacing {
+  return { ...DEFAULT_PACING, ...pacing };
+}
+
 /** A scenario file, `demoflow/**\/*.demo.json` (ADR-0003). */
 export const ScenarioSchema = z
   .strictObject({
@@ -54,6 +100,7 @@ export const ScenarioSchema = z
     }),
     viewport: ViewportSchema.optional(),
     data: ScenarioDataSchema.optional(),
+    pacing: PacingSchema.optional(),
     setup: z
       .array(SetupStepSchema)
       .min(1, 'expected at least one step')

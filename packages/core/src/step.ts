@@ -38,11 +38,21 @@ export const RecordSchema = z.boolean().optional().meta({
     'false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.',
 });
 
+/** How long the video stays on a step's result before the next step (C-203). */
+export const DwellMsSchema = z.number().int().min(0).max(10_000);
+
+/** How long a `fill` waits between two typed characters (C-203). */
+export const TypingDelayMsSchema = z.number().int().min(0).max(500);
+
 /** Fields every step may carry. */
 const common = {
   caption: z.string().max(120).optional(),
   timeoutMs: z.number().int().min(100).max(60_000).default(10_000),
   record: RecordSchema,
+  dwellMs: DwellMsSchema.optional().meta({
+    description:
+      "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+  }),
 };
 
 /**
@@ -228,6 +238,10 @@ function stepSchema<M extends PlainSteps | TemplateSteps>(mode: M) {
         ...zoom,
         value: z.string().optional(),
         valueFrom: z.strictObject({ env: EnvNameSchema }).optional(),
+        typingDelayMs: TypingDelayMsSchema.optional().meta({
+          description:
+            'Milliseconds between two typed characters of this fill; overrides pacing.typingDelayMs.',
+        }),
       })
         .superRefine(exactlyOne(fillKeys))
         .meta(exactlyOneJsonSchema(fillKeys)),

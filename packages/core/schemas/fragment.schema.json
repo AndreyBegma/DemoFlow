@@ -84,6 +84,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action"],
@@ -227,6 +233,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "target"],
@@ -357,6 +369,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "target"],
@@ -480,6 +498,12 @@
                 "required": ["env"],
                 "additionalProperties": false
               },
+              "typingDelayMs": {
+                "description": "Milliseconds between two typed characters of this fill; overrides pacing.typingDelayMs.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 500
+              },
               "caption": {
                 "type": "string",
                 "maxLength": 120
@@ -493,6 +517,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "target"],
@@ -626,6 +656,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "target", "option"],
@@ -748,6 +784,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "target"],
@@ -881,6 +923,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "key"],
@@ -1091,6 +1139,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action"],
@@ -1221,6 +1275,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "target"],
@@ -1360,6 +1420,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "target", "text"],
@@ -1397,6 +1463,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "name"],
@@ -1439,6 +1511,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "title"],
@@ -1469,6 +1547,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "ms"],
@@ -1506,6 +1590,12 @@
               "record": {
                 "description": "false runs the step off camera: before the recording starts, in the same browser storage (cookies, localStorage). Only the opening steps of a scenario may be off camera; the video starts on the first recorded step.",
                 "type": "boolean"
+              },
+              "dwellMs": {
+                "description": "Milliseconds the recording stays on this step's result before the next step starts; overrides pacing.stepDwellMs. 0 turns the dwell off. Ignored off camera.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
               }
             },
             "required": ["action", "name"],
