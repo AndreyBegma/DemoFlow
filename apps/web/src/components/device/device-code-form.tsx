@@ -40,12 +40,15 @@ export function DeviceCodeForm() {
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
+          className="font-mono text-lg tracking-widest"
           placeholder={t('device.code.placeholder')}
           aria-invalid={invalid ? true : undefined}
           required
         />
       </Field>
-      <Button type="submit">{t('device.code.submit')}</Button>
+      <Button type="submit" variant="solid" size="lg">
+        {t('device.code.submit')}
+      </Button>
     </form>
   );
 }
