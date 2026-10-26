@@ -64,6 +64,8 @@ function FrameMessage({
  * and beside it the glass panel with the run's `details` and its actions —
  * `runAgain`, Download, the control that deletes the run's files from its
  * machine, and `deleteRun`. Below 1024px the panel stacks under the player.
+ * A `check` run records no video (spec #363, Decision 5): the frame says so,
+ * and there is no format switch, Download or file deletion.
  */
 export function RunPlayback({
   runId,
@@ -73,6 +75,7 @@ export function RunPlayback({
   details,
   runAgain,
   deleteRun,
+  check = false,
 }: {
   runId: string;
   formats: string[];
@@ -81,6 +84,7 @@ export function RunPlayback({
   details: ReactNode;
   runAgain: ReactNode;
   deleteRun: ReactNode;
+  check?: boolean;
 }) {
   const router = useRouter();
   const formats = orderFormats(runFormats);
@@ -168,9 +172,12 @@ export function RunPlayback({
     machine,
   );
   // Download and Delete video files only make sense while there are files.
-  const hasFiles = deletedAt === null && format !== undefined;
+  const hasFiles = !check && deletedAt === null && format !== undefined;
 
   function frame(): ReactNode {
+    if (check) {
+      return <FrameMessage status={null} title={t('runPage.checkNoVideo')} />;
+    }
     if (deletedAt !== null) {
       return (
         <FrameMessage
@@ -240,7 +247,7 @@ export function RunPlayback({
         >
           {frame()}
         </div>
-        {format !== undefined && deletedAt === null && formats.length > 1 ? (
+        {hasFiles && formats.length > 1 ? (
           <div className="max-w-full overflow-x-auto">
             <SegmentedControl aria-label={t('runPage.formats.label')}>
               {formats.map((candidate) => (
