@@ -164,7 +164,8 @@ describe('time map', () => {
     });
     // The second click now happens at 1 400 ms of output.
     expect(toOutputMs(rendered.timeMap, 4000)).toBe(1400);
-    expect(rendered.durationMs).toBe(4600 + 1000 - 2600);
+    // The end hold (2 500 ms by default) is kept after the last event.
+    expect(rendered.durationMs).toBe(4600 + 2500 - 2600);
   });
 
   it('compresses a frozen passive step (a wait, a failed assertion)', () => {
@@ -250,8 +251,8 @@ describe('time map', () => {
       output = segment.outputEndMs;
       source = segment.sourceEndMs;
     }
-    // The run ends 1 000 ms after its last event; that tail is frozen too.
-    expect(source).toBe(8000);
+    // The video ends the end hold after its last event, kept though frozen.
+    expect(source).toBe(9500);
   });
 
   it('applies the clock offset: source = timeline + offsetMs', () => {
@@ -626,6 +627,136 @@ describe('camera', () => {
     expect(VIEWPORT.width / view.width).toBeCloseTo(1.35);
     expect(view.x).toBe(0);
     expect(view.y).toBe(0);
+  });
+});
+
+describe('hold (spec 365)', () => {
+  const box = { x: 500, y: 300, width: 200, height: 40 };
+  const assertion = (extra: Partial<TimelineEvent> = {}): TimelineEvent =>
+    event({
+      action: 'assertVisible',
+      startMs: 1000,
+      endMs: 1200,
+      target: { box },
+      assertion: { passed: true },
+      ...extra,
+    });
+
+  it("keeps a frozen step's hold at 1:1, and compresses the same freeze on a wait", () => {
+    const held = plan(
+      [
+        { ...click(0, 1000, { x: 300, y: 200 }), holdMs: 3000 },
+        click(4000, 4600, { x: 900, y: 500 }),
+      ],
+      [{ startMs: 1000, endMs: 4000 }],
+    );
+    expect(toOutputMs(held.timeMap, 4000)).toBe(4000);
+    const waited = plan(
+      [
+        click(0, 1000, { x: 300, y: 200 }),
+        event({ action: 'wait', startMs: 1000, endMs: 4000 }),
+        click(4000, 4600, { x: 900, y: 500 }),
+      ],
+      [{ startMs: 1000, endMs: 4000 }],
+    );
+    expect(toOutputMs(waited.timeMap, 4000)).toBe(1400);
+  });
+
+  it('ends the video endHoldMs after the last event, frozen or not', () => {
+    const events = [click(0, 1000, { x: 300, y: 200 })];
+    const frozen = [{ startMs: 1000, endMs: 20_000 }];
+    expect(plan(events, frozen, { endHoldMs: 2000 }).durationMs).toBe(3000);
+    expect(plan(events, [], { endHoldMs: 2000 }).durationMs).toBe(3000);
+    expect(plan(events, frozen).durationMs).toBe(3500);
+    expect(plan(events, frozen, { endHoldMs: 0 }).durationMs).toBe(1000);
+  });
+
+  it("adds the end hold after the last step's own hold", () => {
+    const events = [{ ...click(0, 1000, { x: 300, y: 200 }), holdMs: 500 }];
+    expect(plan(events, [], { endHoldMs: 2000 }).durationMs).toBe(3500);
+  });
+
+  it('holds nothing after a failure', () => {
+    const rendered = plan(
+      [
+        click(0, 1000, { x: 300, y: 200 }),
+        { ...click(1000, 2000, { x: 900, y: 500 }), holdMs: 3000 },
+      ],
+      [],
+      {
+        endHoldMs: 2000,
+        failed: { stage: 'execution', stepIndex: 1, message: 'boom' },
+      },
+    );
+    expect(rendered.timeMap.at(-1)?.sourceEndMs).toBe(2000);
+  });
+
+  it('clamps the end to a source recorded before the end hold (an old run)', () => {
+    const rendered = planRender(
+      {
+        timeline: timeline([click(0, 1000, { x: 300, y: 200 })]),
+        result: result(),
+        source: {
+          width: 1280,
+          height: 720,
+          fps: 25,
+          durationMs: 1300,
+          codec: 'vp9',
+          freezes: [],
+        },
+      },
+      { offsetMs: 0, frame: { enabled: false } },
+    );
+    expect(rendered.durationMs).toBe(1300);
+  });
+
+  it('keeps the camera on a zoomed assertion through its hold, and outlines it', () => {
+    const rendered = plan(
+      [
+        click(0, 1000, { x: 300, y: 200 }),
+        assertion({ zoom: true, holdMs: 2000 }),
+      ],
+      [],
+      { endHoldMs: 0 },
+    );
+    const full = Math.max(...rendered.camera.map((key) => key.zoom));
+    expect(full).toBeGreaterThan(1);
+    expect(rendered.camera).toContainEqual(
+      expect.objectContaining({ atMs: 3200, zoom: full }),
+    );
+    expect(zoomAt(rendered, 2000)).toBeCloseTo(full);
+    expect(rendered.highlights).toEqual([
+      {
+        startMs: 1200,
+        endMs: 3200,
+        box,
+        colour: expect.stringMatching(/^#[0-9a-f]{6}$/i),
+        fadeMs: 200,
+      },
+    ]);
+    // Frame 39 is 1 300 ms: halfway through the 200 ms fade-in.
+    expect(frameAt(rendered, 39).highlights).toEqual([
+      expect.objectContaining({ opacity: 0.5 }),
+    ]);
+    expect(frameAt(rendered, 30).highlights).toBeUndefined();
+  });
+
+  it('outlines a zoomed assertion at the end of the run through the end hold', () => {
+    const rendered = plan([assertion({ zoom: true })], [], {
+      endHoldMs: 1500,
+    });
+    expect(rendered.highlights).toMatchObject([{ startMs: 1200, endMs: 2700 }]);
+  });
+
+  it('neither zooms nor outlines an assertion without zoom', () => {
+    const rendered = plan(
+      [click(0, 1000, { x: 300, y: 200 }), assertion({ holdMs: 2000 })],
+      [],
+    );
+    expect(rendered.highlights).toEqual([]);
+    for (const atMs of [1000, 1200, 2000, 3200]) {
+      expect(zoomAt(rendered, atMs)).toBe(1);
+    }
   });
 });
 
