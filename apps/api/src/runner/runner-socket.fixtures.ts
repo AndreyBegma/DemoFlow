@@ -141,9 +141,9 @@ export class TestSocket {
     return ask as ArtifactsDelete;
   }
 
-  /** The next `scenarios.list`, `run.start` or `run.cancel`, with its request id. */
+  /** The next `scenarios.list`, `run.start`, `run.cancel` or `check.start`, with its request id. */
   async nextLaunch(
-    type: 'scenarios.list' | 'run.start' | 'run.cancel',
+    type: 'scenarios.list' | 'run.start' | 'run.cancel' | 'check.start',
   ): Promise<LaunchRequest> {
     const ask = await this.next(type);
     if (typeof ask.requestId !== 'string') {
@@ -175,14 +175,21 @@ export class TestSocket {
   /**
    * `launches.sync` (spec #284): the launch ids this daemon still runs, and
    * the `run.start` options it accepts (spec #325) — none sent when omitted.
-   * `features` is its capability list, as `share` (spec #347).
+   * `features` is its capability list, as `share` (spec #347); `checks`
+   * says it answers `check.start` (spec 360).
    */
-  sync(running: string[], runOptions?: unknown, features?: string[]): void {
+  sync(
+    running: string[],
+    runOptions?: unknown,
+    features?: string[],
+    checks?: boolean,
+  ): void {
     this.send({
       type: 'launches.sync',
       running,
       ...(runOptions === undefined ? {} : { runOptions }),
       ...(features === undefined ? {} : { features }),
+      ...(checks === undefined ? {} : { checks }),
     });
   }
 

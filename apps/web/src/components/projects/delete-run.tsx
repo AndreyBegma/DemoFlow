@@ -45,11 +45,11 @@ export function DeleteRun({
   }
 
   return (
-    <div className="mt-4 flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
       {failed ? (
         <Banner tone="danger">{t('auth.errors.unknown')}</Banner>
       ) : null}
-      <div className="flex justify-end">
+      <div>
         <Button
           type="button"
           variant="danger"

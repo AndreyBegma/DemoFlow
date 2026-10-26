@@ -41,7 +41,10 @@ export function ResetPasswordForm({ token }: { token: string }) {
         <Banner tone="ok" title={t('auth.reset.doneTitle')}>
           {t('auth.reset.doneBody')}
         </Banner>
-        <Link href="/sign-in" className={buttonClassName({ full: true })}>
+        <Link
+          href="/sign-in"
+          className={buttonClassName({ variant: 'solid', full: true })}
+        >
           {t('auth.reset.signIn')}
         </Link>
       </>
@@ -63,7 +66,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
         hint={t('auth.fields.passwordHint')}
         error={state.error}
       />
-      <Button type="submit" full disabled={pending}>
+      <Button type="submit" variant="solid" full disabled={pending}>
         {pending ? t('auth.reset.submitting') : t('auth.reset.submit')}
       </Button>
     </form>
@@ -76,7 +79,10 @@ export function InvalidResetLink() {
       <Banner tone="warn" title={t('auth.reset.invalidTitle')}>
         {t('auth.reset.invalidBody')}
       </Banner>
-      <Link href="/forgot-password" className={buttonClassName({ full: true })}>
+      <Link
+        href="/forgot-password"
+        className={buttonClassName({ variant: 'solid', full: true })}
+      >
         {t('auth.reset.requestNew')}
       </Link>
     </>

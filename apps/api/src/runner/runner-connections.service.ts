@@ -27,6 +27,7 @@ import {
   parseClientMessage,
   RUN_OPTIONS,
   type RunOption,
+  type SchedulesMessage,
   type ServerMessage,
   type ShareMessage,
   type VideoChunk,
@@ -55,6 +56,8 @@ interface Connection {
   runOptions: RunOption[];
   /** The known features the same frame announced (spec #347, Decision 6). */
   features: Feature[];
+  /** Whether the same frame said it answers `check.start` (spec 360); null before it. */
+  checks: boolean | null;
   /** A `share.*` answer for no pending request was logged on this socket. */
   warnedStrayShare: boolean;
   /** A `project.*` answer for no pending request was logged on this socket. */
@@ -104,6 +107,11 @@ export interface ShareSink {
   closed(runnerId: string): void;
 }
 
+/** Where check schedules (spec #362) hear a machine's config schedules. */
+export interface SchedulesSink {
+  sync(runnerId: string, message: SchedulesMessage): void;
+}
+
 /**
  * Where folder requests (spec #378) hear from the sockets. `message` answers
  * false for a request it does not hold.
@@ -132,6 +140,7 @@ export class RunnerConnections
   private artifactsSink: ArtifactsSink | undefined;
   private launchSink: LaunchSink | undefined;
   private shareSink: ShareSink | undefined;
+  private schedulesSink: SchedulesSink | undefined;
   private projectSink: ProjectSink | undefined;
 
   constructor(
@@ -191,6 +200,14 @@ export class RunnerConnections
     return this.open.get(runnerId)?.features ?? [];
   }
 
+  /**
+   * Whether the machine's current socket answers `check.start` (spec #362,
+   * Decision 4); null offline or before its `launches.sync`.
+   */
+  checks(runnerId: string): boolean | null {
+    return this.open.get(runnerId)?.checks ?? null;
+  }
+
   /** To the machine's current socket; false when it is not online. */
   sendTo(runnerId: string, message: ServerMessage): boolean {
     const connection = this.open.get(runnerId);
@@ -221,6 +238,11 @@ export class RunnerConnections
     this.shareSink = sink;
   }
 
+  /** Check schedules' hook (spec #362). One sink per instance. */
+  setSchedulesSink(sink: SchedulesSink): void {
+    this.schedulesSink = sink;
+  }
+
   /** Folder requests' hook (spec #378). One sink per instance. */
   setProjectSink(sink: ProjectSink): void {
     this.projectSink = sink;
@@ -244,6 +266,7 @@ export class RunnerConnections
       warnedStrayLaunch: false,
       runOptions: [],
       features: [],
+      checks: null,
       warnedStrayShare: false,
       warnedStrayProject: false,
     };
@@ -407,6 +430,9 @@ export class RunnerConnections
       case 'run.error':
       case 'run.finished':
       case 'run.progress':
+      case 'check.started':
+      case 'check.finished':
+      case 'check.error':
         this.relayLaunch(connection, message);
         return;
       case 'launches.sync':
@@ -417,7 +443,11 @@ export class RunnerConnections
         connection.features = FEATURES.filter((feature) =>
           message.features?.includes(feature),
         );
+        connection.checks = message.checks === true;
         this.relayLaunch(connection, message);
+        return;
+      case 'schedules.sync':
+        this.schedulesSink?.sync(connection.runnerId, message);
         return;
       case 'share.prepared':
       case 'share.error':

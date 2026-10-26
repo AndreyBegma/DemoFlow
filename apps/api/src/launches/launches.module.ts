@@ -12,5 +12,6 @@ import { LaunchesService } from './launches.service';
   imports: [AuthModule, RunnerModule],
   controllers: [LaunchesController],
   providers: [LaunchesService],
+  exports: [LaunchesService],
 })
 export class LaunchesModule {}

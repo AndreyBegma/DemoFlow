@@ -73,7 +73,7 @@ export function SignUpForm() {
         hint={t('auth.fields.passwordHint')}
         error={state.errors.password}
       />
-      <Button type="submit" full disabled={pending}>
+      <Button type="submit" variant="solid" full disabled={pending}>
         {pending ? t('auth.signUp.submitting') : t('auth.signUp.submit')}
       </Button>
     </form>
