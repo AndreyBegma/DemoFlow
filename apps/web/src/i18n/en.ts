@@ -170,6 +170,10 @@ export const en = {
   },
   machines: {
     title: 'Machines',
+    description:
+      'The computers paired with your account. A machine records runs while it is online.',
+    paired: 'Paired {date}',
+    lastUsed: 'Last used {date}',
     empty: {
       title: 'No machines paired yet',
       body: 'Run this in a terminal on the machine you want to pair:',
@@ -180,13 +184,11 @@ export const en = {
       name: 'Name',
       os: 'System',
       cliVersion: 'CLI',
-      paired: 'Paired',
       status: 'Status',
       lastSeen: 'Last seen',
-      lastUsed: 'Last used',
       actions: 'Actions',
     },
-    neverUsed: 'Never',
+    neverUsed: 'Never used',
     status: {
       online: 'Online',
       offline: 'Offline',
@@ -231,10 +233,13 @@ export const en = {
   },
   projects: {
     title: 'Projects',
+    description:
+      'Each project is a folder on a paired machine and the runs recorded there.',
     loadFailed: 'We could not load your projects. Try again in a moment.',
     empty: {
       title: 'No projects yet',
       body: 'A project appears when a paired machine runs a scenario in a folder. You can also create one here and bind it to a folder later.',
+      docs: 'Read how to record a first run',
     },
     create: {
       label: 'New project',
@@ -245,17 +250,9 @@ export const en = {
     item: {
       noFolder: 'No folder bound yet',
       machineRemoved: 'Machine removed',
-      machine: 'Machine',
-      path: 'Folder',
-      lastRun: 'Last run',
       noRuns: 'No runs yet',
       runCount: '{count} runs',
       runCountOne: '1 run',
-      open: 'Open library',
-    },
-    status: {
-      passed: 'Passed',
-      failed: 'Failed',
     },
     rename: {
       action: 'Rename',
@@ -290,8 +287,10 @@ export const en = {
     },
     library: {
       title: '{name}',
-      machine: 'Machine',
-      path: 'Folder',
+      copyPath: 'Copy the folder path',
+      pathCopied: 'Copied',
+      copyFailed: 'Could not copy',
+      runsTitle: 'Runs',
       empty: {
         title: 'No runs yet',
         body: 'Runs show up here after demoflow run on a paired machine in this folder.',
@@ -315,7 +314,6 @@ export const en = {
         failedStep: 'Failed step',
       },
       noFormats: 'None',
-      filesDeleted: 'Files deleted',
       noFailedStep: '—',
       step: 'Step {number}',
       loadMore: 'Load more',
@@ -378,17 +376,7 @@ export const en = {
       cancelling: 'Cancelling…',
       openRun: 'Open the run',
       noReport: 'The run finished, but its report did not reach the site.',
-      state: {
-        starting: 'Starting',
-        running: 'Running',
-        cancelling: 'Cancelling',
-        passed: 'Passed',
-        failed: 'Failed',
-        cancelled: 'Cancelled',
-        timedOut: 'Timed out (15 min)',
-        lostLabel: 'Lost contact',
-        lost: 'Lost contact. The run may still finish and appear in the library.',
-      },
+      lost: 'Lost contact. The run may still finish and appear in the library.',
       errors: {
         runnerOffline:
           'The machine is offline. Start the runner on it (demoflow runner start) and try again.',
@@ -417,8 +405,9 @@ export const en = {
   },
   runPage: {
     title: 'Run of {name}',
+    panel: 'Run details',
+    actions: 'Actions',
     again: {
-      title: 'Run this scenario again',
       button: 'Run again',
       offlineHint: 'The machine is offline.',
     },
@@ -432,11 +421,6 @@ export const en = {
       confirm: 'Delete run',
       cancel: 'Keep',
     },
-    breadcrumbs: {
-      label: 'Path',
-      overflow: 'Show the path',
-      projects: 'Projects',
-    },
     metadata: {
       scenario: 'Scenario',
       path: 'Path',
@@ -446,6 +430,8 @@ export const en = {
       failedStep: 'Failed step',
       machine: 'Machine',
       cliVersion: 'CLI version',
+      formats: 'Formats',
+      noFormats: 'None',
       justNow: 'just now',
       noFailedStep: '—',
       step: 'Step {number}',
@@ -474,13 +460,6 @@ export const en = {
         recording: 'Recording',
         rendering: 'Rendering',
         storage: 'Storage',
-      },
-      statuses: {
-        passed: 'Passed',
-        failed: 'Failed',
-        skipped: 'Skipped',
-        pending: 'Pending',
-        running: 'Running',
       },
     },
     files: {
@@ -545,6 +524,25 @@ export const en = {
       title: 'Video files deleted',
       body: 'Deleted from the machine on {date}.',
     },
+  },
+  // One status vocabulary for every /app page (spec #374, lib/status.ts).
+  status: {
+    passed: 'Passed',
+    failed: 'Failed',
+    neverRun: 'Never run',
+    starting: 'Starting',
+    running: 'Running',
+    cancelling: 'Cancelling',
+    cancelled: 'Cancelled',
+    timedOut: 'Timed out (15 min)',
+    lost: 'Lost contact',
+    pending: 'Pending',
+    skipped: 'Skipped',
+    filesDeleted: 'Files deleted',
+    noVideo: 'No video',
+    machineRemoved: 'Machine removed',
+    offline: 'Offline',
+    online: 'Online',
   },
   sharePage: {
     download: 'Download',

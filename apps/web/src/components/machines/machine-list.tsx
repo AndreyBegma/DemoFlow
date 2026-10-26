@@ -2,15 +2,25 @@
 
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button } from '@andrewbehma/glass-ui/button';
+import { Card } from '@andrewbehma/glass-ui/card';
 import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
 import { Input } from '@andrewbehma/glass-ui/field';
+import {
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+} from '@andrewbehma/glass-ui/table';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { CellLabel, stacked } from '@/components/projects/stacked-rows';
+import { StatusIndicator } from '@/components/status/status-indicator';
 import { t } from '@/i18n';
 import { type Runner, renameRunner, revokeRunner } from '@/lib/api';
 import { formatDate } from '@/lib/format-date';
 import { formatRelative } from '@/lib/format-relative';
+import { machineStatus } from '@/lib/status';
 import type { ErrorKey } from '@/lib/validation';
 import { apiErrorKey } from '../auth/form-parts';
 
@@ -128,40 +138,34 @@ export function MachineList({ runners }: { runners: Runner[] }) {
           </code>
         </Banner>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[48rem] text-left text-sm">
-          <thead className="text-ink-2">
+      <Card pad="sm">
+        <Table className={stacked.table}>
+          <TableHead className={stacked.head}>
             <tr>
-              <th scope="col" className="py-2 pr-4 font-normal">
+              <TableCell head scope="col">
                 {t('machines.columns.name')}
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
-                {t('machines.columns.status')}
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
-                {t('machines.columns.lastSeen')}
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
+              </TableCell>
+              <TableCell head scope="col">
                 {t('machines.columns.os')}
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
+              </TableCell>
+              <TableCell head scope="col">
                 {t('machines.columns.cliVersion')}
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
-                {t('machines.columns.paired')}
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
-                {t('machines.columns.lastUsed')}
-              </th>
-              <th scope="col" className="py-2 font-normal">
+              </TableCell>
+              <TableCell head scope="col">
+                {t('machines.columns.status')}
+              </TableCell>
+              <TableCell head scope="col">
+                {t('machines.columns.lastSeen')}
+              </TableCell>
+              <TableCell head scope="col">
                 <span className="sr-only">{t('machines.columns.actions')}</span>
-              </th>
+              </TableCell>
             </tr>
-          </thead>
-          <tbody>
+          </TableHead>
+          <tbody className={stacked.body}>
             {runners.map((runner) => (
-              <tr key={runner.id} className="border-t border-current/10">
-                <td className="py-3 pr-4 align-top">
+              <TableRow key={runner.id} className={stacked.row}>
+                <TableCell className={stacked.lead}>
                   {renaming === runner.id ? (
                     <RenameForm
                       runner={runner}
@@ -173,38 +177,45 @@ export function MachineList({ runners }: { runners: Runner[] }) {
                       }}
                     />
                   ) : (
-                    <span className="break-words">{runner.name}</span>
+                    <>
+                      <span className="break-words font-medium text-ink">
+                        {runner.name}
+                      </span>
+                      <span className="block text-xs text-ink-2">
+                        {t('machines.paired', {
+                          date: formatDate(runner.createdAt),
+                        })}{' '}
+                        ·{' '}
+                        {runner.lastUsedAt
+                          ? t('machines.lastUsed', {
+                              date: formatDate(runner.lastUsedAt),
+                            })
+                          : t('machines.neverUsed')}
+                      </span>
+                    </>
                   )}
-                </td>
-                <td className="py-3 pr-4 align-top">
-                  <span className="inline-flex items-center gap-2">
-                    <span
-                      aria-hidden="true"
-                      className={`size-2.5 rounded-full ${runner.online ? 'bg-green-500' : 'bg-gray-400'}`}
-                    />
-                    {runner.online
-                      ? t('machines.status.online')
-                      : t('machines.status.offline')}
-                  </span>
-                </td>
-                <td className="py-3 pr-4 align-top">
+                </TableCell>
+                <TableCell className={`${stacked.cell} break-words`}>
+                  <CellLabel>{t('machines.columns.os')}</CellLabel>
+                  {runner.os}
+                </TableCell>
+                <TableCell className={`${stacked.cell} font-mono text-xs`}>
+                  <CellLabel>{t('machines.columns.cliVersion')}</CellLabel>
+                  {runner.cliVersion}
+                </TableCell>
+                <TableCell className={stacked.cell}>
+                  <CellLabel>{t('machines.columns.status')}</CellLabel>
+                  <StatusIndicator status={machineStatus(runner.online)} />
+                </TableCell>
+                <TableCell className={stacked.cell}>
+                  <CellLabel>{t('machines.columns.lastSeen')}</CellLabel>
                   <LastSeen runner={runner} now={now} />
-                </td>
-                <td className="py-3 pr-4 align-top break-words">{runner.os}</td>
-                <td className="py-3 pr-4 align-top">{runner.cliVersion}</td>
-                <td className="py-3 pr-4 align-top">
-                  {formatDate(runner.createdAt)}
-                </td>
-                <td className="py-3 pr-4 align-top">
-                  {runner.lastUsedAt
-                    ? formatDate(runner.lastUsedAt)
-                    : t('machines.neverUsed')}
-                </td>
-                <td className="py-3 align-top">
-                  <div className="flex gap-2">
+                </TableCell>
+                <TableCell className={stacked.cell}>
+                  <div className="flex gap-2 md:justify-end">
                     <Button
                       type="button"
-                      variant="glass"
+                      variant="ghost"
                       size="sm"
                       onClick={() => {
                         setRenaming(runner.id);
@@ -222,12 +233,12 @@ export function MachineList({ runners }: { runners: Runner[] }) {
                       {t('machines.revoke')}
                     </Button>
                   </div>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      </Card>
       <ConfirmDialog
         open={revoking !== null}
         onOpenChange={(open) => {
@@ -255,7 +266,7 @@ function LastSeen({ runner, now }: { runner: Runner; now: number | null }) {
       : (formatRelative(runner.lastSeenAt, now) ??
         t('machines.lastSeen.justNow'));
   return (
-    <div className="flex flex-col">
+    <div className="flex min-w-0 flex-col">
       <time dateTime={runner.lastSeenAt} title={formatDate(runner.lastSeenAt)}>
         {when}
       </time>

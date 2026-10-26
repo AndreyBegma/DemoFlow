@@ -2,12 +2,14 @@
 
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button } from '@andrewbehma/glass-ui/button';
+import { Card } from '@andrewbehma/glass-ui/card';
 import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
 import { Field, Input, Select } from '@andrewbehma/glass-ui/field';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useId, useState } from 'react';
+import { StatusIndicator } from '@/components/status/status-indicator';
 import { t } from '@/i18n';
 import {
   type ApiResult,
@@ -18,9 +20,11 @@ import {
   updateProject,
 } from '@/lib/api';
 import { formatDate } from '@/lib/format-date';
+import { formatRelative } from '@/lib/format-relative';
+import { lastRunStatus } from '@/lib/status';
 import type { ErrorKey } from '@/lib/validation';
 import { apiErrorKey } from '../auth/form-parts';
-import { RunStatus } from './run-status';
+import { MachinePill } from './machine-pill';
 
 const NAME_MAX = 200;
 
@@ -127,68 +131,77 @@ export function ProjectList({
         <EmptyState
           title={t('projects.empty.title')}
           description={t('projects.empty.body')}
+          action={
+            <Link href="/docs" className="text-sm text-ink underline">
+              {t('projects.empty.docs')}
+            </Link>
+          }
         />
       ) : (
-        <ul className="flex flex-col">
-          {projects.map((project) => (
-            <li
-              key={project.id}
-              className="flex flex-col gap-3 border-t border-current/10 py-4"
-            >
-              {editing?.id === project.id && editing.mode === 'rename' ? (
-                <RenameForm
-                  project={project}
-                  busy={busy}
-                  onSave={(value) => rename(project, value)}
-                  onCancel={stop}
-                />
-              ) : (
-                <ProjectSummary project={project} />
-              )}
-              {editing?.id === project.id && editing.mode === 'bind' ? (
-                <BindForm
-                  project={project}
-                  machines={machines}
-                  busy={busy}
-                  onBind={(runnerId, path) => bind(project, runnerId, path)}
-                  onCancel={stop}
-                />
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="glass"
-                  size="sm"
-                  onClick={() => {
-                    setEditing({ id: project.id, mode: 'rename' });
-                    setError(undefined);
-                  }}
-                >
-                  {t('projects.rename.action')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="glass"
-                  size="sm"
-                  onClick={() => {
-                    setEditing({ id: project.id, mode: 'bind' });
-                    setError(undefined);
-                  }}
-                >
-                  {t('projects.bind.action')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  onClick={() => setDeleting(project)}
-                >
-                  {t('projects.delete.action')}
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <Card pad="none">
+          <ul aria-label={t('projects.title')} className="flex flex-col">
+            {projects.map((project) => (
+              <li
+                key={project.id}
+                className="flex flex-col gap-3 border-b border-line px-4 py-3 last:border-0 md:flex-row md:items-start md:justify-between"
+              >
+                <div className="flex min-w-0 flex-1 flex-col gap-3">
+                  {editing?.id === project.id && editing.mode === 'rename' ? (
+                    <RenameForm
+                      project={project}
+                      busy={busy}
+                      onSave={(value) => rename(project, value)}
+                      onCancel={stop}
+                    />
+                  ) : (
+                    <ProjectSummary project={project} />
+                  )}
+                  {editing?.id === project.id && editing.mode === 'bind' ? (
+                    <BindForm
+                      project={project}
+                      machines={machines}
+                      busy={busy}
+                      onBind={(runnerId, path) => bind(project, runnerId, path)}
+                      onCancel={stop}
+                    />
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditing({ id: project.id, mode: 'rename' });
+                      setError(undefined);
+                    }}
+                  >
+                    {t('projects.rename.action')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditing({ id: project.id, mode: 'bind' });
+                      setError(undefined);
+                    }}
+                  >
+                    {t('projects.bind.action')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setDeleting(project)}
+                  >
+                    {t('projects.delete.action')}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
       <ConfirmDialog
         open={deleting !== null}
@@ -207,45 +220,42 @@ export function ProjectList({
   );
 }
 
+/** One project's row: its name, machine, last run and how many runs it has. */
 function ProjectSummary({ project }: { project: Project }) {
   const { lastRun } = project;
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1">
       <Link
         href={`/app/projects/${encodeURIComponent(project.id)}`}
-        className="break-words text-lg font-semibold underline"
+        className="break-words font-semibold text-ink underline-offset-2 hover:underline"
       >
         {project.name}
       </Link>
-      <p className="break-all text-sm text-ink-2">
-        {project.rootPath === null
-          ? t('projects.item.noFolder')
-          : `${t('projects.item.path')}: ${project.rootPath}`}
-      </p>
-      {project.rootPath !== null ? (
-        <p className="break-words text-sm text-ink-2">
-          {t('projects.item.machine')}:{' '}
-          {project.runner?.name ?? t('projects.item.machineRemoved')}
-        </p>
-      ) : null}
-      <p className="flex flex-wrap items-center gap-2 text-sm">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-2">
+        {project.rootPath === null ? (
+          <span>{t('projects.item.noFolder')}</span>
+        ) : (
+          <MachinePill machine={project.runner} />
+        )}
+        <StatusIndicator status={lastRunStatus(lastRun)} />
         {lastRun ? (
           <>
-            <span className="text-ink-2">{t('projects.item.lastRun')}</span>
-            <RunStatus status={lastRun.status} />
-            <time dateTime={lastRun.startedAt}>
-              {formatDate(lastRun.startedAt)}
+            <time
+              dateTime={lastRun.startedAt}
+              title={formatDate(lastRun.startedAt)}
+              suppressHydrationWarning
+            >
+              {formatRelative(lastRun.startedAt, Date.now()) ??
+                t('runPage.metadata.justNow')}
             </time>
-            <span className="text-ink-2">
-              ·{' '}
+            <span aria-hidden>·</span>
+            <span>
               {project.runCount === 1
                 ? t('projects.item.runCountOne')
                 : t('projects.item.runCount', { count: project.runCount })}
             </span>
           </>
-        ) : (
-          <span className="text-ink-2">{t('projects.item.noRuns')}</span>
-        )}
+        ) : null}
       </p>
     </div>
   );

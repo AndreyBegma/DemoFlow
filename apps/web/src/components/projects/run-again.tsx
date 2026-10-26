@@ -2,7 +2,6 @@
 
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button } from '@andrewbehma/glass-ui/button';
-import { Card } from '@andrewbehma/glass-ui/card';
 import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
 import { useEffect, useState } from 'react';
 import { t } from '@/i18n';
@@ -14,7 +13,8 @@ import { LaunchStatus } from './launch-status';
  * "Run again" on the run page (spec #282): starts the run's own scenario on
  * the machine that recorded it, through the project's launch, with the
  * formats the run rendered when the machine takes them (spec #327).
- * Only rendered when `canRunAgain` allows it.
+ * Only rendered when `canRunAgain` allows it; it sits in the run page's
+ * panel, so it draws no surface of its own.
  */
 export function RunAgain({
   projectId,
@@ -51,38 +51,35 @@ export function RunAgain({
   const showStatus = launch !== null && (active || followed);
 
   return (
-    <Card pad="lg">
-      <h2 className="text-lg font-semibold">{t('runPage.again.title')}</h2>
-      <div className="mt-3 flex flex-col gap-3">
-        {error ? <Banner tone="danger">{t(error)}</Banner> : null}
-        {showStatus ? (
-          <LaunchStatus
-            projectId={projectId}
-            launch={launch}
-            now={now}
-            cancelling={cancelling}
-            onCancel={() => void cancel()}
-            bordered={false}
-          />
-        ) : null}
-        {active ? null : (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              variant="solid"
-              disabled={offline || starting}
-              onClick={() => setConfirming(true)}
-            >
-              {t('runPage.again.button')}
-            </Button>
-            {offline ? (
-              <span className="text-sm text-ink-2">
-                {t('runPage.again.offlineHint')}
-              </span>
-            ) : null}
-          </div>
-        )}
-      </div>
+    <div className="flex flex-col gap-3">
+      {error ? <Banner tone="danger">{t(error)}</Banner> : null}
+      {showStatus ? (
+        <LaunchStatus
+          projectId={projectId}
+          launch={launch}
+          now={now}
+          cancelling={cancelling}
+          onCancel={() => void cancel()}
+          bordered={false}
+        />
+      ) : null}
+      {active ? null : (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="solid"
+            disabled={offline || starting}
+            onClick={() => setConfirming(true)}
+          >
+            {t('runPage.again.button')}
+          </Button>
+          {offline ? (
+            <span className="text-sm text-ink-2">
+              {t('runPage.again.offlineHint')}
+            </span>
+          ) : null}
+        </div>
+      )}
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
@@ -103,6 +100,6 @@ export function RunAgain({
         busy={starting}
         onConfirm={() => void confirmStart()}
       />
-    </Card>
+    </div>
   );
 }
