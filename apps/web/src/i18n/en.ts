@@ -533,17 +533,12 @@ export const en = {
         'DemoFlow drives your running app in a real browser, checks every step and renders a polished demo video. Everything runs on your machine.',
       imageAlt: 'A DemoFlow demo video of a sample app',
     },
-    nav: {
-      label: 'Main',
-      home: 'DemoFlow home',
-      docs: 'Docs',
-      signIn: 'Sign in',
-      openApp: 'Open app',
-    },
     hero: {
+      eyebrow: 'Open source · runs on your machine',
       title: 'Demo videos of the features you ship, from one JSON scenario.',
       subtitle:
         'DemoFlow drives your running app in a real browser, checks every step, and renders a polished video (MP4, GIF or WebM) with a drawn cursor, zoom on the action and captions.',
+      openApp: 'Open app',
     },
     video: {
       label: 'A demo video of a sample app, recorded with DemoFlow',
@@ -567,24 +562,33 @@ export const en = {
     install: {
       title: 'Run it in your project',
       command: 'npx demoflow',
-      body: 'Then run demoflow record to capture a scenario by clicking through your app.',
+      body: 'Run npx demoflow in your project, then demoflow record to capture a scenario by clicking through your app.',
+      readDocs: 'Read the getting started guide',
       copy: 'Copy command',
       copied: 'Copied',
       copyFailed: 'Could not copy. Select the command and copy it.',
     },
     footer: {
+      label: 'Links',
       license: 'DemoFlow · MIT licence',
       github: 'GitHub',
       docs: 'Docs',
+      npm: 'npm',
+    },
+  },
+  site: {
+    home: 'DemoFlow home',
+    nav: 'Main',
+    docs: 'Docs',
+    signIn: 'Sign in',
+    openApp: 'Open app',
+    theme: {
+      label: 'Theme',
     },
   },
   docs: {
     meta: {
       title: 'Documentation',
-    },
-    header: {
-      home: 'DemoFlow home',
-      openApp: 'Open app',
     },
     nav: {
       label: 'Documentation',

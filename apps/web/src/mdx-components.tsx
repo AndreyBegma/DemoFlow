@@ -12,6 +12,8 @@ export function headingId(children: ReactNode): string | undefined {
 }
 
 // Content surfaces stay plain and readable (vision §9): tokens only, no glass.
+// Links use `accent-ink`, not `accent`: the accent is 4.05:1 on the dark
+// ground and fails WCAG AA for body text (spec #376, Decision 3).
 const components: MDXComponents = {
   h1: (props) => (
     <h1 className="text-3xl font-semibold text-balance" {...props} />
@@ -45,18 +47,22 @@ const components: MDXComponents = {
   strong: (props) => <strong className="font-semibold text-ink" {...props} />,
   a: ({ href = '', ...props }: ComponentPropsWithoutRef<'a'>) =>
     href.startsWith('/') ? (
-      <Link href={href} className="text-accent underline" {...props} />
+      <Link
+        href={href}
+        className="text-accent-ink underline underline-offset-2 hover:decoration-2"
+        {...props}
+      />
     ) : (
       <a
         href={href}
-        className="text-accent underline"
+        className="text-accent-ink underline underline-offset-2 hover:decoration-2"
         rel="noopener noreferrer"
         {...props}
       />
     ),
   code: (props) => (
     <code
-      className="rounded-sm border border-line bg-raised px-1.5 py-0.5 font-mono text-[0.9em] text-ink"
+      className="rounded-sm border border-line bg-raised px-1.5 py-0.5 font-mono text-[0.9em] text-ink [overflow-wrap:anywhere]"
       {...props}
     />
   ),
@@ -87,7 +93,10 @@ const components: MDXComponents = {
     />
   ),
   td: (props) => (
-    <td className="border-b border-line px-3 py-2 align-top" {...props} />
+    <td
+      className="border-b border-line px-3 py-2 align-top [&>code]:whitespace-nowrap"
+      {...props}
+    />
   ),
 };
 
