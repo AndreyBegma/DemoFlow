@@ -93,7 +93,10 @@ const components: MDXComponents = {
     />
   ),
   td: (props) => (
-    <td className="border-b border-line px-3 py-2 align-top" {...props} />
+    <td
+      className="border-b border-line px-3 py-2 align-top [&>code]:whitespace-nowrap"
+      {...props}
+    />
   ),
 };
 

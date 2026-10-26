@@ -81,7 +81,7 @@ export default async function LandingPage() {
           <div className="flex w-full max-w-md flex-col gap-3 text-left sm:flex-row sm:items-start">
             <Link
               href="/app"
-              className={`${buttonClassName({ variant: 'solid' })} shrink-0 sm:h-[3.25rem]`}
+              className={`${buttonClassName({ variant: 'solid' })} shrink-0 sm:h-[3.625rem]`}
             >
               {t('landing.hero.openApp')}
             </Link>
