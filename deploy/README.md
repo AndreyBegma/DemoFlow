@@ -169,8 +169,9 @@ agent host. `deploy-staging` then replaces the containers in
 `/home/archi/stacks/demoflow-staging`.
 
 ```
-Cloudflare ──tunnel──▶ cloudflared ──▶ proxy (Caddy :80) ─┬─ /api/* ─▶ api :8370 ─▶ postgres
-                                                          └─ /*     ─▶ web :3670
+Cloudflare ──tunnel──▶ cloudflared ──▶ proxy (Caddy :80) ─┬─ /api/*                  ─▶ api :8370 ─▶ postgres
+                                                          ├─ /s/<token>/file|poster ─▶ api :8370
+                                                          └─ /*                      ─▶ web :3670
 ```
 
 Nothing is published on the host. The stack runs on its own compose network
@@ -191,8 +192,8 @@ Nothing is published on the host. The stack runs on its own compose network
    - Timeout: 60 min.
 3. **The first run.** Push to `develop`, or run the pipeline by hand on
    `develop`. `refresh.sh` creates the stack directory, copies the examples in
-   and generates `POSTGRES_PASSWORD`. It then stops, because the tunnel token
-   is missing.
+   and generates `POSTGRES_PASSWORD` and `SHARE_SIGNING_SECRET`. It then
+   stops, because the tunnel token is missing.
 4. **Add the token and start the stack:**
    ```sh
    cp ~/.demoflow/cloudflared.env /home/archi/stacks/demoflow-staging/env/cloudflared.env
@@ -292,6 +293,18 @@ owned by `node`, so a new volume starts writable.
 - **Not backed up.** Losing the volume loses every shared video; the rows
   turn `lost` at the next boot and their owners share again. Watch its size
   with `docker system df -v | grep shares`.
+- **The public link** (spec #348). `/s/<token>` is the web app's page; it
+  reads `GET /api/s/<token>`. The file and the poster live on the page's own
+  path, `/s/<token>/file` and `/s/<token>/poster`, so Caddy sends exactly
+  those two paths (a 43-character token) to the API before the web handler.
+  Without a password they embed in other sites and are cached for 5 minutes;
+  with one they need the unlock cookie.
+- **`SHARE_SIGNING_SECRET`.** Signs the 12-hour cookie a password unlock
+  sets. `refresh.sh` generates it in the stack's `.env` like
+  `POSTGRES_PASSWORD`, adding it to a stack that predates it, and compose
+  passes it to `api`; the API refuses to start in production without one.
+  Changing it ends every unlock, nothing more: viewers type the password
+  again.
 
 ## Production — https://demoflow.luna-realm.com
 
@@ -303,8 +316,9 @@ approval gate, and neither step runs on `develop`, on a manual run or on a
 pull request.
 
 ```
-Cloudflare ──tunnel demoflow-prod──▶ cloudflared ──▶ proxy (Caddy :80) ─┬─ /api/* ─▶ api :8370 ─▶ postgres
-                                                                        └─ /*     ─▶ web :3670
+Cloudflare ──tunnel demoflow-prod──▶ cloudflared ──▶ proxy (Caddy :80) ─┬─ /api/*                  ─▶ api :8370 ─▶ postgres
+                                                                        ├─ /s/<token>/file|poster ─▶ api :8370
+                                                                        └─ /*                      ─▶ web :3670
 ```
 
 Production runs on the same host and Docker daemon as staging and shares
@@ -332,8 +346,8 @@ Nothing is published on the host. The production database is backed up daily
    `~/.demoflow/production/cloudflared.env`, mode 600, as one line:
    `TUNNEL_TOKEN=...`.
 2. **The first run.** Push to `main`. `refresh.sh` creates the stack directory,
-   copies the examples in and generates `POSTGRES_PASSWORD`. It then stops,
-   because the tunnel token is missing.
+   copies the examples in and generates `POSTGRES_PASSWORD` and
+   `SHARE_SIGNING_SECRET`. It then stops, because the tunnel token is missing.
 3. **Add the token and start the stack:**
    ```sh
    cp ~/.demoflow/production/cloudflared.env /home/archi/stacks/demoflow-production/env/cloudflared.env
