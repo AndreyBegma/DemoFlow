@@ -122,9 +122,9 @@ describe('stepPace', () => {
     ).toBe(50);
     // A check run adds no default dwell; a step's own hold still applies.
     const plain = { ...fill, hold: undefined } as Step;
-    expect(stepPace(plain, defaults, { ...onCamera, recording: false })).toEqual(
-      { dwellMs: 0, typingDelayMs: 80 },
-    );
+    expect(
+      stepPace(plain, defaults, { ...onCamera, recording: false }),
+    ).toEqual({ dwellMs: 0, typingDelayMs: 80 });
   });
 });
 
