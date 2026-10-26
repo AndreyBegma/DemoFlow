@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "name": "Glass UI landing and docs",
+  "description": "Walk the polished landing page — the hero, the demo video in its glass frame and the benefit cards — switch to the dark theme from the shared site header, then follow the theme into the docs, where the article, code and tables stay on plain readable surfaces.",
+  "viewport": { "width": 1280, "height": 720 },
+  "setup": [{ "action": "navigate", "path": "/" }],
+  "steps": [
+    {
+      "action": "assertVisible",
+      "target": {
+        "role": "heading",
+        "name": "Demo videos of the features you ship, from one JSON scenario.",
+        "exact": true
+      },
+      "caption": "One header for the landing page and the docs"
+    },
+    {
+      "action": "scroll",
+      "target": { "role": "heading", "name": "Why DemoFlow", "exact": true },
+      "caption": "The demo video in a glass frame, benefit cards with icons"
+    },
+    { "action": "wait", "ms": 1200 },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Theme", "exact": true },
+      "caption": "The theme toggle shares its choice with the app",
+      "zoom": true
+    },
+    {
+      "action": "click",
+      "target": { "role": "menuitemradio", "name": "Dark", "exact": true }
+    },
+    { "action": "press", "key": "Escape" },
+    { "action": "wait", "ms": 800 },
+    {
+      "action": "scroll",
+      "target": {
+        "role": "link",
+        "name": "Read the getting started guide",
+        "exact": true
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "link",
+        "name": "Read the getting started guide",
+        "exact": true
+      }
+    },
+    {
+      "action": "waitFor",
+      "target": { "role": "heading", "name": "Getting started", "exact": true },
+      "caption": "The docs keep the dark theme"
+    },
+    {
+      "action": "include",
+      "fragment": "open-docs",
+      "with": { "page": "config", "heading": "Project config" }
+    },
+    {
+      "action": "scroll",
+      "target": {
+        "role": "cell",
+        "name": "Where your app runs. Scenario paths are relative to it.",
+        "exact": true
+      },
+      "caption": "Code and tables on solid surfaces that pass WCAG AA"
+    },
+    { "action": "wait", "ms": 1200 },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Theme", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "menuitemradio", "name": "Light", "exact": true }
+    },
+    { "action": "press", "key": "Escape" },
+    { "action": "wait", "ms": 1000 }
+  ]
+}
