@@ -140,6 +140,21 @@ are no longer listed. The website is not told, so its runs list keeps the
 first render's formats. A run that is unfinished or has no recording is
 refused with exit 2; a render that fails exits 3.
 
+`demoflow run --check <scenario>` runs and verifies the scenario against the
+live app like `run`, but records and renders nothing: the run directory holds
+only `result.json`, with `recording` and `rendering` skipped. Without a
+scenario, `demoflow run --check` runs every valid scenario of the project
+(the files under `demoflow/`, sorted, at most 100) one after another against a
+single start of `devCommand`, and prints one line per scenario, then
+`N passed, M failed`. `--exclude <id>` leaves a scenario out of such a pass
+(repeatable; `demoflow/login.demo.json` or `login.demo.json`; an id that is no
+scenario is ignored). `--json` prints `{ "check": true, "passed", "failed",
+"runs": [...] }`, each run as `run --json` prints it. It exits 0 when every run
+passed and 1 when any failed. `--format` and `--headed` are refused with exit 2
+before anything runs. Each run is reported like any other, marked as a check.
+Unlike `demoflow check`, which only inspects files and tools, this opens the
+app.
+
 `demoflow init [--base-url <url>]` writes `demoflow.config.json` (default
 `baseUrl` `http://localhost:3000`) and `demoflow/first.demo.json`, a scenario
 that opens `/` and passes against any app at `baseUrl`, in the current folder.
@@ -185,6 +200,7 @@ typed value. Secret fills are left as recorded.
 | `demoflow record [name]` | record a scenario by using the app |
 | `demoflow validate <scenario>` | check a scenario against the schema |
 | `demoflow run <scenario>` | run it in a browser and render the video |
+| `demoflow run --check [scenario]` | run and verify one scenario, or all of them, without a video |
 | `demoflow render <runId>` | render an existing run again with the current config |
 | `demoflow list` | list recent runs of the current project, newest first |
 | `demoflow runs list` | list every run on this machine, with its size |
@@ -215,7 +231,7 @@ expires after 10 minutes.
 - `demoflow logout` revokes the token on the server, then deletes the file. If
   the server cannot be reached it still deletes the file; the machine stays
   listed under `/app/machines` until you revoke it there.
-- The server is `https://demoflow-app.luna-realm.com` (staging) unless
+- The server is `https://demoflow.luna-realm.com` (production) unless
   `--server <url>` or `DEMOFLOW_SERVER` says otherwise. It is the website's
   origin; the API is under `/api`. `logout` uses the server stored at login.
 - The token is in `credentials.json` (`{ server, token, runnerId }`, mode 0600)

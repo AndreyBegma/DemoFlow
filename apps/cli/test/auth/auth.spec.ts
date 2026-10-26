@@ -22,7 +22,7 @@ import {
   readCredentials,
   writeCredentials,
 } from '../../src/auth/credentials.ts';
-import { DEFAULT_SERVER, resolveServer } from '../../src/auth/server.ts';
+import { resolveServer } from '../../src/auth/server.ts';
 import type { Io } from '../../src/commands/io.ts';
 import { type AuthDeps, loginCommand } from '../../src/commands/login.ts';
 import { logoutCommand } from '../../src/commands/logout.ts';
@@ -235,11 +235,13 @@ describe('credentials', () => {
 });
 
 describe('resolveServer', () => {
-  it('prefers the flag, then DEMOFLOW_SERVER, then staging', () => {
+  it('prefers the flag, then DEMOFLOW_SERVER, then production', () => {
     const env = { DEMOFLOW_SERVER: 'http://env.test/' };
     expect(resolveServer('http://flag.test', env)).toBe('http://flag.test');
     expect(resolveServer(undefined, env)).toBe('http://env.test');
-    expect(resolveServer(undefined, {})).toBe(DEFAULT_SERVER);
+    expect(resolveServer(undefined, {})).toBe(
+      'https://demoflow.luna-realm.com',
+    );
   });
 
   it('rejects anything but http(s)', () => {

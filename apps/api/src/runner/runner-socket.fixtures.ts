@@ -25,6 +25,13 @@ export interface LaunchRequest extends Received {
   requestId: string;
 }
 
+/** `share.prepare` (spec #347). */
+export interface SharePrepare extends Received {
+  requestId: string;
+  runId: string;
+  format: string;
+}
+
 export interface Closed {
   code: number;
   reason: string;
@@ -139,16 +146,27 @@ export class TestSocket {
     return ask as LaunchRequest;
   }
 
+  /** The next `share.prepare` (spec #347), with its request id as a string. */
+  async nextShare(): Promise<SharePrepare> {
+    const ask = await this.next('share.prepare');
+    if (typeof ask.requestId !== 'string') {
+      throw new Error('share.prepare carries no requestId');
+    }
+    return ask as SharePrepare;
+  }
+
   /**
    * `launches.sync` (spec #284): the launch ids this daemon still runs, and
    * the `run.start` options it accepts (spec #325) — none sent when omitted.
+   * `features` is its capability list, as `share` (spec #347).
    */
-  sync(running: string[], runOptions?: unknown): void {
-    this.send(
-      runOptions === undefined
-        ? { type: 'launches.sync', running }
-        : { type: 'launches.sync', running, runOptions },
-    );
+  sync(running: string[], runOptions?: unknown, features?: string[]): void {
+    this.send({
+      type: 'launches.sync',
+      running,
+      ...(runOptions === undefined ? {} : { runOptions }),
+      ...(features === undefined ? {} : { features }),
+    });
   }
 
   /** `run.progress` (spec #301): `step` of `steps` for `steps`, both null otherwise. */

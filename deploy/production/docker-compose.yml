@@ -49,6 +49,11 @@ services:
     env_file: ./env/api.env
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/demoflow?schema=public
+      SHARE_DIR: /data/shares
+      SHARE_SIGNING_SECRET: ${SHARE_SIGNING_SECRET:?set it in .env}
+    # Shared videos and posters (spec #347). Not backed up.
+    volumes:
+      - shares:/data/shares
     depends_on:
       postgres: { condition: service_healthy }
     mem_limit: 1g
@@ -97,6 +102,7 @@ services:
 # Compose names it demoflow-production_pgdata: never staging's volume.
 volumes:
   pgdata:
+  shares:
 
 networks:
   production:

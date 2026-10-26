@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "name": "Glass UI app shell",
+  "description": "Sign in off camera, then walk the new app shell: the Overview with its stat tiles, the sidebar navigation with the breadcrumb following it, and the theme switch in the account menu.",
+  "viewport": { "width": 1280, "height": 720 },
+  "setup": [
+    { "action": "include", "fragment": "sign-in", "with": { "next": "/app" } }
+  ],
+  "steps": [
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Overview", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "navigation", "name": "Main", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Projects", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Projects", "exact": true }
+    },
+    {
+      "action": "assertText",
+      "target": { "role": "navigation", "name": "Breadcrumb" },
+      "text": "Projects"
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Machines", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Machines", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Account menu" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "menuitemradio", "name": "Light", "exact": true }
+    },
+    { "action": "press", "key": "Escape" },
+    {
+      "action": "click",
+      "target": {
+        "role": "link",
+        "name": "DemoFlow, overview",
+        "exact": true
+      }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Overview", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Account menu" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "menuitemradio", "name": "Dark", "exact": true }
+    },
+    { "action": "press", "key": "Escape" }
+  ]
+}

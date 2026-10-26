@@ -4,7 +4,6 @@ export const en = {
   app: {
     tagline: 'Verified, polished demo videos of the features you ship.',
     shell: {
-      signedInAs: 'Signed in as {email}',
       signOut: 'Sign out',
       signingOut: 'Signing out…',
       verifyTitle: 'Verify your email',
@@ -12,12 +11,44 @@ export const en = {
       resend: 'Resend email',
       resending: 'Sending…',
       resent: 'Verification email sent. Check your inbox.',
-      settings: 'Account settings',
-      machines: 'Machines',
+      skip: 'Skip to content',
+      home: 'DemoFlow, overview',
+      navLabel: 'Main',
+      navGroup: 'Workspace',
+      openNav: 'Open navigation',
+      navSheet: 'Navigation',
+      nav: {
+        overview: 'Overview',
+        projects: 'Projects',
+        machines: 'Machines',
+        settings: 'Settings',
+      },
+      crumbs: {
+        label: 'Breadcrumb',
+        overflow: 'Show the path',
+        project: 'Project',
+        run: 'Run',
+        device: 'Pair a machine',
+      },
+      account: {
+        label: 'Account menu',
+        settings: 'Account settings',
+        theme: 'Theme',
+      },
+      theme: {
+        system: 'System',
+        dark: 'Dark',
+        light: 'Light',
+      },
+      status: {
+        title: 'Machines',
+        summary: '{count} machines · {online} online',
+        pair: 'Pair a machine',
+        failed: 'Machines unavailable',
+      },
     },
     settings: {
       title: 'Account settings',
-      back: 'Back to your projects',
       email: 'Email',
       github: {
         title: 'GitHub',
@@ -34,7 +65,6 @@ export const en = {
     },
   },
   device: {
-    back: 'Back to your projects',
     code: {
       title: 'Pair a machine',
       body: 'Run demoflow login in a terminal and enter the code it prints.',
@@ -48,12 +78,8 @@ export const en = {
       body: 'It may have expired, been used, or been mistyped. Run demoflow login again for a new one.',
     },
     unavailable: 'We could not load this code. Try again in a moment.',
-    verify: {
-      title: 'Verify your email first',
-      body: 'Only a verified account can pair a machine. We sent a link to {email}.',
-      resend: 'Resend email',
-      resent: 'Verification email sent. Check your inbox.',
-    },
+    verifyFirst:
+      'Only a verified account can pair a machine. Verify your email first.',
     approve: {
       title: 'Approve this machine?',
       code: 'Code',
@@ -87,6 +113,14 @@ export const en = {
   },
   dashboard: {
     title: 'Overview',
+    description: 'Your projects, their latest runs and your machines.',
+    stats: {
+      projects: 'Projects',
+      runs: 'Runs',
+      failing: 'Failing',
+      failingHint: 'Latest run failed',
+      unavailable: '—',
+    },
     projects: {
       title: 'Recent projects',
       all: 'All projects',
@@ -110,7 +144,6 @@ export const en = {
   },
   machines: {
     title: 'Machines',
-    back: 'Back to your projects',
     empty: {
       title: 'No machines paired yet',
       body: 'Run this in a terminal on the machine you want to pair:',
@@ -172,8 +205,6 @@ export const en = {
   },
   projects: {
     title: 'Projects',
-    back: 'Back to your projects',
-    nav: 'Projects',
     loadFailed: 'We could not load your projects. Try again in a moment.',
     empty: {
       title: 'No projects yet',

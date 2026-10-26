@@ -19,6 +19,8 @@ export const THROTTLE_MAIL = 'mail-email';
  * minutes, which the shared `ip` budget would cut off after 20 polls.
  */
 export const THROTTLE_DEVICE_POLL = 'device-poll';
+/** A share's password (spec #348, Decision 6): per address and share token. */
+export const THROTTLE_SHARE_UNLOCK = 'share-unlock';
 
 /** Class-level: every throttler skipped until a route opts in. */
 export const SKIP_ALL_THROTTLERS = {
@@ -26,6 +28,7 @@ export const SKIP_ALL_THROTTLERS = {
   [THROTTLE_SIGN_IN]: true,
   [THROTTLE_MAIL]: true,
   [THROTTLE_DEVICE_POLL]: true,
+  [THROTTLE_SHARE_UNLOCK]: true,
 };
 
 export const authThrottlerOptions: ThrottlerModuleOptions = {
@@ -61,12 +64,27 @@ export const authThrottlerOptions: ThrottlerModuleOptions = {
       ttl: 10 * MINUTE_MS,
       getTracker: (req) => `ip:${(req as AuthenticatedRequest).ip ?? ''}`,
     },
+    {
+      name: THROTTLE_SHARE_UNLOCK,
+      limit: 10,
+      ttl: 10 * MINUTE_MS,
+      getTracker: (req) => {
+        const request = req as AuthenticatedRequest;
+        return `ip:${request.ip ?? ''}:share:${routeToken(request)}`;
+      },
+    },
   ],
   // The default key includes the route, which would give each endpoint its
   // own budget. The limits are across the auth endpoints.
   generateKey: (_context: ExecutionContext, tracker: string, name: string) =>
     `${name}:${tracker}`,
 };
+
+/** Guards run after routing: `:token` is already parsed. */
+function routeToken(req: AuthenticatedRequest): string {
+  const token: unknown = req.params?.token;
+  return typeof token === 'string' ? token : '';
+}
 
 /** Guards run before the validation pipe, so the body is still raw here. */
 function bodyEmail(req: AuthenticatedRequest): string {

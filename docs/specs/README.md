@@ -197,3 +197,11 @@ Work traced to an ADR, the vision or spec 179 that no phase had picked up.
 | [#363](https://github.com/AndreyBegma/DemoFlow/issues/363) | [Check schedules on the project page, and stale badges](363-check-schedules-web.md) — ADR-0021, Phase 8 | #362 |
 | [#364](https://github.com/AndreyBegma/DemoFlow/issues/364) | [Website docs: scheduled checks and stale demos](364-checks-docs.md) — ADR-0021, Phase 8 | #361, #363 |
 | [#365](https://github.com/AndreyBegma/DemoFlow/issues/365) | [Hold the result on screen](365-hold-the-result.md) — Phase 8 | — |
+| [#373](https://github.com/AndreyBegma/DemoFlow/issues/373) | [Glass UI app shell: sidebar, breadcrumbs, account menu, light and dark theme, Overview](373-glass-app-shell.md) — Glass UI, vision §9 | — |
+| [#374](https://github.com/AndreyBegma/DemoFlow/issues/374) | [Glass UI for projects, runs, the run page and machines](374-glass-projects-runs-machines.md) — Glass UI, vision §9 | #373 |
+| [#375](https://github.com/AndreyBegma/DemoFlow/issues/375) | [Glass UI for sign-in, sign-up, password reset, device approval and account settings](375-glass-auth-device-settings.md) — Glass UI, vision §9 | #373 |
+| [#376](https://github.com/AndreyBegma/DemoFlow/issues/376) | [Glass UI polish for the landing page and the docs](376-glass-landing-and-docs.md) — Glass UI, vision §9 | #373 |
+| [#377](https://github.com/AndreyBegma/DemoFlow/issues/377) | [The Runner inspects, initialises and registers a folder the website names, inside allowed roots](377-runner-allowed-roots-inspect-init.md) — ADR-0022 | — |
+| [#378](https://github.com/AndreyBegma/DemoFlow/issues/378) | [Add a project from the website (API): machine, local path, GitHub link](378-add-project-api.md) — ADR-0022 | #377 |
+| [#379](https://github.com/AndreyBegma/DemoFlow/issues/379) | [Add project dialog: machine, path, inspection result, create config, GitHub link](379-add-project-dialog.md) — ADR-0022 | #374, #378 |
+| [#380](https://github.com/AndreyBegma/DemoFlow/issues/380) | [Docs: adding a project from the website, and allowed roots](380-docs-add-project.md) — ADR-0022 | #377, #378, #379 |

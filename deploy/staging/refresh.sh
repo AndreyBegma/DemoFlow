@@ -59,6 +59,7 @@ fill_if_empty() {
 }
 hex() { od -An -tx1 -N24 /dev/urandom | tr -d ' \n'; }
 fill_if_empty POSTGRES_PASSWORD "$(hex)" "$STAGING_DIR/.env"
+fill_if_empty SHARE_SIGNING_SECRET "$(hex)" "$STAGING_DIR/.env"
 
 # ── stack files: always the commit's own ────────────────────────────────────
 caddy_changed=false
@@ -102,6 +103,20 @@ while :; do
   if [ "$waited" -ge "$HEALTH_TIMEOUT" ]; then
     echo "demoflow-staging-api is '$status' after ${HEALTH_TIMEOUT}s" >&2
     docker logs --tail 60 demoflow-staging-api >&2 || true
+    exit 1
+  fi
+  sleep 5
+  waited=$((waited + 5))
+done
+
+# The web image must serve apps/web/public; the poster stands for all of it.
+# Asked from inside the container, so it does not depend on the tunnel.
+echo "Waiting for the web app to serve /demo/landing-poster.png (up to ${HEALTH_TIMEOUT}s)..."
+waited=0
+until docker exec demoflow-staging-web node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3670)+'/demo/landing-poster.png').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))" 2>/dev/null; do
+  if [ "$waited" -ge "$HEALTH_TIMEOUT" ]; then
+    echo "demoflow-staging-web does not serve /demo/landing-poster.png after ${HEALTH_TIMEOUT}s" >&2
+    docker logs --tail 60 demoflow-staging-web >&2 || true
     exit 1
   fi
   sleep 5

@@ -292,13 +292,26 @@ describe('demoflow run on a paired machine', () => {
     status = 500;
     const env = pairedEnv(apiUrl());
     const result = await demoflow(
-      ['run', scenario('customers'), '--json', '--out', out],
+      [
+        'run',
+        scenario('customers'),
+        '--json',
+        '--out',
+        out,
+        // The id of the Windows run that flaked (#387): a run started at
+        // 12:50:08 UTC prints "125008", "500" included, on stderr.
+        '--run-id',
+        '20261026-125008-xamdgj',
+      ],
       project,
       env,
     );
     expect(result.code, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout).status).toBe('completed');
-    expect(result.stderr).not.toMatch(/report|500|runner\/runs/i);
+    // What a printed report failure would name: the status as a number of its
+    // own, the endpoint or the server. Bare digits match the run id (#387).
+    expect(result.stderr).not.toMatch(/report|\b500\b|runner\/runs/i);
+    expect(result.stderr).not.toContain(apiUrl());
     const index = runnerPaths({
       platform: process.platform,
       env,
