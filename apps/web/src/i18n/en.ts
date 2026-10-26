@@ -62,6 +62,29 @@ export const en = {
         needsPassword:
           'You sign in only with GitHub. To unlink it, first set a password with “Forgot your password?” on the sign-in page.',
       },
+      description: 'Your profile, how you sign in, and your account.',
+      profile: {
+        title: 'Profile',
+        description: 'The email you sign in with and get notices at.',
+        verification: 'Email verification',
+        verified: 'Verified',
+        unverified: 'Not verified',
+      },
+      methods: {
+        title: 'Sign-in methods',
+        description: 'The ways you can sign in to DemoFlow.',
+      },
+      password: {
+        title: 'Password',
+        set: 'Set. You can sign in with your email and password.',
+        notSet:
+          'Not set. To add one, use “Forgot your password?” on the sign-in page.',
+      },
+      danger: {
+        title: 'Danger zone',
+        description: 'Actions here cannot be undone.',
+      },
+      theme: 'Light, dark or system theme: choose it in the account menu.',
     },
   },
   device: {
@@ -109,7 +132,10 @@ export const en = {
       deniedTitle: 'Request denied',
       deniedBody: 'The machine was not paired.',
       machines: 'Go to machines',
+      closeTab: 'You can close this tab, demoflow is signed in.',
     },
+    description:
+      'A terminal ran demoflow login and is waiting for your answer.',
   },
   dashboard: {
     title: 'Overview',

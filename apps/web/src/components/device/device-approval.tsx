@@ -3,6 +3,8 @@
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button, buttonClassName } from '@andrewbehma/glass-ui/button';
 import { Field, Input } from '@andrewbehma/glass-ui/field';
+import { KeyValueList } from '@andrewbehma/glass-ui/key-value-list';
+import { CircleCheck, CircleX } from 'lucide-react';
 import Link from 'next/link';
 import { useId, useState } from 'react';
 import { t } from '@/i18n';
@@ -52,29 +54,35 @@ export function DeviceApproval({
   const [failure, setFailure] = useState<Failure | undefined>();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
+  // The answer replaces the question (spec #375, Decision 3): nothing is left
+  // to approve, so no form comes back.
   if (outcome) {
+    const approved = outcome === 'approved';
+    const Icon = approved ? CircleCheck : CircleX;
     return (
-      <div className="flex flex-col gap-4">
-        <Banner tone={outcome === 'approved' ? 'ok' : 'info'}>
-          <p className="font-medium">
-            {outcome === 'approved'
-              ? t('device.done.approvedTitle')
-              : t('device.done.deniedTitle')}
-          </p>
-          <p>
-            {outcome === 'approved'
-              ? t('device.done.approvedBody')
-              : t('device.done.deniedBody')}
-          </p>
-        </Banner>
-        <div>
-          <Link
-            href="/app/machines"
-            className={buttonClassName({ variant: 'glass' })}
-          >
-            {t('device.done.machines')}
-          </Link>
-        </div>
+      <div
+        role="status"
+        className="flex flex-col items-center gap-3 py-4 text-center"
+      >
+        <Icon
+          size={40}
+          aria-hidden="true"
+          className={approved ? 'text-ok' : 'text-ink-3'}
+        />
+        <h2 className="text-xl font-semibold">
+          {approved
+            ? t('device.done.approvedTitle')
+            : t('device.done.deniedTitle')}
+        </h2>
+        <p className="text-ink-2">
+          {approved ? t('device.done.closeTab') : t('device.done.deniedBody')}
+        </p>
+        <Link
+          href="/app/machines"
+          className={`mt-2 ${buttonClassName({ variant: 'glass' })}`}
+        >
+          {t('device.done.machines')}
+        </Link>
       </div>
     );
   }
@@ -110,22 +118,35 @@ export function DeviceApproval({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       {failure ? <Banner tone="danger">{t(failure)}</Banner> : null}
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-        <dt className="text-ink-2">{t('device.approve.code')}</dt>
-        <dd className="font-mono text-lg font-semibold tracking-widest">
+      <dl className="flex flex-col items-center gap-1 text-center">
+        <dt className="text-sm text-ink-2">{t('device.approve.code')}</dt>
+        <dd className="break-all font-mono text-3xl font-semibold tracking-widest tablet:text-4xl">
           {request.userCode}
         </dd>
-        <dt className="text-ink-2">{t('device.approve.hostname')}</dt>
-        <dd className="min-w-0 break-words">{request.hostname}</dd>
-        <dt className="text-ink-2">{t('device.approve.os')}</dt>
-        <dd className="min-w-0 break-words">{request.os}</dd>
-        <dt className="text-ink-2">{t('device.approve.cliVersion')}</dt>
-        <dd className="min-w-0 break-words">{request.cliVersion}</dd>
-        <dt className="text-ink-2">{t('device.approve.requested')}</dt>
-        <dd>{formatDate(request.createdAt)}</dd>
       </dl>
+      <KeyValueList
+        columns={2}
+        items={[
+          {
+            key: 'hostname',
+            label: t('device.approve.hostname'),
+            value: request.hostname,
+          },
+          { key: 'os', label: t('device.approve.os'), value: request.os },
+          {
+            key: 'cliVersion',
+            label: t('device.approve.cliVersion'),
+            value: request.cliVersion,
+          },
+          {
+            key: 'requested',
+            label: t('device.approve.requested'),
+            value: formatDate(request.createdAt),
+          },
+        ]}
+      />
       {canApprove ? (
         <>
           <Banner tone="warn">{t('device.approve.warning')}</Banner>
@@ -144,15 +165,21 @@ export function DeviceApproval({
               required
             />
           </Field>
-          <div className="flex gap-3">
-            <Button type="button" disabled={pending !== null} onClick={approve}>
+          <div className="flex flex-col gap-3 tablet:flex-row">
+            <Button
+              type="button"
+              size="lg"
+              disabled={pending !== null}
+              onClick={approve}
+            >
               {pending === 'approve'
                 ? t('device.approve.submitting')
                 : t('device.approve.submit')}
             </Button>
             <Button
               type="button"
-              variant="danger"
+              size="lg"
+              variant="glass"
               disabled={pending !== null}
               onClick={deny}
             >
