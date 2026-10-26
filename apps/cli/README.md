@@ -155,6 +155,50 @@ before anything runs. Each run is reported like any other, marked as a check.
 Unlike `demoflow check`, which only inspects files and tools, this opens the
 app.
 
+### Scheduled checks
+
+`schedule` makes the runner (`demoflow runner start`) run `demoflow run --check`
+over the whole project on its own, at a set time:
+
+```json
+{
+  "baseUrl": "http://localhost:3000",
+  "schedule": {
+    "cadence": "weekly",
+    "weekday": "mon",
+    "at": "09:30",
+    "exclude": ["demoflow/wip.demo.json"]
+  }
+}
+```
+
+- `cadence` is `daily`, `weekdays` (Monday to Friday) or `weekly`; `weekly`
+  needs `weekday` (`mon` … `sun`), the others refuse it.
+- `at` is `HH:MM`, 24-hour, in the time zone of the machine the runner runs on.
+  A time the clock skips when daylight saving starts runs at the next valid
+  minute; a time that repeats when it ends runs once, the first time.
+- `exclude` lists scenario ids the pass leaves out (at most 100), as
+  `--exclude` does.
+- The runner watches the projects it has reported runs for and the projects
+  `demoflow run` ran in on this machine. It reads each `schedule` every
+  minute, so an edit needs no restart. A project with a config that does not
+  load is skipped and named in `runner.log`.
+- One pass at a time, and never next to a run started from the website: a
+  pass that comes due waits for it. A pass is stopped after 2 hours, or after
+  15 minutes on one scenario.
+- A machine that was off or asleep at the time runs one pass when the runner
+  next looks, however many it missed. A new schedule waits for its first time:
+  it does not run at once.
+- The passes are reported like any other check run (off without
+  `demoflow login`, under `CI`, or with `DEMOFLOW_NO_REPORT=1`).
+
+Without `demoflow login`, `runner start` and `runner install` still work when a
+watched project has a schedule. The runner then runs in local mode: no
+connection, scheduled checks only. `runner status` shows each scheduled
+project, its next check (while the runner runs) and the last one, with its
+result. A schedule runs only while the runner does: use
+[`demoflow runner install`](#start-at-login) so it starts at every login.
+
 `demoflow init [--base-url <url>]` writes `demoflow.config.json` (default
 `baseUrl` `http://localhost:3000`) and `demoflow/first.demo.json`, a scenario
 that opens `/` and passes against any app at `baseUrl`, in the current folder.
@@ -254,8 +298,9 @@ it was last seen. After `login` the CLI asks whether to start it
 the command). No jobs run over it yet.
 
 - `runner status` prints whether it runs (PID, uptime), the connection
-  (`connected`, `reconnecting in Ns`, `revoked`), the server and whether
-  autostart is installed. `--json` prints the same as one object.
+  (`connected`, `reconnecting in Ns`, `revoked`, or local mode), the server,
+  whether autostart is installed, and the next and last check of each
+  scheduled project. `--json` prints the same as one object.
 - `runner logs` prints `runner.log`; `--follow` keeps printing.
 - `runner stop` stops it; `logout` stops it first.
 - One runner per machine. A second `start` prints the running PID.
@@ -263,8 +308,10 @@ the command). No jobs run over it yet.
   and exits for good when the machine is revoked on the website.
 - Every 30 days the server rotates the token over the connection; the runner
   rewrites `credentials.json`.
-- `runner.log` (rotated at 5 MB, three files kept), `runner.lock` and
-  `runner.state.json` sit next to `credentials.json`. None holds the token.
+- `runner.log` (rotated at 5 MB, three files kept), `runner.lock`,
+  `runner.state.json`, `schedule.state.json` (each scheduled project's last
+  pass) and `local-roots.jsonl` (the projects `demoflow run` ran in, the last
+  500) sit next to `credentials.json`. None holds the token.
 
 ### Start at login
 
@@ -273,7 +320,8 @@ npx demoflow runner install
 ```
 
 Registers the runner for your user, with no admin rights, and starts it now.
-It needs `demoflow login` first. The unit runs the same `node` and CLI that
+It needs `demoflow login` first, unless a watched project has a `schedule`
+(local mode, see [Scheduled checks](#scheduled-checks)). The unit runs the same `node` and CLI that
 ran `install`, by absolute path; if you move or upgrade the CLI, run
 `install` again. `runner uninstall` removes it; a running runner keeps
 running until `runner stop`.
