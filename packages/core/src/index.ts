@@ -12,5 +12,6 @@ export * from './parse.ts';
 export * from './project-config.ts';
 export * from './run-result.ts';
 export * from './scenario.ts';
+export { lastDueSlot, nextDueSlot } from './schedule.ts';
 export * from './step.ts';
 export * from './timeline.ts';
