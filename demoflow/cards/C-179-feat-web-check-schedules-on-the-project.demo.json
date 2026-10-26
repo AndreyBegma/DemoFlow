@@ -26,7 +26,11 @@
     },
     {
       "action": "click",
-      "target": { "role": "link", "name": "C-179 nightly checks", "exact": true }
+      "target": {
+        "role": "link",
+        "name": "C-179 nightly checks",
+        "exact": true
+      }
     },
     {
       "action": "assertVisible",
