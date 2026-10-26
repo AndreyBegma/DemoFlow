@@ -1,6 +1,10 @@
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Card } from '@andrewbehma/glass-ui/card';
+import { PageHeader } from '@andrewbehma/glass-ui/page-header';
+import { SectionHeader } from '@andrewbehma/glass-ui/section-header';
 import { notFound } from 'next/navigation';
+import { MachinePill } from '@/components/projects/machine-pill';
+import { ProjectPath } from '@/components/projects/project-path';
 import { RunsTable } from '@/components/projects/runs-table';
 import { StartRun } from '@/components/projects/start-run';
 import { CrumbName } from '@/components/shell/crumb-names';
@@ -28,22 +32,23 @@ export default async function ProjectLibraryPage({
   return (
     <>
       {project ? <CrumbName segment={id} name={project.name} /> : null}
-      <Card pad="lg">
-        <h1 className="break-words text-2xl font-semibold">
-          {project?.name ?? t('projects.title')}
-        </h1>
-        {project?.rootPath ? (
-          <div className="mt-1 flex flex-col gap-0.5 text-sm text-ink-2">
-            <p className="break-all">
-              {t('projects.library.path')}: {project.rootPath}
-            </p>
-            <p className="break-words">
-              {t('projects.library.machine')}:{' '}
-              {project.runner?.name ?? t('projects.item.machineRemoved')}
-            </p>
-          </div>
-        ) : null}
-      </Card>
+      <PageHeader
+        title={
+          <span className="break-words">
+            {project?.name ?? t('projects.title')}
+          </span>
+        }
+        status={
+          project?.rootPath ? <MachinePill machine={project.runner} /> : null
+        }
+        description={
+          project?.rootPath ? (
+            <ProjectPath path={project.rootPath} />
+          ) : project ? (
+            t('projects.item.noFolder')
+          ) : null
+        }
+      />
       {project ? (
         <StartRun
           projectId={id}
@@ -51,18 +56,24 @@ export default async function ProjectLibraryPage({
           machine={project.runner}
         />
       ) : null}
-      <Card pad="lg">
-        {runs === 'error' ? (
-          <Banner tone="danger">{t('projects.library.pageFailed')}</Banner>
-        ) : (
-          <RunsTable
-            key={status ?? 'all'}
-            projectId={id}
-            first={runs}
-            status={status}
-          />
-        )}
-      </Card>
+      <section aria-labelledby="project-runs" className="flex flex-col gap-3">
+        <SectionHeader
+          title={t('projects.library.runsTitle')}
+          headingId="project-runs"
+        />
+        <Card pad="md">
+          {runs === 'error' ? (
+            <Banner tone="danger">{t('projects.library.pageFailed')}</Banner>
+          ) : (
+            <RunsTable
+              key={status ?? 'all'}
+              projectId={id}
+              first={runs}
+              status={status}
+            />
+          )}
+        </Card>
+      </section>
     </>
   );
 }
