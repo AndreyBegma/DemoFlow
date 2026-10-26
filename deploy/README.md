@@ -322,8 +322,8 @@ nothing with it:
 | Images | `demoflow-{api,web}:staging` | `demoflow-{api,web}:production` |
 | Tunnel | `demoflow-app` | `demoflow-prod` |
 
-Nothing is published on the host. Backups of the production database are not
-set up yet.
+Nothing is published on the host. The production database is backed up daily
+(see *Backups of the production database*).
 
 ### One-time setup
 
@@ -350,6 +350,8 @@ The Woodpecker settings are the staging ones; nothing else is needed.
 | `/home/archi/stacks/demoflow-production/up.sh` | starts the stack from the images already built |
 | `/home/archi/stacks/demoflow-production/down.sh` | stops it; the volumes are kept |
 | `sh deploy/production/refresh.sh` (from a checkout of `main`) | what `deploy-production` runs |
+| `/home/archi/stacks/demoflow-production/backup.sh` | dumps the database now (see below) |
+| `/home/archi/stacks/demoflow-production/restore.sh <dump> --yes-replace-production-database` | replaces the database with a dump |
 
 Secrets, migrations, zero-drop deploys, the runner socket and `530` / error
 1033 behave as on staging (see above), with `demoflow-production-*` container
@@ -371,3 +373,73 @@ Hidden until both `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are set in
 `https://demoflow.luna-realm.com` and authorization callback URL
 `https://demoflow.luna-realm.com/api/auth/github/callback`, puts its client id
 and secret in `env/api.env` on the host, and restarts the API container.
+
+### Backups of the production database
+
+A systemd user timer runs `backup.sh` every day at 03:30 UTC (plus up to 10
+minutes of random delay). The script runs `pg_dump -Fc` inside
+`demoflow-production-postgres` and writes
+`/home/archi/backups/demoflow-production/demoflow-production-<UTC timestamp>.dump`.
+The directory is mode 700 and each dump 600. The shares volume is not backed
+up (see *Shared videos on staging*).
+
+- **Retention.** The newest 14 dumps are kept; older ones are deleted after a
+  new dump has been written and `pg_restore --list` has read it back.
+- **A failed dump** exits non-zero, deletes its partial file and leaves every
+  existing dump and `last-backup.env` as they were. The timer's service then
+  shows as failed.
+- **Off-host copies** are not made: the dumps live on the same disk as the
+  database, so they protect against a bad migration or a deleted row, not
+  against losing the host.
+
+#### One-time setup
+
+`refresh.sh` copies `backup.sh`, `restore.sh` and `install-backup-timer.sh` into
+the stack directory on every deploy; the pipeline never installs the timer.
+Once, on the host, as the operator (uid 1000, in the `docker` group):
+
+```sh
+/home/archi/stacks/demoflow-production/install-backup-timer.sh
+sudo loginctl enable-linger archi   # if the script says lingering is off
+```
+
+It writes `demoflow-production-backup.service` and `.timer` to
+`~/.config/systemd/user`, enables the timer and lists its next run. Lingering
+keeps user timers running when nobody is logged in. Running the script again
+rewrites the units.
+
+#### Checking the last backup
+
+```sh
+cat /home/archi/backups/demoflow-production/last-backup.env      # file, time and size of the last good dump
+systemctl --user list-timers demoflow-production-backup.timer    # last and next run
+systemctl --user status demoflow-production-backup.service       # result of the last run
+journalctl --user -u demoflow-production-backup.service -n 50    # its output
+ls -l /home/archi/backups/demoflow-production
+```
+
+`last-backup.env` changes only on success, so a `LAST_BACKUP_AT` older than a
+day means the backup has stopped working.
+
+#### Restoring
+
+```sh
+/home/archi/stacks/demoflow-production/restore.sh \
+  /home/archi/backups/demoflow-production/demoflow-production-<timestamp>.dump \
+  --yes-replace-production-database
+```
+
+Without the flag it only says what it would do. With it, it checks the dump is
+readable, stops `demoflow-production-api`, restores with
+`pg_restore --clean --if-exists --single-transaction` — a failed restore rolls
+back and leaves the database as it was — and starts the API again either way.
+Take a fresh `backup.sh` first if the current data may still be needed.
+
+#### Testing the scripts
+
+`sh deploy/production/test-backup.sh`, from a checkout on a host with Docker,
+runs both scripts against two throwaway Postgres containers, never the
+production one: a backup restores with the same row counts (also over a
+database that has drifted, with a stand-in API container stopped and started),
+dumps beyond the newest 14 are deleted, a failed dump exits non-zero and changes
+nothing, and `restore.sh` refuses without the flag.
