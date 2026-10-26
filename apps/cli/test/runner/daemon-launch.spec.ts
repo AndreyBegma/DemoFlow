@@ -191,7 +191,7 @@ describe('the daemon with a website-started run', () => {
         type: 'launches.sync',
         running: [],
         runOptions: ['formats'],
-        features: ['projects'],
+        features: ['projects', 'share'],
         checks: true,
       });
       first.receive({
@@ -232,7 +232,7 @@ describe('the daemon with a website-started run', () => {
         type: 'launches.sync',
         running: [REQUEST],
         runOptions: ['formats'],
-        features: ['projects'],
+        features: ['projects', 'share'],
         checks: true,
       });
       await stop(next);
@@ -249,7 +249,7 @@ describe('the daemon with a website-started run', () => {
           type: 'launches.sync',
           running: [],
           runOptions: ['formats'],
-          features: ['projects'],
+          features: ['projects', 'share'],
           checks: true,
         },
       ]);

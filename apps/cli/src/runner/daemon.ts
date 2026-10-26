@@ -23,6 +23,7 @@ import {
   isWebsiteRegistered,
   ProjectRequests,
 } from './roots/index.ts';
+import { sharePreparer } from './share/prepare.ts';
 import { type ConnectionState, writeState } from './state.ts';
 
 /** How often the daemon looks for `runner.stop`. */
@@ -160,6 +161,11 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
       clock: deps.clock,
       loadProject: launcherDeps.loadProject,
       writeTemplate: defaultWriteTemplate,
+    }),
+    share: sharePreparer({
+      indexFile: paths.reportedRuns,
+      logger,
+      platform: deps.host.platform,
     }),
   });
 

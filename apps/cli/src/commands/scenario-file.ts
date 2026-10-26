@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import {
   type FragmentSource,
   type Issue,
@@ -39,4 +40,23 @@ export function loadScenario(
     );
   }
   return { scenario: parsed.value, warnings: parsed.warnings };
+}
+
+/**
+ * The scenario's `description`, read from the project when its file is still
+ * there and loads (spec 255, Decision 3): the intro card's subtitle and a
+ * share's description (spec 349). An inline scenario of `demoflow mcp` is
+ * gone after its run, so it has none.
+ */
+export function scenarioDescription(
+  root: string,
+  scenarioId: string,
+): string | undefined {
+  const file = path.join(root, scenarioId);
+  if (!existsSync(file)) return undefined;
+  try {
+    return loadScenario(file).scenario.description;
+  } catch {
+    return undefined;
+  }
 }

@@ -28,7 +28,7 @@ import { exitCodeFor } from './exit.ts';
 import type { Io } from './io.ts';
 import { formatJson, formatSummary } from './output.ts';
 import { assertSafeRunId } from './run-id.ts';
-import { loadScenario } from './scenario-file.ts';
+import { scenarioDescription } from './scenario-file.ts';
 import { readResult, settleRun } from './settle.ts';
 
 export interface RenderFlags {
@@ -172,24 +172,6 @@ async function readRenderable(runDir: string): Promise<RunResult> {
     );
   }
   return result;
-}
-
-/**
- * The intro card's subtitle: the scenario's `description`, read from the
- * project when its file is still there and loads. An inline scenario of
- * `demoflow mcp` is gone after its run, so its card has no subtitle.
- */
-function scenarioDescription(
-  root: string,
-  scenarioId: string,
-): string | undefined {
-  const file = path.join(root, scenarioId);
-  if (!existsSync(file)) return undefined;
-  try {
-    return loadScenario(file).scenario.description;
-  } catch {
-    return undefined;
-  }
 }
 
 /**
