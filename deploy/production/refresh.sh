@@ -63,7 +63,7 @@ fill_if_empty POSTGRES_PASSWORD "$(hex)" "$PRODUCTION_DIR/.env"
 # ── stack files: always the commit's own ────────────────────────────────────
 caddy_changed=false
 cmp -s "$SRC/Caddyfile" "$PRODUCTION_DIR/Caddyfile" || caddy_changed=true
-for file in docker-compose.yml Caddyfile up.sh down.sh status.sh; do
+for file in docker-compose.yml Caddyfile up.sh down.sh status.sh backup.sh restore.sh install-backup-timer.sh; do
   cp "$SRC/$file" "$PRODUCTION_DIR/$file"
 done
 chmod +x "$PRODUCTION_DIR"/*.sh
