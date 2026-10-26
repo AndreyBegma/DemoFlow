@@ -7,7 +7,8 @@ No registry, no ssh.
 ## Branches
 
 `main` holds releases. All work lands in `develop` through pull requests; every
-merge into `develop` deploys staging.
+merge into `develop` deploys staging, and every push to `main` deploys
+production.
 
 ## CI — what each pipeline runs
 
@@ -35,7 +36,8 @@ in every step that mounts the caches; the host directory is
 `/home/archi/ci-cache/demoflow/playwright`.
 
 Pull requests get no Docker socket and no host cache (ADR-0011). `ci-image`,
-`build-staging` and `deploy-staging` run on push and manual events only; a pull
+`build-staging` and `deploy-staging` run on push and manual events only, and
+`build-production` and `deploy-production` on a push to `main` only; a pull
 request runs on the `demoflow-ci:node-bun` image the last push built, so a
 change to `deploy/ci-image/` reaches pull requests once it is merged. If an
 agent has never built the image, the pull request fails at image pull: start a
@@ -270,3 +272,81 @@ on, the owner:
 The app asks for `read:user user:email` only, and keeps no GitHub token. The
 client secret also signs the short-lived `df_oauth` cookie, so rotating it
 only fails sign-ins that are in flight.
+
+## Production — https://demoflow.luna-realm.com
+
+Every push to `main` runs the pipeline. Once `check`, `build` and the full
+`test` suite pass, `build-production` builds `demoflow-api:production` and
+`demoflow-web:production` on the agent host, and `deploy-production` replaces
+the containers in `/home/archi/stacks/demoflow-production`. There is no
+approval gate, and neither step runs on `develop`, on a manual run or on a
+pull request.
+
+```
+Cloudflare ──tunnel demoflow-prod──▶ cloudflared ──▶ proxy (Caddy :80) ─┬─ /api/* ─▶ api :8370 ─▶ postgres
+                                                                        └─ /*     ─▶ web :3670
+```
+
+Production runs on the same host and Docker daemon as staging and shares
+nothing with it:
+
+| | Staging | Production |
+|---|---|---|
+| Branch | `develop` | `main` |
+| Stack directory | `/home/archi/stacks/demoflow-staging` | `/home/archi/stacks/demoflow-production` |
+| Compose project | `demoflow-staging` | `demoflow-production` |
+| Network | `demoflow-staging_staging` | `demoflow-production` |
+| Postgres volume | `demoflow-staging_pgdata` | `demoflow-production_pgdata` |
+| Containers | `demoflow-staging-*` | `demoflow-production-*` |
+| Images | `demoflow-{api,web}:staging` | `demoflow-{api,web}:production` |
+| Tunnel | `demoflow-app` | `demoflow-prod` |
+
+Nothing is published on the host. Backups of the production database are not
+set up yet.
+
+### One-time setup
+
+1. **Cloudflare.** The tunnel `demoflow-prod` has the public hostname
+   `demoflow.luna-realm.com` → `HTTP` `proxy:80`. Its token is in
+   `~/.demoflow/production/cloudflared.env`, mode 600, as one line:
+   `TUNNEL_TOKEN=...`.
+2. **The first run.** Push to `main`. `refresh.sh` creates the stack directory,
+   copies the examples in and generates `POSTGRES_PASSWORD`. It then stops,
+   because the tunnel token is missing.
+3. **Add the token and start the stack:**
+   ```sh
+   cp ~/.demoflow/production/cloudflared.env /home/archi/stacks/demoflow-production/env/cloudflared.env
+   /home/archi/stacks/demoflow-production/up.sh
+   ```
+
+The Woodpecker settings are the staging ones; nothing else is needed.
+
+### Operating
+
+| Command (on the host) | What it does |
+|---|---|
+| `/home/archi/stacks/demoflow-production/status.sh` | the deployed commit, containers, image revisions, and the public `/` and `/api/health` |
+| `/home/archi/stacks/demoflow-production/up.sh` | starts the stack from the images already built |
+| `/home/archi/stacks/demoflow-production/down.sh` | stops it; the volumes are kept |
+| `sh deploy/production/refresh.sh` (from a checkout of `main`) | what `deploy-production` runs |
+
+Secrets, migrations, zero-drop deploys, the runner socket and `530` / error
+1033 behave as on staging (see above), with `demoflow-production-*` container
+names. Paired machines connect to `wss://demoflow.luna-realm.com/api/runner`.
+
+### Mail on production
+
+Production starts with `MAIL_TRANSPORT=log` and
+`MAIL_FROM=DemoFlow <no-reply@luna-realm.com>`: each email is written to the
+API log (`docker logs demoflow-production-api 2>&1 | grep Mail`). To send
+mail, the owner puts `RESEND_API_KEY` in
+`/home/archi/stacks/demoflow-production/env/api.env`, sets `MAIL_TRANSPORT=`
+(empty, not deleted) and restarts the API container.
+
+### GitHub sign-in on production
+
+Hidden until both `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are set in
+`env/api.env`. The owner creates a separate OAuth App with homepage
+`https://demoflow.luna-realm.com` and authorization callback URL
+`https://demoflow.luna-realm.com/api/auth/github/callback`, puts its client id
+and secret in `env/api.env` on the host, and restarts the API container.
