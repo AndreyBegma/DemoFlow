@@ -14,6 +14,10 @@ export interface RunnerPaths {
   stop: string;
   /** Server run id → run directory, one JSON line per reported run (spec 192). */
   reportedRuns: string;
+  /** The folders the website may name (spec 377, Decision 1). */
+  allowedRoots: string;
+  /** Roots registered from the website, one JSON line each (spec 377, Decision 8). */
+  websiteProjects: string;
 }
 
 export function runnerPaths(host: HostEnvironment): RunnerPaths {
@@ -26,5 +30,7 @@ export function runnerPaths(host: HostEnvironment): RunnerPaths {
     state: p.join(dir, 'runner.state.json'),
     stop: p.join(dir, 'runner.stop'),
     reportedRuns: p.join(dir, 'reported-runs.jsonl'),
+    allowedRoots: p.join(dir, 'allowed-roots.json'),
+    websiteProjects: p.join(dir, 'website-projects.jsonl'),
   };
 }
