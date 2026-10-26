@@ -110,7 +110,8 @@ beforeAll(async () => {
   out = await mkdtemp(path.join(tmpdir(), 'demoflow-cli-out-'));
   await writeFile(
     path.join(project, 'demoflow.config.json'),
-    JSON.stringify({ baseUrl: fixture.origin }),
+    // No end hold (spec 365): it only lengthens every run of these tests.
+    JSON.stringify({ baseUrl: fixture.origin, render: { endHoldMs: 0 } }),
   );
   await cp(FIXTURE_SCENARIOS, path.join(project, 'demoflow'), {
     recursive: true,
@@ -357,6 +358,7 @@ describe('demoflow run', () => {
         JSON.stringify({
           baseUrl: fixture.origin,
           render: {
+            endHoldMs: 0,
             frame: { marginRatio: 0.2 },
             background: { color: '#c03020' },
             // Frame 0 is the page, not the intro card nor the first load's
@@ -422,7 +424,7 @@ describe('demoflow run', () => {
           path.join(carded, 'demoflow.config.json'),
           JSON.stringify({
             baseUrl: fixture.origin,
-            render: { background: { color: '#c03020' }, cards },
+            render: { endHoldMs: 0, background: { color: '#c03020' }, cards },
           }),
         );
         const result = await demoflow(
@@ -485,6 +487,7 @@ describe('demoflow run', () => {
         JSON.stringify({
           baseUrl: fixture.origin,
           render: {
+            endHoldMs: 0,
             background: { color: '#c03020' },
             cards: { intro: { enabled: false } },
           },
