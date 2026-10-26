@@ -491,6 +491,7 @@ describe('RunnerConnection and the video relay', () => {
       type: 'launches.sync',
       running: ids,
       runOptions: ['formats'],
+      checks: true,
     });
     expect(logger.text()).toContain('announced 1 running launch');
     first.serverClose(1006);
@@ -500,7 +501,12 @@ describe('RunnerConnection and the video relay', () => {
     last().open();
     expect(last()).not.toBe(first);
     expect(last().sent).toEqual([
-      { type: 'launches.sync', running: [], runOptions: ['formats'] },
+      {
+        type: 'launches.sync',
+        running: [],
+        runOptions: ['formats'],
+        checks: true,
+      },
     ]);
   });
 

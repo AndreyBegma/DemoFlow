@@ -30,9 +30,9 @@ export function OnThisPage() {
   return (
     <nav
       aria-label={t('docs.toc.label')}
-      className="text-sm lg:sticky lg:top-24"
+      className="glass rounded-surface p-4 text-sm lg:sticky lg:top-24"
     >
-      <p className="pb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">
+      <p className="pb-2 text-xs font-semibold uppercase tracking-wide text-ink-2">
         {t('docs.toc.label')}
       </p>
       <ul className="flex flex-col gap-1.5 border-l border-line pl-3">

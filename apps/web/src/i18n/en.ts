@@ -518,6 +518,44 @@ export const en = {
     offline: 'Offline',
     online: 'Online',
   },
+  sharePage: {
+    download: 'Download',
+    madeWith: 'Made with DemoFlow',
+    playbackFailed: 'The video could not be played. Try Download instead.',
+    chapters: {
+      title: 'Chapters',
+      seek: 'Play from {time}: {title}',
+    },
+    locked: {
+      title: 'This video is protected',
+      body: 'Enter the password you were given to watch it.',
+      password: 'Password',
+      submit: 'Unlock',
+      submitting: 'Unlocking…',
+      wrongPassword: 'Wrong password.',
+      rateLimited: 'Too many attempts, try again in a few minutes.',
+      failed: 'We could not check the password. Try again in a moment.',
+    },
+    expired: {
+      title: 'This link has expired',
+      body: 'Ask the person who shared it for a new link.',
+    },
+    unavailable: {
+      title: 'This video is no longer available',
+      body: 'Ask the person who shared it to share it again.',
+    },
+    notFound: {
+      title: 'This link does not exist',
+      body: 'Check the address, or ask the person who shared it for the link again.',
+    },
+    failed: {
+      title: 'We could not load this video',
+      body: 'Try again in a moment.',
+    },
+    meta: {
+      locked: 'A shared DemoFlow video',
+    },
+  },
   meta: {
     title: 'DemoFlow',
   },
@@ -531,17 +569,12 @@ export const en = {
         'DemoFlow drives your running app in a real browser, checks every step and renders a polished demo video. Everything runs on your machine.',
       imageAlt: 'A DemoFlow demo video of a sample app',
     },
-    nav: {
-      label: 'Main',
-      home: 'DemoFlow home',
-      docs: 'Docs',
-      signIn: 'Sign in',
-      openApp: 'Open app',
-    },
     hero: {
+      eyebrow: 'Open source · runs on your machine',
       title: 'Demo videos of the features you ship, from one JSON scenario.',
       subtitle:
         'DemoFlow drives your running app in a real browser, checks every step, and renders a polished video (MP4, GIF or WebM) with a drawn cursor, zoom on the action and captions.',
+      openApp: 'Open app',
     },
     video: {
       label: 'A demo video of a sample app, recorded with DemoFlow',
@@ -565,24 +598,33 @@ export const en = {
     install: {
       title: 'Run it in your project',
       command: 'npx demoflow',
-      body: 'Then run demoflow record to capture a scenario by clicking through your app.',
+      body: 'Run npx demoflow in your project, then demoflow record to capture a scenario by clicking through your app.',
+      readDocs: 'Read the getting started guide',
       copy: 'Copy command',
       copied: 'Copied',
       copyFailed: 'Could not copy. Select the command and copy it.',
     },
     footer: {
+      label: 'Links',
       license: 'DemoFlow · MIT licence',
       github: 'GitHub',
       docs: 'Docs',
+      npm: 'npm',
+    },
+  },
+  site: {
+    home: 'DemoFlow home',
+    nav: 'Main',
+    docs: 'Docs',
+    signIn: 'Sign in',
+    openApp: 'Open app',
+    theme: {
+      label: 'Theme',
     },
   },
   docs: {
     meta: {
       title: 'Documentation',
-    },
-    header: {
-      home: 'DemoFlow home',
-      openApp: 'Open app',
     },
     nav: {
       label: 'Documentation',

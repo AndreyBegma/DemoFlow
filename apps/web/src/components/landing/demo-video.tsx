@@ -22,7 +22,7 @@ export function DemoVideo() {
   return (
     <video
       ref={ref}
-      className="aspect-video w-full rounded-surface border border-line bg-black"
+      className="block aspect-video w-full rounded-control bg-black"
       src="/demo/landing.mp4"
       poster="/demo/landing-poster.png"
       aria-label={t('landing.video.label')}

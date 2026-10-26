@@ -12,18 +12,11 @@ import {
   MenuTrigger,
 } from '@andrewbehma/glass-ui/menu';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { t } from '@/i18n';
 import { signOut } from '@/lib/api';
-import {
-  applyTheme,
-  isThemeMode,
-  LIGHT_QUERY,
-  storeTheme,
-  THEME_MODE_ATTRIBUTE,
-  THEME_MODES,
-  type ThemeMode,
-} from '@/lib/theme';
+import { THEME_MODES } from '@/lib/theme';
+import { useThemeMode } from '@/lib/use-theme-mode';
 
 /**
  * The account menu in the top bar (spec #373, Decision 6): who is signed in,
@@ -33,25 +26,8 @@ import {
  */
 export function AccountMenu({ email }: { email: string }) {
   const router = useRouter();
-  const [mode, setMode] = useState<ThemeMode>('system');
+  const [mode, chooseTheme] = useThemeMode();
   const [signingOut, setSigningOut] = useState(false);
-
-  // The bootstrap script has already set the mode on <html>; read it back.
-  useEffect(() => {
-    const current = document.documentElement.getAttribute(THEME_MODE_ATTRIBUTE);
-    if (isThemeMode(current)) setMode(current);
-  }, []);
-
-  function chooseTheme(value: string) {
-    if (!isThemeMode(value)) return;
-    setMode(value);
-    storeTheme(value, () => window.localStorage);
-    applyTheme(
-      document.documentElement,
-      value,
-      window.matchMedia(LIGHT_QUERY).matches,
-    );
-  }
 
   async function leave() {
     setSigningOut(true);
