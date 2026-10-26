@@ -412,7 +412,7 @@ async function passFiles(
   }
   return listing.scenarios
     .filter((scenario) => !excluded.has(scenario.id))
-    .map((scenario) => path.join(real, ...scenario.id.split('/')));
+    .map((scenario) => path.join(root, ...scenario.id.split('/')));
 }
 
 const SCENARIOS_PREFIX = 'demoflow/';
