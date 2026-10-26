@@ -7,7 +7,7 @@
     "start": "next start -p 3670",
     "start:dev": "node scripts/dev.mjs",
     "lint": "biome lint src",
-    "test": "node --test src/lib/docs-nav.test.mjs src/lib/playback.test.mjs src/lib/launch.test.mjs src/lib/format-bytes.test.mjs src/lib/run-delete.test.mjs src/lib/player-choice.test.mjs src/lib/nav.test.mjs src/lib/crumbs.test.mjs src/lib/theme.test.mjs src/lib/overview-stats.test.mjs src/lib/status.test.mjs src/lib/share-page.test.mjs"
+    "test": "node --test src/lib/docs-nav.test.mjs src/lib/playback.test.mjs src/lib/launch.test.mjs src/lib/format-bytes.test.mjs src/lib/run-delete.test.mjs src/lib/player-choice.test.mjs src/lib/nav.test.mjs src/lib/crumbs.test.mjs src/lib/theme.test.mjs src/lib/overview-stats.test.mjs src/lib/status.test.mjs src/lib/share-page.test.mjs src/lib/schedule.test.mjs"
   },
   "dependencies": {
     "@andrewbehma/glass-ui": "0.37.0",
