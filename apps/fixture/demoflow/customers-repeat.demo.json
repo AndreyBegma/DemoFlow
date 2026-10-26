@@ -12,6 +12,7 @@
       { "name": "Ken Thompson", "email": "ken@example.com" }
     ]
   },
+  "pacing": { "stepDwellMs": 250, "endHoldMs": 1000, "typingDelayMs": 20 },
   "steps": [
     { "action": "navigate", "path": "/customers" },
     {
