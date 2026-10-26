@@ -39,6 +39,8 @@ export interface RunReport {
   renders: ReportedRender[];
   /** Decision 3: a failed run's first failed stage, its message redacted. */
   failure?: { stage: StageName; message: string };
+  /** Spec 360: `check` for a run of `demoflow run --check`; absent otherwise. */
+  kind?: 'check';
 }
 
 export interface ReportedRender {
@@ -79,6 +81,7 @@ export function buildReport(input: {
   cliVersion: string;
   pathApi?: path.PlatformPath;
   home?: string;
+  check?: boolean;
 }): RunReport {
   const { root, result, cliVersion, pathApi = path, home = homedir() } = input;
   const failedStep = Object.values(result.stages)
@@ -109,6 +112,8 @@ export function buildReport(input: {
     const failure = failureOf(result, { root, home, pathApi });
     if (failure !== undefined) report.failure = failure;
   }
+  // An ordinary run sends no `kind`: an API before spec 360 refuses the field.
+  if (input.check === true) report.kind = 'check';
   return report;
 }
 
@@ -184,7 +189,7 @@ function projectIdOf(body: unknown): string | undefined {
  * `reported-runs.jsonl`, so the daemon can stream its video (spec 192).
  */
 export async function reportRun(
-  input: { root: string; runDir: string; result: RunResult },
+  input: { root: string; runDir: string; result: RunResult; check?: boolean },
   deps: ReportDeps,
 ): Promise<void> {
   try {
@@ -198,6 +203,7 @@ export async function reportRun(
       cliVersion: deps.version(),
       pathApi: pathFor(deps.host.platform),
       home: deps.host.homedir,
+      check: input.check,
     });
     const response = await deps.fetch(
       `${apiBase(credentials.server)}/runner/runs`,
