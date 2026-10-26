@@ -1,0 +1,34 @@
+# The single public origin of production. TLS ends at Cloudflare; cloudflared
+# connects here over plain HTTP inside the compose network.
+{
+	auto_https off
+	admin off
+	servers {
+		# Keep cloudflared's X-Forwarded-For / -Proto: it is the only client and
+		# sits on the private bridge.
+		trusted_proxies static private_ranges
+	}
+}
+
+:80 {
+	# The API has no /api prefix of its own.
+	#
+	# A deploy replaces the containers. Instead of a 502 while the name does not
+	# resolve or the port is closed, a request or WebSocket upgrade is held and
+	# retried until the upstream answers.
+	handle_path /api/* {
+		reverse_proxy api:8370 {
+			lb_try_duration 60s
+			lb_try_interval 250ms
+			health_uri /health
+			health_interval 2s
+		}
+	}
+
+	handle {
+		reverse_proxy web:3670 {
+			lb_try_duration 60s
+			lb_try_interval 250ms
+		}
+	}
+}

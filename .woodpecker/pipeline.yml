@@ -16,6 +16,10 @@
 # daemon and replaces the containers of /home/archi/stacks/demoflow-staging
 # (https://demoflow-app.luna-realm.com). No registry, no ssh: the agents
 # run on the staging host, and the steps that need it get the Docker socket.
+# A push to main does the same for production once the full suite passes:
+# images :production, stack /home/archi/stacks/demoflow-production
+# (https://demoflow.luna-realm.com), on the same host and daemon. The two
+# stacks share no container, network, volume or image tag.
 #
 # `test` and `test-pr` run turbo with --concurrency=2, like `build`. Unbounded,
 # turbo ran up to 10 test tasks at once, each with its own jest or vitest
@@ -34,8 +38,9 @@
 # A pull request runs the code of its branch with whatever this file grants,
 # so a step that can run on a pull request gets no Docker socket and no host
 # volume (ADR-0011):
-#   - `ci-image`, `build-staging` and `deploy-staging` mount the socket and run
-#     on push and manual events only. A pull request runs on the
+#   - `ci-image`, `build-staging`, `deploy-staging`, `build-production` and
+#     `deploy-production` mount the socket and run on push and manual events
+#     only (production: push to main only). A pull request runs on the
 #     demoflow-ci:node-bun image the last push or manual run built on the
 #     agent host; a change to deploy/ci-image/ reaches pull requests once it is
 #     merged. On an agent that has never built the tag the pull request fails
@@ -75,6 +80,9 @@ variables:
   - &socket_and_staging
     - /var/run/docker.sock:/var/run/docker.sock
     - /home/archi/stacks/demoflow-staging:/home/archi/stacks/demoflow-staging
+  - &socket_and_production
+    - /var/run/docker.sock:/var/run/docker.sock
+    - /home/archi/stacks/demoflow-production:/home/archi/stacks/demoflow-production
   # Caches that outlive a run: the workspace volume dies with the pipeline.
   - &caches
     - /home/archi/ci-cache/demoflow/bun:/ci-cache/bun
@@ -258,3 +266,25 @@ steps:
     volumes: *socket_and_staging
     commands:
       - sh deploy/staging/refresh.sh
+
+  # Push to main only — never a manual run, never develop. `test` runs the full
+  # suite on this event, so the deploy waits for it as well as `check`/`build`.
+  - name: build-production
+    image: *docker_image
+    depends_on: [check, build, test]
+    when:
+      - event: push
+        branch: main
+    volumes: *socket
+    commands:
+      - sh deploy/production/build-production.sh
+
+  - name: deploy-production
+    image: *docker_image
+    depends_on: [build-production]
+    when:
+      - event: push
+        branch: main
+    volumes: *socket_and_production
+    commands:
+      - sh deploy/production/refresh.sh
