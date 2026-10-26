@@ -168,6 +168,7 @@ export function DeviceApproval({
           <div className="flex flex-col gap-3 tablet:flex-row">
             <Button
               type="button"
+              variant="solid"
               size="lg"
               disabled={pending !== null}
               onClick={approve}

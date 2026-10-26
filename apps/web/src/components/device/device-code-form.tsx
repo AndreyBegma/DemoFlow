@@ -46,7 +46,7 @@ export function DeviceCodeForm() {
           required
         />
       </Field>
-      <Button type="submit" size="lg">
+      <Button type="submit" variant="solid" size="lg">
         {t('device.code.submit')}
       </Button>
     </form>

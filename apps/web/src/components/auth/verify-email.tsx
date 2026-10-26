@@ -54,7 +54,10 @@ export function VerifyEmail({
         <Banner tone="ok" title={t('auth.verify.doneTitle')}>
           {t('auth.verify.doneBody')}
         </Banner>
-        <Link href="/app" className={buttonClassName({ full: true })}>
+        <Link
+          href="/app"
+          className={buttonClassName({ variant: 'solid', full: true })}
+        >
           {t('auth.verify.toApp')}
         </Link>
       </>
@@ -76,7 +79,10 @@ export function VerifyEmail({
           sentLabel={t('auth.verify.resent')}
         />
       ) : (
-        <Link href="/sign-in" className={buttonClassName({ full: true })}>
+        <Link
+          href="/sign-in"
+          className={buttonClassName({ variant: 'solid', full: true })}
+        >
           {t('auth.verify.signIn')}
         </Link>
       )}
