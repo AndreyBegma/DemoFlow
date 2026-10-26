@@ -203,7 +203,7 @@ Nothing is published on the host. The stack runs on its own compose network
 
 | Command (on the host) | What it does |
 |---|---|
-| `/home/archi/stacks/demoflow-staging/status.sh` | the deployed commit, containers, image revisions, and the public `/` and `/api/health` |
+| `/home/archi/stacks/demoflow-staging/status.sh` | the deployed commit, containers, image revisions, and the public `/`, `/api/health` and `/demo/landing-poster.png` (non-zero exit unless all answer 200) |
 | `/home/archi/stacks/demoflow-staging/up.sh` | starts the stack from the images already built |
 | `/home/archi/stacks/demoflow-staging/down.sh` | stops it; the volumes are kept |
 | `sh deploy/staging/refresh.sh` (from a checkout) | what `deploy-staging` runs |
@@ -325,7 +325,7 @@ The Woodpecker settings are the staging ones; nothing else is needed.
 
 | Command (on the host) | What it does |
 |---|---|
-| `/home/archi/stacks/demoflow-production/status.sh` | the deployed commit, containers, image revisions, and the public `/` and `/api/health` |
+| `/home/archi/stacks/demoflow-production/status.sh` | the deployed commit, containers, image revisions, and the public `/`, `/api/health` and `/demo/landing-poster.png` (non-zero exit unless all answer 200) |
 | `/home/archi/stacks/demoflow-production/up.sh` | starts the stack from the images already built |
 | `/home/archi/stacks/demoflow-production/down.sh` | stops it; the volumes are kept |
 | `sh deploy/production/refresh.sh` (from a checkout of `main`) | what `deploy-production` runs |
