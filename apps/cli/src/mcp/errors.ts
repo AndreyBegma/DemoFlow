@@ -1,4 +1,5 @@
 import type { Issue } from '@demoflow/core';
+import type { ShareRefusalCode } from '../share/publish.ts';
 
 export type ToolErrorCode =
   | 'invalid-input'
@@ -8,7 +9,12 @@ export type ToolErrorCode =
   | 'invalid-scenario'
   | 'scenario-unreadable'
   | 'file-not-in-project'
-  | 'task-not-found';
+  | 'task-not-found'
+  // `share_demo` (spec 349, Decision 7).
+  | 'share-not-allowed'
+  | 'share-failed'
+  | 'server-error'
+  | ShareRefusalCode;
 
 /** What an agent gets back from a failed tool call (spec #68, Decision 9). */
 export interface ToolErrorPayload {

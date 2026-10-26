@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import {
   formatPath,
   type Issue,
@@ -15,6 +16,8 @@ import {
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { ServerError } from '../auth/client.ts';
+import { readCredentials } from '../auth/credentials.ts';
 import { CommandError } from '../commands/errors.ts';
 import { assertSafeRunId, generateRunId } from '../commands/run-id.ts';
 import { readResult } from '../commands/settle.ts';
@@ -22,6 +25,7 @@ import {
   CliError,
   type HostEnvironment,
   loadGlobalConfig,
+  loadProjectConfig,
   osDataDir,
   projectFragments,
   runDir as runDirFor,
@@ -31,6 +35,17 @@ import {
   pageUrlFor,
   readReportedRunsByDir,
 } from '../runs-report/reported-runs.ts';
+import {
+  createShare,
+  DEFAULT_SHARE_LIFETIME,
+  reportedRunOf,
+  type ShareRefusalCode,
+  ShareRefused,
+  type ShareStatus,
+  shareableFormat,
+  type WaitDeps,
+  waitForShare,
+} from '../share/publish.ts';
 import { packageVersion } from '../version.ts';
 import { ToolError } from './errors.ts';
 import {
@@ -155,6 +170,40 @@ const CheckProjectInput = z.strictObject({
   project: z.string().optional().describe(PROJECT_DESCRIPTION),
 });
 
+const ShareDemoInput = z.strictObject({
+  runId: z
+    .string()
+    .describe('The task ID of a finished run (generate_demo, list_demos).'),
+  format: z
+    .enum(RENDER_FORMATS)
+    .optional()
+    .describe("The render to share; default: the run's first render."),
+  expiresInDays: z
+    .union([z.literal(7), z.literal(30), z.literal(90)])
+    .optional()
+    .describe(
+      `How long the link works, in days; default ${DEFAULT_SHARE_LIFETIME}.`,
+    ),
+});
+
+/** What an agent can do about each refusal of the share API. */
+const SHARE_HINTS: Record<ShareRefusalCode, string> = {
+  'not-logged-in': 'Ask a person to run `demoflow login` on this machine.',
+  'invalid-result': 'The run directory is damaged; generate the demo again.',
+  'run-not-reported':
+    'Only a run made while logged in, with reporting on, can be shared: generate the demo again after `demoflow login`.',
+  'format-not-rendered':
+    'Pass a format the run rendered (get_task lists the files), or generate the demo again with that format.',
+  'artifacts-deleted':
+    "The run's files were deleted on the website; generate the demo again.",
+  'runner-offline':
+    'Ask a person to start the runner: `demoflow runner start`.',
+  'runner-outdated':
+    'Ask a person to restart the runner: `demoflow runner stop`, then `demoflow runner start`.',
+  'file-too-large': 'Share a smaller render, or make a shorter demo.',
+  'quota-exceeded': 'Ask a person to revoke old shares on the website.',
+};
+
 const TOOLS: Tool[] = [
   {
     name: 'generate_demo',
@@ -191,6 +240,11 @@ const TOOLS: Tool[] = [
       'Whether a project is ready to run demos: its scenario files, a valid config, and FFmpeg and browser availability.',
     inputSchema: inputSchema(CheckProjectInput),
   },
+  {
+    name: 'share_demo',
+    description: `Publish a finished run's render as a link on the DemoFlow website: anyone with the link can watch it, until it expires. Refused with share-not-allowed unless the project's committed demoflow.config.json sets "share": { "allowMcp": true }. Needs a logged-in machine with its runner running. Waits up to ${MAX_WAIT_SECONDS} s for the upload; on status "uploading", call again with the same arguments to wait more — it returns the same share.`,
+    inputSchema: inputSchema(ShareDemoInput),
+  },
 ];
 
 export interface McpServerDeps {
@@ -199,12 +253,21 @@ export interface McpServerDeps {
   /** The default project, and where `DEMOFLOW_HOME` is resolved. */
   cwd: string;
   newTaskId?: () => string;
+  /** `share_demo`'s requests and clock; tests replace them. */
+  share?: WaitDeps;
 }
+
+const processShareDeps: WaitDeps = {
+  fetch: (input, init) => fetch(input, init),
+  sleep: (ms) => delay(ms),
+  now: () => Date.now(),
+};
 
 /** The `demoflow mcp` server, before it is connected to a transport. */
 export function createMcpServer(deps: McpServerDeps): Server {
   const { queue, host, cwd } = deps;
   const newTaskId = deps.newTaskId ?? (() => generateRunId());
+  const shareDeps = deps.share ?? processShareDeps;
   /** Homes of the projects used by this server: where a finished task is found. */
   const homes = new Set<string>();
 
@@ -235,6 +298,8 @@ export function createMcpServer(deps: McpServerDeps): Server {
           return ok(
             await checkProject(parse(CheckProjectInput, args), cwd, host),
           );
+        case 'share_demo':
+          return ok(await shareDemo(parse(ShareDemoInput, args)));
         default:
           throw new ToolError(
             'invalid-input',
@@ -386,6 +451,100 @@ export function createMcpServer(deps: McpServerDeps): Server {
     );
   }
 
+  /**
+   * Spec 349, Decision 7: what `demoflow share` does, without a password,
+   * and only for a project whose committed config allows it.
+   */
+  async function shareDemo(input: z.infer<typeof ShareDemoInput>): Promise<{
+    shareId: string;
+    url: string;
+    fileUrl: string | null;
+    expiresAt: string;
+    status: ShareStatus;
+    existing: boolean;
+  }> {
+    checkTaskId(input.runId);
+    const runDir = locateRunDir(input.runId);
+    const indexFile = runnerPaths(host).reportedRuns;
+    const entry = (await readReportedRunsByDir(indexFile)).get(
+      path.resolve(runDir),
+    );
+    if (entry === undefined) {
+      throw shareRefusal(
+        new ShareRefused(
+          'run-not-reported',
+          'the run was never reported to the server: it was made signed out or with reporting off',
+        ),
+      );
+    }
+    checkShareAllowed(entry.root);
+    try {
+      const credentials = readCredentials(host);
+      if (credentials === null) {
+        throw new ShareRefused(
+          'not-logged-in',
+          'this machine is not logged in',
+        );
+      }
+      await reportedRunOf(indexFile, runDir, credentials.server);
+      const format = await shareableFormat(runDir, input.format);
+      const created = await createShare(
+        credentials,
+        {
+          runId: entry.id,
+          format,
+          expiresInDays: input.expiresInDays ?? DEFAULT_SHARE_LIFETIME,
+        },
+        shareDeps.fetch,
+      );
+      const share = await waitForShare(credentials, created.share, shareDeps, {
+        timeoutMs: MAX_WAIT_SECONDS * 1000,
+      });
+      if (share.status === 'failed' || share.status === 'lost') {
+        throw new ToolError(
+          'share-failed',
+          `the upload failed: ${share.failure ?? share.status}`,
+          'Call share_demo again to retry: a failed share is replaced.',
+        );
+      }
+      return {
+        shareId: share.id,
+        url: share.url,
+        fileUrl: share.fileUrl,
+        expiresAt: share.expiresAt,
+        status: share.status,
+        existing: created.existing,
+      };
+    } catch (error) {
+      if (error instanceof ShareRefused) throw shareRefusal(error);
+      if (error instanceof ServerError || error instanceof CliError) {
+        throw new ToolError(
+          'server-error',
+          error.message,
+          error instanceof ServerError && error.unreachable
+            ? 'Check the network and the DemoFlow server, then call again.'
+            : 'Ask a person to check `demoflow login` on this machine.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  /** The run directory of a task of this server, or of an earlier one. */
+  function locateRunDir(taskId: string): string {
+    const task = queue.get(taskId);
+    if (task !== undefined) return task.spec.runDir;
+    for (const home of candidateHomes()) {
+      const runDir = runDirFor(home, taskId, host.platform);
+      if (existsSync(runDir)) return runDir;
+    }
+    throw new ToolError(
+      'task-not-found',
+      `no run ${taskId}`,
+      'Use a task ID returned by generate_demo or list_demos.',
+    );
+  }
+
   /** Every home this server wrote to, then where an earlier one would have. */
   function candidateHomes(): Set<string> {
     const env = host.env.DEMOFLOW_HOME;
@@ -402,6 +561,34 @@ export function createMcpServer(deps: McpServerDeps): Server {
   }
 
   return server;
+}
+
+/**
+ * ADR-0019 §6: an agent may publish a project's videos only when the
+ * project's own, reviewed config says so. A run without a root, or a config
+ * that cannot be read, is refused the same way.
+ */
+function checkShareAllowed(root: string | undefined): void {
+  let allowed = false;
+  if (root !== undefined) {
+    try {
+      allowed = loadProjectConfig(root).share?.allowMcp === true;
+    } catch (error) {
+      if (!(error instanceof CliError)) throw error;
+    }
+  }
+  if (allowed) return;
+  throw new ToolError(
+    'share-not-allowed',
+    root === undefined
+      ? 'the run was reported without its project root, so no project allows sharing it'
+      : `the project at ${root} does not let the MCP server share its demos`,
+    'A person can share it with `demoflow share <runId>`. To let agents share this project\'s demos, a person sets "share": { "allowMcp": true } in its demoflow.config.json and commits it.',
+  );
+}
+
+function shareRefusal(error: ShareRefused): ToolError {
+  return new ToolError(error.code, error.message, SHARE_HINTS[error.code]);
 }
 
 /** Task IDs become directory names: no separators, no `..`. */
