@@ -88,6 +88,8 @@ describe('projects (integration)', () => {
         id: res.body.projectId,
         name: 'shop',
         rootPath: ROOT,
+        githubUrl: null,
+        source: 'reported',
         runner: { id: laptop.runnerId, name: 'Laptop' },
         runCount: 1,
         lastRun: {
