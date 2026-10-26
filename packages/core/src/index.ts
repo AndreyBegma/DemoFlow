@@ -1,5 +1,6 @@
 export * from './common.ts';
 export * from './config-template.ts';
+export * from './edits.ts';
 export {
   type ExpandedStep,
   expandScenario,
