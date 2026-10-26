@@ -61,6 +61,17 @@ export async function recordFixtureRun(
 }
 
 /**
+ * The pacing these runs record with unless the scenario sets its own: no
+ * dwell, a 1 s end hold and 35 ms typing, the timing the plan tests were
+ * written against. Pacing itself is tested in the engine and in `plan.spec.ts`.
+ */
+const TEST_PACING = {
+  stepDwellMs: 0,
+  endHoldMs: 1_000,
+  typingDelayMs: 35,
+} as const;
+
+/**
  * Records a scenario given inline — validated as a scenario file is — against
  * the fixture, into `<parentDir>/<name>`, and returns that run directory.
  */
@@ -70,7 +81,11 @@ export async function recordInlineRun(
   parentDir: string,
   observers: readonly EngineObserver[] = [],
 ): Promise<string> {
-  const parsed = parseScenario(input);
+  const parsed = parseScenario(
+    typeof input === 'object' && input !== null && !('pacing' in input)
+      ? { ...input, pacing: TEST_PACING }
+      : input,
+  );
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
 
   const runDir = path.join(parentDir, name);
