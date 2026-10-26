@@ -18,6 +18,10 @@ export interface RunnerPaths {
   localRoots: string;
   /** Per scheduled root: its schedule and last check pass (spec 361, Decision 3). */
   scheduleState: string;
+  /** The folders the website may name (spec 377, Decision 1). */
+  allowedRoots: string;
+  /** Roots registered from the website, one JSON line each (spec 377, Decision 8). */
+  websiteProjects: string;
 }
 
 export function runnerPaths(host: HostEnvironment): RunnerPaths {
@@ -32,5 +36,7 @@ export function runnerPaths(host: HostEnvironment): RunnerPaths {
     reportedRuns: p.join(dir, 'reported-runs.jsonl'),
     localRoots: p.join(dir, 'local-roots.jsonl'),
     scheduleState: p.join(dir, 'schedule.state.json'),
+    allowedRoots: p.join(dir, 'allowed-roots.json'),
+    websiteProjects: p.join(dir, 'website-projects.jsonl'),
   };
 }

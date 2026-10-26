@@ -19,6 +19,11 @@ import { fileLogger, type Logger } from './log.ts';
 import { runnerPaths } from './paths.ts';
 import { nodeRelayFs, VideoRelay } from './relay/index.ts';
 import {
+  defaultWriteTemplate,
+  isWebsiteRegistered,
+  ProjectRequests,
+} from './roots/index.ts';
+import {
   hasScheduledRoot,
   machineZone,
   scheduleLoader,
@@ -136,15 +141,23 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
       logger,
       platform: deps.host.platform,
     });
+    const projectsFiles = {
+      allowedRootsFile: paths.allowedRoots,
+      websiteProjectsFile: paths.websiteProjects,
+      host: deps.host,
+    };
+    const launcherDeps = defaultLauncherDeps(deps.host);
     launcher = new Launcher({
       indexFile: paths.reportedRuns,
+      websiteRegistered: (rootPath) =>
+        isWebsiteRegistered(rootPath, { ...projectsFiles, fs: nodeLaunchFs }),
       fs: nodeLaunchFs,
       logger,
       clock: deps.clock,
       env: deps.host.env,
       spawn: deps.spawn,
       onIdle: () => scheduler.wake(),
-      ...defaultLauncherDeps(deps.host),
+      ...launcherDeps,
     });
     connection = new RunnerConnection({
       server: credentials.server,
@@ -172,6 +185,14 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
         closeRun: (runId) => relay.closeRun(runId),
       }),
       launches: launcher,
+      projects: new ProjectRequests({
+        ...projectsFiles,
+        fs: nodeLaunchFs,
+        logger,
+        clock: deps.clock,
+        loadProject: launcherDeps.loadProject,
+        writeTemplate: defaultWriteTemplate,
+      }),
       schedules: () => scheduler.schedules(),
     });
   }

@@ -257,6 +257,7 @@ typed value. Secret fills are left as recorded.
 | `demoflow runner start` | keep this machine connected, in the background |
 | `demoflow runner stop` / `status` / `logs` | stop it, check it, read its log |
 | `demoflow runner install` / `uninstall` | start the runner at every login, or stop doing so |
+| `demoflow runner allow <dir>` / `disallow <dir>` / `roots` | choose the folders the website may name |
 
 ## Pair this machine with your account
 
@@ -335,6 +336,36 @@ running until `runner stop`.
 A crash is restarted (systemd, launchd). A runner stopped on purpose, or
 revoked on the website, exits cleanly and stays down. Windows does not
 restart a crash; the next logon starts it again. Neither file holds the token.
+
+### Folders the website may name
+
+From the website you can add a project by naming a folder on this machine.
+The runner then reads that folder (whether it has `demoflow.config.json`,
+its scenarios' ids and names, the GitHub `origin` of `.git/config`), can
+create the `demoflow init` files in it, and can register it so the website
+may start runs there. It never sends a file's contents or a config value.
+
+A folder qualifies only inside an allowed root. By default the only root is
+your home directory.
+
+```sh
+npx demoflow runner allow ~/code      # the first allow replaces the home directory
+npx demoflow runner disallow ~/code   # removing the last root allows nothing
+npx demoflow runner roots             # the roots in force; --json for a script
+```
+
+- The roots are in `allowed-roots.json` (`{ "roots": [...] }`, at most 32,
+  mode 0600) next to `credentials.json`. A file that does not parse refuses
+  every folder until you fix or delete it; `roots` says so.
+- The folder must exist, be a directory, and be reached without a link that
+  leads out of its root. No folder below the root may start with `.`, so
+  `~/.ssh` or `~/.config` are never offered.
+- On Windows a drive path is required (`C:\…`); network (`\\server\…`) and
+  device (`\\?\…`) paths are refused. Windows and macOS compare paths without
+  case.
+- The folders registered from the website are kept in
+  `website-projects.jsonl` next to `credentials.json` (the last 1,000). A
+  folder whose root you disallow stops being runnable from the website.
 
 ## Runs on the website
 
