@@ -7,6 +7,7 @@ import {
 } from './launch/index.ts';
 import type { Logger } from './log.ts';
 import type { RelaySender, VideoRelayPort } from './relay/index.ts';
+import type { ProjectsPort } from './roots/index.ts';
 import type { ConnectionState } from './state.ts';
 
 /** Decision 6: each side pings every 25 s and gives up after 60 s of silence. */
@@ -77,6 +78,8 @@ export interface ConnectionDeps {
   artifacts?: ArtifactsPort;
   /** Answers `scenarios.list` and `run.*` (spec 248); without it, logged as unknown. */
   launches?: LaunchPort;
+  /** Answers `project.*` (spec 377); without it, logged as unknown. */
+  projects?: ProjectsPort;
 }
 
 export type ConnectionOutcome = 'stopped' | 'revoked';
@@ -183,10 +186,13 @@ export class RunnerConnection {
     // Spec 326, Decision 1: a connection without a launcher ignores run.start,
     // so it claims no options.
     const runOptions = this.deps.launches !== undefined ? [...RUN_OPTIONS] : [];
+    // Spec 377, Decision 9: what else this daemon answers.
+    const features = this.deps.projects !== undefined ? ['projects'] : [];
     this.send({
       type: 'launches.sync',
       running,
       runOptions,
+      features,
       // Spec 360, Decision 6: a daemon that handles launches runs check passes.
       ...(this.deps.launches !== undefined ? { checks: true } : {}),
     });
@@ -257,6 +263,14 @@ export class RunnerConnection {
             this.relaySender(),
             this.currentSender(),
           );
+          return;
+        }
+        break;
+      case 'project.inspect':
+      case 'project.init':
+      case 'project.register':
+        if (this.deps.projects !== undefined) {
+          this.deps.projects.handle(fields, this.relaySender());
           return;
         }
         break;

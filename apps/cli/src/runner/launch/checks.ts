@@ -72,6 +72,11 @@ export type ProjectLoad =
 export interface CheckDeps {
   /** `reported-runs.jsonl`: the registry (Decision 1). */
   indexFile: string;
+  /**
+   * Spec 377, Decision 8: is the root registered from the website and still
+   * allowed? The registry is the union of both files (ADR-0022 §4).
+   */
+  websiteRegistered?(rootPath: string): Promise<boolean>;
   fs: LaunchFs;
   loadProject(root: string): ProjectLoad;
 }
@@ -90,7 +95,10 @@ export async function checkProject(
   deps: CheckDeps,
 ): Promise<ProjectCheck> {
   const unknown = { ok: false, code: 'project-unknown' } as const;
-  if (!(await knownRoots(deps.indexFile)).has(rootPath)) return unknown;
+  const known =
+    (await knownRoots(deps.indexFile)).has(rootPath) ||
+    ((await deps.websiteRegistered?.(rootPath)) ?? false);
+  if (!known) return unknown;
   try {
     if ((await deps.fs.realpath(rootPath)) !== rootPath) return unknown;
     if (!(await deps.fs.lstat(rootPath)).isDirectory()) return unknown;
