@@ -133,6 +133,7 @@ function open(
     format?: RenderFormat;
     range?: VideoRange | null;
     streamId?: string;
+    asset?: unknown;
   } = {},
 ): string {
   const streamId = options.streamId ?? randomUUID();
@@ -143,6 +144,7 @@ function open(
       runId: options.runId ?? RUN_ID,
       format: options.format ?? 'mp4',
       range: options.range ?? null,
+      ...('asset' in options ? { asset: options.asset } : {}),
     },
     sender,
   );
@@ -448,6 +450,82 @@ describe('VideoRelay: the ADR-0008 boundary', () => {
     writeFileSync(path.join(runDir, 'result.json'), '{"renders":[]}');
     const sender = recordingSender();
     await expectNotFound(sender, open(sender));
+  });
+});
+
+describe('VideoRelay: the poster asset (spec 349)', () => {
+  let poster: Buffer;
+  beforeEach(() => {
+    poster = randomBytes(CHUNK_BYTES + 77);
+    mkdirSync(path.join(runDir, 'share'));
+    writeFileSync(path.join(runDir, 'share', 'poster-mp4.jpg'), poster);
+  });
+
+  it('streams exactly the poster of the format, and logs it as one', async () => {
+    const sender = recordingSender();
+    const streamId = open(sender, { asset: 'poster' });
+    expect((await drain(sender, streamId)).equals(poster)).toBe(true);
+    expect(sender.messagesOf(streamId)[0]).toMatchObject({
+      type: 'video.head',
+      size: poster.length,
+    });
+    await until(() => logger.lines.length > 0, 'log line');
+    expect(logger.lines[0]?.message).toBe(
+      `video ${RUN_ID} mp4 poster: ${poster.length} bytes sent, sent`,
+    );
+    expect(logger.text()).not.toContain(home);
+  });
+
+  it('still serves the render without an asset', async () => {
+    const sender = recordingSender();
+    const streamId = open(sender);
+    expect((await drain(sender, streamId)).equals(video)).toBe(true);
+  });
+
+  it('answers not-found for a format with no poster', async () => {
+    const sender = recordingSender();
+    await expectNotFound(
+      sender,
+      open(sender, { asset: 'poster', format: 'gif' }),
+    );
+  });
+
+  it('answers not-found for a run this machine never reported', async () => {
+    const sender = recordingSender();
+    await expectNotFound(
+      sender,
+      open(sender, { asset: 'poster', runId: 'someone-else' }),
+    );
+  });
+
+  it.each([
+    'thumbnail',
+    '../result.json',
+    42,
+    null,
+  ])('answers not-found for the unknown asset %j', async (asset) => {
+    const sender = recordingSender();
+    await expectNotFound(sender, open(sender, { asset }));
+    expect(counts.open).toBe(0);
+  });
+
+  it('answers not-found for a poster that links out of the run directory', async (ctx) => {
+    const secret = path.join(home, 'secret.jpg');
+    writeFileSync(secret, 'secret');
+    const link = path.join(runDir, 'share', 'poster-gif.jpg');
+    try {
+      symlinkSync(secret, link, 'file');
+    } catch (error) {
+      if (process.platform === 'win32') {
+        ctx.skip(`file symlinks need a privilege here: ${String(error)}`);
+      }
+      throw error;
+    }
+    const sender = recordingSender();
+    await expectNotFound(
+      sender,
+      open(sender, { asset: 'poster', format: 'gif' }),
+    );
   });
 });
 

@@ -30,6 +30,7 @@ import {
   watchedRoots,
 } from './schedule/roots.ts';
 import { Scheduler } from './schedule/scheduler.ts';
+import { sharePreparer } from './share/prepare.ts';
 import { type ConnectionState, writeState } from './state.ts';
 
 /** How often the daemon looks for `runner.stop`. */
@@ -194,6 +195,11 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
         writeTemplate: defaultWriteTemplate,
       }),
       schedules: () => scheduler.schedules(),
+      share: sharePreparer({
+        indexFile: paths.reportedRuns,
+        logger,
+        platform: deps.host.platform,
+      }),
     });
   }
 

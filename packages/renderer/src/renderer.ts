@@ -1,7 +1,9 @@
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  type Chapter,
   deriveRunStatus,
+  MAX_CHAPTERS,
   type RenderFormat,
   type RenderOutput,
   type RunResult,
@@ -52,18 +54,35 @@ export function renderPath(
 }
 
 /**
+ * The chapters of a plan (spec 349): one per scene card, at its start in
+ * output ms — after the idle map and every card before it, as drawn. The
+ * intro and the outro are not chapters.
+ */
+export function planChapters(plan: Pick<RenderPlan, 'cards'>): Chapter[] {
+  return plan.cards
+    .filter((card) => card.kind === 'scene' && card.title.trim() !== '')
+    .slice(0, MAX_CHAPTERS)
+    .map((card) => ({
+      title: card.title.slice(0, 200),
+      atMs: Math.max(0, Math.round(card.startMs)),
+    }));
+}
+
+/**
  * Runs `draw`, which writes every one of `files`, and records them in the
  * run's `result.json`: the `rendering` stage goes `running` → `passed` (or
  * `failed` with the error, which is rethrown), each file is probed, one
  * `renders[]` entry per file, in order, replaces every earlier one of the
  * same renderer, and the run status is derived again (ADR-0004 §3). A file
  * that fails fails them all: a partial set is never a success (spec 133).
+ * `chapters`, when given, go on every entry: the formats share one timeline.
  */
 export async function recordRender(
   runDir: string,
   renderer: string,
   files: readonly { format: RenderFormat; file: string }[],
   draw: () => Promise<void>,
+  chapters?: readonly Chapter[],
 ): Promise<RenderOutput[]> {
   await updateResult(runDir, (result) => {
     result.stages.rendering = { status: 'running', startedAt: timestamp() };
@@ -89,6 +108,7 @@ export async function recordRender(
         width: probe.width,
         height: probe.height,
         fps: probe.fps,
+        ...(chapters === undefined ? {} : { chapters: [...chapters] }),
       });
     }
     await updateResult(runDir, (result) => {

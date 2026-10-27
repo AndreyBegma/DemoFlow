@@ -363,6 +363,7 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
           file,
         ]);
       },
+      [{ title: 'Customers', atMs: 0 }],
     );
     expect(output).toMatchObject({
       renderer: 'probe',
@@ -371,6 +372,7 @@ describe.skipIf(!hasFfmpeg)('buildRenderPlan on real runs', () => {
       width: 1920,
       height: 1080,
       fps: 30,
+      chapters: [{ title: 'Customers', atMs: 0 }],
     });
     expect(output.sizeBytes).toBeGreaterThan(0);
     const mp4 = await probeVideo(file);

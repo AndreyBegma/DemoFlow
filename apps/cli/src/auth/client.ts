@@ -133,7 +133,8 @@ export async function revokeSelf(
   throw unexpected(response.status);
 }
 
-async function send(
+/** One request to the API, with the device token when given. */
+export async function send(
   fetchFn: Fetch,
   server: string,
   path: string,
@@ -158,7 +159,10 @@ async function send(
   }
 }
 
-async function readJson(response: Response): Promise<Record<string, unknown>> {
+/** The JSON object a response carries, or a `ServerError`. */
+export async function readJson(
+  response: Response,
+): Promise<Record<string, unknown>> {
   try {
     const body: unknown = await response.json();
     if (typeof body === 'object' && body !== null && !Array.isArray(body)) {
@@ -186,6 +190,6 @@ function numberField(body: Record<string, unknown>, name: string): number {
   return value;
 }
 
-function unexpected(status: number): ServerError {
+export function unexpected(status: number): ServerError {
   return new ServerError(`the server answered ${status}`, false);
 }

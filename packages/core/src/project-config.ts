@@ -269,6 +269,18 @@ export const RenderConfigSchema = z
   .prefault({});
 export type RenderConfig = z.infer<typeof RenderConfigSchema>;
 
+/**
+ * Share links (spec 349, ADR-0019 §6). Off unless committed: an agent may
+ * then publish a video outside the machine without asking.
+ */
+export const ShareConfigSchema = z.strictObject({
+  allowMcp: z.boolean().default(false).meta({
+    description:
+      'Let the MCP server (share_demo) publish the video of a run as a public link without asking anyone. Off by default; anyone with the link can watch until it expires or is revoked.',
+  }),
+});
+export type ShareConfig = z.infer<typeof ShareConfigSchema>;
+
 /** How often a scheduled check pass runs (spec 361, Decision 1). */
 export const SCHEDULE_CADENCES = ['daily', 'weekdays', 'weekly'] as const;
 export type ScheduleCadence = (typeof SCHEDULE_CADENCES)[number];
@@ -398,6 +410,7 @@ export const ProjectConfigSchema = z
     }),
     render: RenderConfigSchema,
     schedule: ScheduleConfigSchema.optional(),
+    share: ShareConfigSchema.optional(),
   })
   .transform(({ allowedOrigins, ...config }) => {
     const origin = new URL(config.baseUrl).origin;

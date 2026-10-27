@@ -34,6 +34,23 @@ describe('parseProjectConfig', () => {
     });
   });
 
+  it('keeps share.allowMcp, off unless set, and rejects unknown keys (spec 349)', () => {
+    const baseUrl = 'https://a.example';
+    expect(parseProjectConfig({ baseUrl, share: {} })).toMatchObject({
+      ok: true,
+      value: { share: { allowMcp: false } },
+    });
+    expect(
+      parseProjectConfig({ baseUrl, share: { allowMcp: true } }),
+    ).toMatchObject({ ok: true, value: { share: { allowMcp: true } } });
+    expect(parseProjectConfig({ baseUrl, share: { allowMcp: 'yes' } }).ok).toBe(
+      false,
+    );
+    expect(parseProjectConfig({ baseUrl, share: { public: true } }).ok).toBe(
+      false,
+    );
+  });
+
   it('keeps the square formats and their own settings (spec 304)', () => {
     const result = parseProjectConfig({
       baseUrl: 'https://a.example',

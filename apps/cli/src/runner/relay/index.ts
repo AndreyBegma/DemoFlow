@@ -7,6 +7,7 @@ import {
 import { pathFor } from '../../config/platform.ts';
 import { findReportedRun } from '../../runs-report/reported-runs.ts';
 import type { Logger } from '../log.ts';
+import { posterPath } from '../share/files.ts';
 import { parseRange } from './range.ts';
 import {
   type RelayFile,
@@ -82,19 +83,36 @@ export function isInside(
 }
 
 /**
- * The real path of a reported run's rendered file in `format`, or `null`.
- * The run directory comes from the index, never from the message, and only a
- * file `result.json` lists, inside that directory, can come out.
+ * Spec 349, Decision 4: what `video.open` may ask for besides the render.
+ * Anything else is `not-found`.
+ */
+export const VIDEO_ASSETS = ['poster'] as const;
+export type VideoAsset = (typeof VIDEO_ASSETS)[number];
+
+/**
+ * The real path of a reported run's rendered file in `format` — or, with
+ * `asset: 'poster'`, of the poster a share made for it — or `null`. The run
+ * directory comes from the index, never from the message, and only a file
+ * `result.json` lists, or the poster's fixed name, inside that directory,
+ * can come out.
  */
 export async function locateVideo(
   runId: string,
   format: RenderFormat,
   deps: RelayDeps,
+  asset?: VideoAsset,
 ): Promise<string | null> {
   const entry = await findReportedRun(deps.indexFile, runId);
   if (entry === null) return null;
   const p = pathFor(deps.platform);
   try {
+    if (asset === 'poster') {
+      const root = await deps.fs.realpath(entry.runDir);
+      const real = await deps.fs.realpath(
+        posterPath(entry.runDir, format, deps.platform),
+      );
+      return isInside(root, real, deps.platform) ? real : null;
+    }
     const parsed = RunResultSchema.safeParse(
       JSON.parse(await deps.fs.readFile(p.join(entry.runDir, RESULT_FILE))),
     );
@@ -196,6 +214,11 @@ export class VideoRelay implements VideoRelayPort {
       return;
     }
     const videoFormat = format as RenderFormat;
+    const { asset } = message;
+    // An asset this daemon does not know opens, and fails `not-found`.
+    const known =
+      asset === undefined || VIDEO_ASSETS.includes(asset as VideoAsset);
+    const videoAsset = asset === undefined ? undefined : (asset as VideoAsset);
     if (this.streams.has(streamId)) {
       this.deps.logger.log(
         'warn',
@@ -203,9 +226,10 @@ export class VideoRelay implements VideoRelayPort {
       );
       return;
     }
+    const what = known && videoAsset !== undefined ? ` ${videoAsset}` : '';
     if (this.streams.size >= MAX_STREAMS) {
       sender.send({ type: 'video.error', streamId, code: 'busy' });
-      this.logStream(runId, videoFormat, 0, 'busy');
+      this.logStream(runId, videoFormat, what, 0, 'busy');
       return;
     }
     const stream = new VideoStream(streamId, sender, (outcome, sent) => {
@@ -213,12 +237,13 @@ export class VideoRelay implements VideoRelayPort {
         this.streams.delete(streamId);
         this.runIds.delete(streamId);
       }
-      this.logStream(runId, videoFormat, sent, outcome);
+      this.logStream(runId, videoFormat, what, sent, outcome);
     });
     this.streams.set(streamId, stream);
     this.runIds.set(streamId, runId);
     void stream.begin(async () => {
-      const file = await locateVideo(runId, videoFormat, this.deps);
+      if (!known) return null;
+      const file = await locateVideo(runId, videoFormat, this.deps, videoAsset);
       return file === null ? null : this.deps.fs.open(file);
     }, range);
   }
@@ -227,12 +252,13 @@ export class VideoRelay implements VideoRelayPort {
   private logStream(
     runId: string,
     format: RenderFormat,
+    asset: string,
     sent: number,
     outcome: StreamOutcome | 'busy',
   ): void {
     this.deps.logger.log(
       'info',
-      `video ${runId} ${format}: ${sent} bytes sent, ${outcome}`,
+      `video ${runId} ${format}${asset}: ${sent} bytes sent, ${outcome}`,
     );
   }
 }
