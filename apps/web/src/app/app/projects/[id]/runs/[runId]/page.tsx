@@ -43,12 +43,22 @@ export default async function RunPage({
     machine,
     scenarioPath: run.scenarioPath,
   });
+  const check = run.kind === 'check';
   const details = (
     <>
       <KeyValueList
         columns={1}
         dense
         items={[
+          ...(check
+            ? [
+                {
+                  key: 'kind',
+                  label: t('runPage.kind'),
+                  value: t('runs.kind.check'),
+                },
+              ]
+            : []),
           {
             key: 'status',
             label: t('runPage.metadata.status'),
@@ -146,6 +156,7 @@ export default async function RunPage({
         machine={machine}
         artifactsDeletedAt={run.artifactsDeletedAt}
         details={details}
+        check={check}
         runAgain={
           machine !== null && againState !== 'hidden' ? (
             <RunAgain

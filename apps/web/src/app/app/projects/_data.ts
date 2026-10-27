@@ -1,14 +1,20 @@
 import { cookies } from 'next/headers';
 import {
+  getHealth,
   getRun,
+  getSchedule,
   listProjectRuns,
   listProjects,
   listRunners,
+  listStale,
   type Project,
   type ProjectRunsPage,
+  type ProjectSchedules,
   type RunDetail,
   type Runner,
   type RunStatusFilter,
+  type ScenarioHealth,
+  type StaleScenario,
 } from '@/lib/api';
 
 async function target() {
@@ -47,4 +53,24 @@ export async function getFirstRuns(
   const result = await listProjectRuns(id, undefined, await target(), status);
   if (result.ok) return result.data;
   return result.status === 404 ? 'not_found' : 'error';
+}
+
+/** A project's check schedules (spec #363), or null when the API fails. */
+export async function getProjectSchedules(
+  id: string,
+): Promise<ProjectSchedules | null> {
+  const result = await getSchedule(id, await target());
+  return result.ok ? result.data : null;
+}
+
+/** The per-scenario state of a project; empty when the API fails. */
+export async function getProjectHealth(id: string): Promise<ScenarioHealth[]> {
+  const result = await getHealth(id, await target());
+  return result.ok ? result.data : [];
+}
+
+/** The user's stale scenarios across projects, or null when the API fails. */
+export async function getStale(): Promise<StaleScenario[] | null> {
+  const result = await listStale(await target());
+  return result.ok ? result.data : null;
 }

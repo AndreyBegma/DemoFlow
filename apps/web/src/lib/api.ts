@@ -86,7 +86,10 @@ async function errorCode(response: Response): Promise<string | undefined> {
 
 export async function request<T>(
   path: string,
-  init: { method: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown },
+  init: {
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    body?: unknown;
+  },
   target: Target = {},
 ): Promise<ApiResult<T>> {
   const headers: Record<string, string> = {};
@@ -230,6 +233,8 @@ export interface ProjectRun {
   cliVersion: string;
   /** When the machine deleted the run's files (spec #233); null while present. */
   artifactsDeletedAt: string | null;
+  /** `check` for a check run, which records no video (spec 360); absent or null otherwise. */
+  kind?: 'check' | null;
 }
 
 export interface Project {
@@ -239,6 +244,8 @@ export interface Project {
   /** Null for a project never bound, or whose machine was revoked. */
   runner: { id: string; name: string } | null;
   runCount: number;
+  /** Scenarios whose latest run failed (spec #362); absent on an older API. */
+  staleCount?: number;
   lastRun: ProjectRun | null;
   createdAt: string;
   updatedAt: string;
@@ -447,6 +454,99 @@ export function cancelLaunch(projectId: string) {
     `/projects/${encodeURIComponent(projectId)}/launch`,
     { method: 'DELETE' },
   );
+}
+
+// Check schedules and the stale state (spec #363, contract from spec #362).
+
+export type ScheduleCadence = 'daily' | 'weekdays' | 'weekly';
+
+/** A project's schedule, set on the website (`site`) or in its config. */
+export interface CheckSchedule {
+  source: 'site' | 'config';
+  cadence: ScheduleCadence;
+  /** `mon`…`sun`; set only for `weekly`. */
+  weekday: string | null;
+  /** `HH:MM`, 24-hour, in `timeZone`. */
+  at: string;
+  timeZone: string;
+  exclude: string[];
+  /** `config-schedule`, `no-machine` or `cli-too-old`; null while it runs. */
+  pausedReason: string | null;
+  /** Null while paused. */
+  nextDueAt: string | null;
+  lastPassAt: string | null;
+}
+
+export interface ProjectSchedules {
+  site: CheckSchedule | null;
+  config: CheckSchedule | null;
+  machine: {
+    id: string;
+    name: string;
+    online: boolean;
+    /** The machine's own zone, once it has reported one. */
+    zone: string | null;
+  } | null;
+}
+
+/** What `PUT /projects/:id/schedule` takes. */
+export interface ScheduleBody {
+  cadence: ScheduleCadence;
+  weekday?: string;
+  at: string;
+  timeZone: string;
+  exclude: string[];
+}
+
+/** One scenario's state: `failed` is stale. */
+export interface ScenarioHealth {
+  scenarioPath: string;
+  scenarioName: string;
+  state: 'passed' | 'failed';
+  since: string;
+  lastRunId: string;
+}
+
+export interface StaleScenario {
+  projectId: string;
+  projectName: string;
+  scenarioPath: string;
+  scenarioName: string;
+  since: string;
+  lastRunId: string;
+}
+
+export function getSchedule(projectId: string, target?: Target) {
+  return request<ProjectSchedules>(
+    `/projects/${encodeURIComponent(projectId)}/schedule`,
+    { method: 'GET' },
+    target,
+  );
+}
+
+export function putSchedule(projectId: string, body: ScheduleBody) {
+  return request<CheckSchedule>(
+    `/projects/${encodeURIComponent(projectId)}/schedule`,
+    { method: 'PUT', body },
+  );
+}
+
+export function deleteSchedule(projectId: string) {
+  return request<void>(`/projects/${encodeURIComponent(projectId)}/schedule`, {
+    method: 'DELETE',
+  });
+}
+
+export function getHealth(projectId: string, target?: Target) {
+  return request<ScenarioHealth[]>(
+    `/projects/${encodeURIComponent(projectId)}/health`,
+    { method: 'GET' },
+    target,
+  );
+}
+
+export function listStale(target?: Target) {
+  return request<StaleScenario[]>('/checks/stale', { method: 'GET' }, target);
 }
 
 export type RunStatusFilter = ProjectRun['status'];
