@@ -80,6 +80,8 @@ export interface LauncherDeps extends CheckDeps {
   newRunId(): string;
   /** The run's `result.json` status; throws when there is none. */
   readStatus(runDir: string): Promise<string>;
+  /** Called once a launch is over and the slot is free (spec 361, Decision 3). */
+  onIdle?: () => void;
 }
 
 /** The project's config, loaded the way `demoflow mcp` loads it. */
@@ -148,6 +150,8 @@ export class Launcher implements LaunchPort {
   private readonly deps: LauncherDeps;
   private launch: Launch | null = null;
   private closing: Promise<void> | null = null;
+  /** A scheduled check pass holds the slot (spec 361, Decision 3). */
+  private claimed = false;
 
   constructor(deps: LauncherDeps) {
     this.deps = deps;
@@ -208,6 +212,31 @@ export class Launcher implements LaunchPort {
       return [];
     }
     return [launch.requestId];
+  }
+
+  /**
+   * Spec 361, Decision 3: the machine's one launch slot, for a scheduled
+   * check pass. `null` while a launch runs or the daemon is closing; else a
+   * release, and until it is called a website start is refused `busy`.
+   */
+  claim(): (() => void) | null {
+    if (this.launch !== null || this.closing !== null || this.claimed) {
+      return null;
+    }
+    this.claimed = true;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.claimed = false;
+    };
+  }
+
+  /** Frees the slot of a launch that is over and tells the scheduler. */
+  private ended(launch: Launch): void {
+    if (this.launch !== launch) return;
+    this.launch = null;
+    this.deps.onIdle?.();
   }
 
   /** Decision 11: cancels the running launch and resolves once its child is gone. */
@@ -296,14 +325,12 @@ export class Launcher implements LaunchPort {
             `launch ${shown(requestId)}: failed after start`,
           );
       })
-      .finally(() => {
-        if (this.launch === launch) this.launch = null;
-      });
+      .finally(() => this.ended(launch));
   }
 
   /** Decision 6: a start still in its checks counts as running. */
   private refusedEarly(): string | null {
-    return this.launch !== null
+    return this.launch !== null || this.claimed
       ? 'busy'
       : this.closing !== null
         ? 'io'
@@ -357,9 +384,7 @@ export class Launcher implements LaunchPort {
         else
           logger.log('error', `check ${shown(requestId)}: failed after start`);
       })
-      .finally(() => {
-        if (this.launch === launch) this.launch = null;
-      });
+      .finally(() => this.ended(launch));
   }
 
   private async runCheck(

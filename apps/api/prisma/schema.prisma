@@ -111,6 +111,9 @@ model Project {
   runner    Runner?  @relation(fields: [runnerId], references: [id], onDelete: SetNull)
   // Absolute path of the project root on that machine, as the CLI sent it.
   rootPath  String?
+  // https://github.com/<owner>/<repo>; display only (ADR-0022 §5).
+  githubUrl String?
+  source    ProjectSource @default(reported)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   runs      Run[]
@@ -119,6 +122,12 @@ model Project {
 
   @@unique([runnerId, rootPath])
   @@index([userId])
+}
+
+// How a project was added (spec #378): by a CLI report, or from the website.
+enum ProjectSource {
+  reported
+  website
 }
 
 enum RunStatus {

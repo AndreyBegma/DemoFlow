@@ -8,6 +8,7 @@ const labels = {
   project: 'Project',
   run: 'Run',
   machines: 'Machines',
+  shares: 'Shares',
   settings: 'Settings',
   device: 'Pair a machine',
 };
@@ -26,6 +27,7 @@ test('each top-level page is its own crumb', () => {
   assert.deepEqual(trail('/app/projects'), ['Projects']);
   assert.deepEqual(trail('/app/machines'), ['Machines']);
   assert.deepEqual(trail('/app/settings'), ['Settings']);
+  assert.deepEqual(trail('/app/shares'), ['Shares']);
   assert.deepEqual(trail('/app/device'), ['Pair a machine']);
 });
 

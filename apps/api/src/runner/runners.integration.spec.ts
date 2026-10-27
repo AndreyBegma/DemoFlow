@@ -59,6 +59,7 @@ describe('runners (integration)', () => {
             createdAt: expect.any(String),
             lastUsedAt: null,
             online: false,
+            features: [],
             lastSeenAt: null,
             lastSeenIp: null,
           },

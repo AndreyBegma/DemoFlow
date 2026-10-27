@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "name": "Shares page",
+  "description": "Sign in off camera, then open Shares from the sidebar: the breadcrumb follows, and the page shows the share storage quota above the list of shared runs.",
+  "viewport": { "width": 1280, "height": 720 },
+  "setup": [
+    { "action": "include", "fragment": "sign-in", "with": { "next": "/app" } }
+  ],
+  "steps": [
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Overview", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Shares", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Shares", "exact": true }
+    },
+    {
+      "action": "assertText",
+      "target": { "role": "navigation", "name": "Breadcrumb" },
+      "text": "Shares"
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "progressbar", "name": "Share storage" }
+    },
+    {
+      "action": "assertText",
+      "target": { "role": "main" },
+      "text": "used"
+    }
+  ]
+}
