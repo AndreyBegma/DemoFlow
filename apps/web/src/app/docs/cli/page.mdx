@@ -12,6 +12,7 @@ Run `demoflow` through `npx demoflow`, or install it globally. `demoflow
 | `demoflow validate <scenario>` | Check a scenario against the schema. |
 | `demoflow run <scenario>` | Run it in a browser and render the video. |
 | `demoflow render <runId>` | Render an existing run again with the current config. |
+| `demoflow share <runId>` | Share a render of a run as a link on the website. |
 | `demoflow list` | List recent runs of the current project, newest first. |
 | `demoflow runs …` | List, delete and prune the runs on this machine. |
 | `demoflow check` | Check that the project, FFmpeg and the browser are ready. |
@@ -112,6 +113,36 @@ It exits `2` without writing anything when the run id is not a plain name, the
 run directory or its `result.json` is missing or invalid, the run has not
 finished, or it has no recording. A render that fails exits `3`; otherwise the
 exit code is the run's, as for `run`.
+
+## share
+
+```sh
+npx demoflow share 20261023-101500-abcdef
+npx demoflow share 20261023-101500-abcdef --format gif --expires 7 --password
+```
+
+Uploads one render of a run this machine reported and prints a link anyone can
+open without an account. This is the one command that sends a video off your
+machine, and only when you run it. The runner must be running
+(`demoflow runner start`) and the machine paired (`demoflow login`).
+
+| Flag | Meaning |
+|---|---|
+| `--format <format>` | The render to share, as for `run`. Default: the run's first render. |
+| `--expires <days>` | `7`, `30` (default) or `90`. |
+| `--password` | Protect the link. Asks twice on the terminal, without echo; without a terminal it reads `DEMOFLOW_SHARE_PASSWORD`. A protected share has no file link, so only the page link is printed. |
+| `--json` | Print the share as one JSON object on stdout. |
+| `--out <dir>` | The artifacts home, which holds `runs/`. |
+
+A render that is already shared keeps its link, and the command prints it.
+Only that render leaves the machine, with its poster frame, its chapters and the
+scenario's `description`. [Sharing](/docs/share) lists what is uploaded, who can
+open it and how to revoke it.
+
+It exits `2` when the share cannot be made (not logged in, a run this machine
+did not report, no such render, the runner offline or too old, the file over the
+size limit, the quota full), `1` when the upload fails or is still going after
+10 minutes, and `3` when the server cannot be reached.
 
 ## list
 
