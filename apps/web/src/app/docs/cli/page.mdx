@@ -227,6 +227,21 @@ advance whether to start the runner. `demoflow logout` revokes the token and
 deletes the file. Every other command works without an account. See
 [Runner](/docs/runner).
 
+## runner
+
+`demoflow runner start | stop | status | logs | install | uninstall` manage the
+background process. Three more subcommands set which folders the website may
+name when you add a project from it:
+
+```sh
+npx demoflow runner roots [--json]
+npx demoflow runner allow <dir>
+npx demoflow runner disallow <dir>
+```
+
+By default only your home directory is allowed, without hidden folders. See
+[Allowed folders](/docs/runner#allowed-folders).
+
 ## Updates
 
 A globally installed `demoflow` asks npm for the latest version while a command
