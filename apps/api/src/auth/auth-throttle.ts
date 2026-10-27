@@ -21,6 +21,11 @@ export const THROTTLE_MAIL = 'mail-email';
 export const THROTTLE_DEVICE_POLL = 'device-poll';
 /** A share's password (spec #348, Decision 6): per address and share token. */
 export const THROTTLE_SHARE_UNLOCK = 'share-unlock';
+/**
+ * Adding a project from a folder (spec #378, Decision 8): per user, across
+ * inspect, init and register, so a hijacked session cannot probe a machine.
+ */
+export const THROTTLE_PROJECT_FOLDERS = 'project-folders';
 
 /** Class-level: every throttler skipped until a route opts in. */
 export const SKIP_ALL_THROTTLERS = {
@@ -29,6 +34,7 @@ export const SKIP_ALL_THROTTLERS = {
   [THROTTLE_MAIL]: true,
   [THROTTLE_DEVICE_POLL]: true,
   [THROTTLE_SHARE_UNLOCK]: true,
+  [THROTTLE_PROJECT_FOLDERS]: true,
 };
 
 export const authThrottlerOptions: ThrottlerModuleOptions = {
@@ -72,6 +78,14 @@ export const authThrottlerOptions: ThrottlerModuleOptions = {
         const request = req as AuthenticatedRequest;
         return `ip:${request.ip ?? ''}:share:${routeToken(request)}`;
       },
+    },
+    {
+      name: THROTTLE_PROJECT_FOLDERS,
+      limit: 30,
+      ttl: MINUTE_MS,
+      // Behind `SessionGuard`: there is always a user.
+      getTracker: (req) =>
+        `user:${(req as AuthenticatedRequest).auth?.user.id ?? ''}`,
     },
   ],
   // The default key includes the route, which would give each endpoint its
