@@ -264,6 +264,14 @@ only while the run has video formats and is not deleted yet.
   confirms. If the machine does not answer within 15 seconds, the page says so
   and you can try again.
 
+## Share a render
+
+When you create a [share](/docs/share), the runner uploads one render of a run
+it reported, for that share only. It reads no path or name from the server,
+and it uploads nothing on its own. A runner or CLI older than sharing cannot
+upload: the site and `demoflow share` say so (`runner-outdated`); update
+`demoflow`, then `demoflow runner stop` and `demoflow runner start`.
+
 ## Status on the site
 
 Signed in, open **Machines** in the app. Each paired machine is listed with its

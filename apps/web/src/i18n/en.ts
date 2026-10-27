@@ -928,6 +928,7 @@ export const en = {
       sdk: 'Application SDK',
       playwright: 'Reuse Playwright tests',
       runner: 'Runner',
+      share: 'Sharing',
       mcp: 'MCP tools',
       more: 'More guides',
     },

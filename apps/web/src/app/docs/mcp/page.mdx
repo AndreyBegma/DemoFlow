@@ -26,6 +26,7 @@ The server's working directory is the default project. Every tool that takes a
 | `validate_scenario` | Check a scenario without running it. |
 | `list_demos` | Recent runs of the project, newest first. |
 | `check_project` | Whether the project is ready to run demos. |
+| `share_demo` | Publish a render of a run as a link. Refused unless the project allows it. |
 
 ### generate_demo
 
@@ -72,6 +73,28 @@ start time, duration and video path, and `pageUrl` when the run was reported.
 
 Reports whether the project is ready: its scenario files, a valid config, and
 whether FFmpeg and the browser are available.
+
+### share_demo
+
+Publishes a render of a finished run as a link on the DemoFlow website, like
+`demoflow share` without a password: anyone with the link can watch it until it
+expires. It needs a paired machine with its runner running. See
+[Sharing](/docs/share) for what is uploaded.
+
+An agent publishes outside your machine with nobody watching, so the tool is
+refused with `share-not-allowed` unless the project's committed
+`demoflow.config.json` allows it:
+
+```json
+{ "share": { "allowMcp": true } }
+```
+
+The refusal tells the agent to ask a person to run `demoflow share <runId>`, or
+to commit that setting. Other refusals use the codes on [Sharing](/docs/share#when-a-share-cannot-be-made).
+
+The call waits up to 50 seconds for the upload. When the status is still
+`uploading`, call it again with the same arguments for the same link. A failed
+upload is `share-failed`; calling again replaces it.
 
 ## A typical session
 

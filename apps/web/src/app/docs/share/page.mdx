@@ -1,0 +1,164 @@
+export const metadata = { title: 'Sharing' };
+
+# Sharing
+
+A share is a copy of one rendered file on DemoFlow's server. Anyone with the
+link can watch it, without an account, until it expires or you revoke it.
+Nothing is ever shared by itself: a run finishing, a render changing or a
+machine coming online uploads nothing. You, or an agent your project allows,
+ask for each share.
+
+Read this page before you press the button: a share is the one time a video
+leaves your machine.
+
+## What is uploaded
+
+One share uploads exactly this:
+
+- **One rendered file**, in the one format you chose, exactly as the renderer
+  wrote it.
+- **A poster**: one JPEG frame of that file, at most 1280 px wide, made on your
+  machine.
+- The scenario's **name** and its **description**. The description crosses for
+  the first time here: the runner reads it from the scenario file when you
+  share.
+- The **chapter list**: each scene's title and its start time in that render.
+
+It never uploads the source recording, other formats, `fill` values, query
+strings, logs, screenshots, traces, local paths or the scenario body. A share
+does not change what an ordinary run reports.
+
+The runner uploads the file, so the machine that recorded the run must be
+online. The site only asks it to upload a render of a run it reported itself,
+for a share you created. It never names a path.
+
+## Create a share
+
+### From the run page
+
+Open a run and press **Share**. The dialog says the file is uploaded to
+DemoFlow's server and that anyone with the link can watch it until it expires.
+You choose:
+
+- **Format**: any render of the run, with its size. A format over the size limit
+  is marked and cannot be chosen.
+- **Expires in**: 7, 30 (the default) or 90 days.
+- **Password** (optional): 8 to 128 characters. While a password is set there
+  is no direct file link.
+
+Press **Create link**. The dialog shows the upload while it runs, then the
+**Link**, the **File link** and a **Markdown** snippet, each with a **Copy**
+button. The button is disabled, with the reason, when the run has no render,
+its files were deleted, the machine was removed or is offline, or the machine
+needs a newer CLI.
+
+### With the CLI
+
+```sh
+npx demoflow login
+npx demoflow runner start
+npx demoflow share 20261023-101500-abcdef
+```
+
+`demoflow share <runId>` shares a render of a run this machine reported. The
+runner must be running. The command prints the share page's link and, without a
+password, the file's own link, then exits `0` once the upload is done.
+
+| Flag | Meaning |
+|---|---|
+| `--format <format>` | The render to share: `mp4`, `gif`, `webm`, `mp4-vertical`, `gif-vertical`, `webm-vertical`, `mp4-square`, `gif-square` or `webm-square`. Default: the run's first render. |
+| `--expires <days>` | `7`, `30` (default) or `90`. |
+| `--password` | Protect the link. Asks for the password twice on the terminal, without echo. Without a terminal it reads `DEMOFLOW_SHARE_PASSWORD`. It is never a flag value, so it never lands in your shell history. |
+| `--json` | Print the share as one JSON object on stdout. |
+| `--out <dir>` | The artifacts home, which holds `runs/`. |
+
+A render that is already shared keeps its link and the command prints it. Revoke
+that share to share the render again. See [CLI](/docs/cli#share) for the exit
+codes.
+
+### From an AI agent
+
+The MCP tool `share_demo` does the same without a password. Because an agent
+publishes outside your machine with nobody watching, it is refused unless the
+project's committed `demoflow.config.json` says so:
+
+```json
+{ "share": { "allowMcp": true } }
+```
+
+Letting agents publish is a commit a person reviews. See
+[MCP tools](/docs/mcp#share_demo) and [Project config](/docs/config#sharing).
+
+## Password, expiry, views and revoking
+
+- **Password.** Only its argon2id hash is stored, and attempts are
+  rate-limited. While a password is set the file is served only to a browser
+  that entered it, so the share has no direct file link and the link to the
+  page is the only one.
+- **Expiry.** A share lives 7, 30 or 90 days. There is no share without an
+  expiry. **Extend 30 days** on the **Shares** page adds 30 days, never beyond
+  90 days from now. An expired share is deleted with its file.
+- **Views.** The **Shares** page counts how many times the share page was
+  opened. No IP address, user agent or other data about viewers is stored.
+- **Revoke.** **Revoke** on the **Shares** page makes the link stop working at
+  once and deletes the file from the server. It cannot be undone. Deleting the
+  run on the website, deleting its project and deleting your account revoke its
+  shares too.
+- **What does not revoke.** Deleting a run's files on your machine, or pruning
+  local runs, does not touch a share: the share is a copy.
+- **Update.** A share is a snapshot. Rendering the run again does not change it.
+
+A share whose file has gone from the server shows **Lost**. Share the run again
+to upload it once more; the original is always on your machine, and the shared
+files are not backed up.
+
+## Limits
+
+On DemoFlow's hosted service a share holds at most **200 MB** per file, and
+your live shares together at most **2 GB**, posters included. An upload that
+would pass either limit is refused before a byte is sent. The dialog shows how
+much of your share storage is used.
+
+A self-hosted API sets them in its environment:
+
+| Variable | Default |
+|---|---|
+| `SHARE_MAX_FILE_BYTES` | `209715200` (200 MB) |
+| `SHARE_USER_QUOTA_BYTES` | `2147483648` (2 GB) |
+
+## Embed a share
+
+The file link is `<share link>/file`. It works only for a share without a
+password. Put it in a README, where a GIF plays inline:
+
+```md
+![The sign-in flow](https://demoflow.luna-realm.com/s/<token>/file)
+```
+
+Or use it as the source of a video:
+
+```html
+<video src="https://demoflow.luna-realm.com/s/<token>/file" controls muted></video>
+```
+
+The embed stops working when the share expires or is revoked.
+
+## When a share cannot be made
+
+The CLI and `share_demo` name the reason with these codes; the dialog shows the
+same reason in words.
+
+| Code | Why | What to do |
+|---|---|---|
+| `runner-offline` | The machine that recorded the run is not connected. | Run `demoflow runner start` on it. |
+| `runner-outdated` | The running runner or CLI is older than sharing. | Update `demoflow`, then `demoflow runner stop` and `demoflow runner start`. |
+| `quota-exceeded` | The share would pass your share storage. | Revoke a share on the **Shares** page, or wait for one to expire. |
+| `file-too-large` | The render is over the size one share can hold. | Share a smaller format, such as a GIF or WebM, or render again with a smaller frame. |
+| `share-not-allowed` | `share_demo` only: the project does not allow agents to share. | Share with `demoflow share`, or commit `"share": { "allowMcp": true }`. |
+
+Other reasons the CLI reports under the same names: `not-logged-in` (run
+`demoflow login`), `run-not-reported` (the run was made signed out or with
+reporting off), `format-not-rendered` (the run has no such render) and
+`artifacts-deleted` (the run's files were deleted on the website). A share whose
+upload fails is marked **Failed**; press **Retry from the run**, or call
+`share_demo` again, which replaces it.

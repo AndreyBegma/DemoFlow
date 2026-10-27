@@ -94,6 +94,18 @@ Runs are written to `<home>/runs/<id>/`. The home is the first of: `--out`,
 the `DEMOFLOW_HOME` environment variable, `artifactsDir` in the project config,
 `artifactsDir` in the global `config.json`, and the OS data directory.
 
+## Sharing
+
+```json
+{ "share": { "allowMcp": true } }
+```
+
+`share.allowMcp` lets the MCP tool `share_demo` publish this project's renders
+as [share links](/docs/share). It is `false` when absent, and the tool is then
+refused with `share-not-allowed`. It does not affect `demoflow share` or the
+**Share** button on the website, which you press yourself. Commit the setting so
+that letting agents publish is a change a person reviews.
+
 ## Render
 
 Every `render` key is optional. These are the defaults:

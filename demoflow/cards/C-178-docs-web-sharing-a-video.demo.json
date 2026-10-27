@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "name": "Docs: sharing a video",
+  "description": "Open the Runner docs, follow the new Sharing entry in the side navigation, and read what a share uploads, how to create one and what to do when it cannot be made.",
+  "viewport": { "width": 1280, "height": 720 },
+  "setup": [
+    {
+      "action": "include",
+      "fragment": "open-docs",
+      "with": { "page": "runner", "heading": "Runner" }
+    }
+  ],
+  "steps": [
+    { "action": "marker", "title": "Sharing in the docs navigation" },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Sharing", "exact": true },
+      "caption": "A new Sharing page, right after Runner"
+    },
+    {
+      "action": "waitFor",
+      "target": { "role": "heading", "name": "Sharing", "exact": true }
+    },
+    { "action": "wait", "ms": 1500 },
+    { "action": "marker", "title": "What a share uploads" },
+    {
+      "action": "scroll",
+      "target": { "role": "heading", "name": "What is uploaded", "exact": true },
+      "caption": "Exactly what leaves the machine, and what never does"
+    },
+    { "action": "wait", "ms": 1500 },
+    { "action": "marker", "title": "Creating a share" },
+    {
+      "action": "scroll",
+      "target": { "role": "heading", "name": "With the CLI", "exact": true },
+      "caption": "From the run page, the CLI or an agent"
+    },
+    { "action": "wait", "ms": 1500 },
+    { "action": "marker", "title": "When a share cannot be made" },
+    {
+      "action": "scroll",
+      "target": {
+        "role": "heading",
+        "name": "When a share cannot be made",
+        "exact": true
+      }
+    },
+    {
+      "action": "assertVisible",
+      "target": {
+        "role": "heading",
+        "name": "When a share cannot be made",
+        "exact": true
+      },
+      "caption": "Each error code, why it happens and what to do"
+    },
+    { "action": "wait", "ms": 3000 }
+  ]
+}
