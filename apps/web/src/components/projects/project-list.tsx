@@ -5,15 +5,16 @@ import { Button } from '@andrewbehma/glass-ui/button';
 import { Card } from '@andrewbehma/glass-ui/card';
 import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
 import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
-import { Field, Input, Select } from '@andrewbehma/glass-ui/field';
+import { Input } from '@andrewbehma/glass-ui/field';
+import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type FormEvent, useId, useState } from 'react';
+import { useState } from 'react';
 import { StatusIndicator } from '@/components/status/status-indicator';
 import { t } from '@/i18n';
+import { isProjectName } from '@/lib/add-project';
 import {
   type ApiResult,
-  createProject,
   deleteProject,
   type Project,
   type Runner,
@@ -24,17 +25,12 @@ import { formatRelative } from '@/lib/format-relative';
 import { lastRunStatus } from '@/lib/status';
 import type { ErrorKey } from '@/lib/validation';
 import { apiErrorKey } from '../auth/form-parts';
+import { GithubMark } from '../auth/github-mark';
+import { AddProjectDialog } from './add-project-dialog';
 import { MachinePill } from './machine-pill';
 import { StaleBadge } from './stale-badge';
 
-const NAME_MAX = 200;
-
-type Failure =
-  | 'projects.errors.name'
-  | 'projects.errors.bind'
-  | 'projects.errors.notFound';
-
-type Editing = { id: string; mode: 'rename' | 'bind' };
+type Failure = 'projects.errors.name' | 'projects.errors.notFound';
 
 export function ProjectList({
   projects,
@@ -44,13 +40,16 @@ export function ProjectList({
   machines: Runner[];
 }) {
   const router = useRouter();
-  const [editing, setEditing] = useState<Editing | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Project | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Failure | ErrorKey | undefined>();
+  const [adding, setAdding] = useState(false);
+  // Every open mounts a fresh dialog, so it never shows the last folder.
+  const [addKey, setAddKey] = useState(0);
 
   function stop() {
-    setEditing(null);
+    setRenaming(null);
     setError(undefined);
   }
 
@@ -78,44 +77,18 @@ export function ProjectList({
     return false;
   }
 
-  async function create(name: string): Promise<boolean> {
-    const value = name.trim();
-    if (value.length < 1 || [...value].length > NAME_MAX) {
-      setError('projects.errors.name');
-      return false;
-    }
-    return run(() => createProject(value), 'projects.errors.name');
-  }
-
   async function rename(project: Project, name: string) {
-    const value = name.trim();
-    if (value.length < 1 || [...value].length > NAME_MAX) {
+    if (!isProjectName(name)) {
       setError('projects.errors.name');
       return;
     }
     if (
       await run(
-        () => updateProject(project.id, { name: value }),
+        () => updateProject(project.id, { name: name.trim() }),
         'projects.errors.name',
       )
     ) {
-      setEditing(null);
-    }
-  }
-
-  async function bind(project: Project, runnerId: string, rootPath: string) {
-    const path = rootPath.trim();
-    if (!runnerId || path.length < 1) {
-      setError('projects.errors.bind');
-      return;
-    }
-    if (
-      await run(
-        () => updateProject(project.id, { runnerId, rootPath: path }),
-        'projects.errors.bind',
-      )
-    ) {
-      setEditing(null);
+      setRenaming(null);
     }
   }
 
@@ -126,8 +99,19 @@ export function ProjectList({
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          onClick={() => {
+            setAddKey((key) => key + 1);
+            setAdding(true);
+          }}
+        >
+          <Plus aria-hidden size={16} />
+          {t('projects.add.action')}
+        </Button>
+      </div>
       {error ? <Banner tone="danger">{t(error)}</Banner> : null}
-      <CreateForm busy={busy} onCreate={create} />
       {projects.length === 0 ? (
         <EmptyState
           title={t('projects.empty.title')}
@@ -147,7 +131,7 @@ export function ProjectList({
                 className="flex flex-col gap-3 border-b border-line px-4 py-3 last:border-0 md:flex-row md:items-start md:justify-between"
               >
                 <div className="flex min-w-0 flex-1 flex-col gap-3">
-                  {editing?.id === project.id && editing.mode === 'rename' ? (
+                  {renaming === project.id ? (
                     <RenameForm
                       project={project}
                       busy={busy}
@@ -157,38 +141,32 @@ export function ProjectList({
                   ) : (
                     <ProjectSummary project={project} />
                   )}
-                  {editing?.id === project.id && editing.mode === 'bind' ? (
-                    <BindForm
-                      project={project}
-                      machines={machines}
-                      busy={busy}
-                      onBind={(runnerId, path) => bind(project, runnerId, path)}
-                      onCancel={stop}
-                    />
-                  ) : null}
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  {project.githubUrl ? (
+                    <a
+                      href={project.githubUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={t('projects.item.github', {
+                        name: project.name,
+                      })}
+                      title={t('projects.item.github', { name: project.name })}
+                      className="inline-flex size-8 items-center justify-center rounded-control text-ink-2 hover:bg-hover hover:text-ink"
+                    >
+                      <GithubMark />
+                    </a>
+                  ) : null}
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      setEditing({ id: project.id, mode: 'rename' });
+                      setRenaming(project.id);
                       setError(undefined);
                     }}
                   >
                     {t('projects.rename.action')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditing({ id: project.id, mode: 'bind' });
-                      setError(undefined);
-                    }}
-                  >
-                    {t('projects.bind.action')}
                   </Button>
                   <Button
                     type="button"
@@ -216,6 +194,13 @@ export function ProjectList({
         onConfirm={() => {
           if (deleting) void remove(deleting);
         }}
+      />
+      <AddProjectDialog
+        key={addKey}
+        open={adding}
+        onOpenChange={setAdding}
+        machines={machines}
+        projects={projects}
       />
     </div>
   );
@@ -265,36 +250,6 @@ function ProjectSummary({ project }: { project: Project }) {
   );
 }
 
-function CreateForm({
-  busy,
-  onCreate,
-}: {
-  busy: boolean;
-  onCreate: (name: string) => Promise<boolean>;
-}) {
-  const [value, setValue] = useState('');
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (await onCreate(value)) setValue('');
-  }
-  return (
-    <form className="flex flex-wrap items-end gap-2" onSubmit={submit}>
-      <div className="min-w-0 flex-1">
-        <Input
-          aria-label={t('projects.create.label')}
-          placeholder={t('projects.create.placeholder')}
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          required
-        />
-      </div>
-      <Button type="submit" disabled={busy}>
-        {busy ? t('projects.create.submitting') : t('projects.create.submit')}
-      </Button>
-    </form>
-  );
-}
-
 function RenameForm({
   project,
   busy,
@@ -334,87 +289,6 @@ function RenameForm({
           onClick={onCancel}
         >
           {t('projects.rename.cancel')}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function BindForm({
-  project,
-  machines,
-  busy,
-  onBind,
-  onCancel,
-}: {
-  project: Project;
-  machines: Runner[];
-  busy: boolean;
-  onBind: (runnerId: string, rootPath: string) => void;
-  onCancel: () => void;
-}) {
-  const machineId = useId();
-  const pathId = useId();
-  const [runnerId, setRunnerId] = useState(project.runner?.id ?? '');
-  const [path, setPath] = useState(project.rootPath ?? '');
-  if (machines.length === 0) {
-    return (
-      <Banner tone="info">
-        {t('projects.bind.noMachines')}{' '}
-        <Link href="/app/machines" className="underline">
-          {t('projects.bind.machines')}
-        </Link>
-      </Banner>
-    );
-  }
-  return (
-    <form
-      className="flex flex-col gap-3 rounded-control bg-hover p-3"
-      aria-label={t('projects.bind.title', { name: project.name })}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onBind(runnerId, path);
-      }}
-    >
-      <Field label={t('projects.bind.machine')} htmlFor={machineId}>
-        <Select
-          id={machineId}
-          value={runnerId}
-          onChange={(event) => setRunnerId(event.target.value)}
-          required
-        >
-          <option value="">{t('projects.bind.machinePlaceholder')}</option>
-          {machines.map((machine) => (
-            <option key={machine.id} value={machine.id}>
-              {machine.name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field
-        label={t('projects.bind.path')}
-        hint={t('projects.bind.pathHint')}
-        htmlFor={pathId}
-      >
-        <Input
-          id={pathId}
-          value={path}
-          onChange={(event) => setPath(event.target.value)}
-          required
-        />
-      </Field>
-      <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={busy}>
-          {busy ? t('projects.bind.submitting') : t('projects.bind.submit')}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          onClick={onCancel}
-        >
-          {t('projects.bind.cancel')}
         </Button>
       </div>
     </form>

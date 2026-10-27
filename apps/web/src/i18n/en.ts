@@ -247,17 +247,75 @@ export const en = {
     loadFailed: 'We could not load your projects. Try again in a moment.',
     empty: {
       title: 'No projects yet',
-      body: 'A project appears when a paired machine runs a scenario in a folder. You can also create one here and bind it to a folder later.',
+      body: 'A project appears when a paired machine runs a scenario in a folder. You can also add a folder from one of your machines here.',
       docs: 'Read how to record a first run',
     },
-    create: {
-      label: 'New project',
-      placeholder: 'Project name',
-      submit: 'Create project',
-      submitting: 'Creating…',
+    add: {
+      action: 'Add project',
+      title: 'Add project',
+      description:
+        'Choose one of your machines and a folder on it. DemoFlow asks the machine what it finds there.',
+      machine: 'Machine',
+      machinePlaceholder: 'Choose a machine',
+      outdated: 'Update the CLI',
+      optionOffline: '{name} (offline)',
+      optionOutdated: '{name} (update the CLI)',
+      outdatedHint:
+        'A machine marked “update the CLI” runs an older DemoFlow CLI: update it there and restart its runner to add projects from the website.',
+      noMachines: 'Pair a machine first, then add a folder from it.',
+      noReadyMachines:
+        'None of your machines can be chosen now: start the runner on one, or update its CLI.',
+      machines: 'Go to machines',
+      path: 'Folder',
+      pathHint: 'The project folder on that machine, as an absolute path.',
+      inspecting: 'Looking at the folder…',
+      found: 'demoflow.config.json found',
+      scenarioCountOne: '1 scenario',
+      scenarioCount: '{count} scenarios',
+      scenarioMore: 'and {count} more',
+      scenarios: 'Scenarios',
+      noScenarios: 'No scenarios yet',
+      folderName: 'Folder',
+      github: 'GitHub',
+      noConfig: 'This folder has no demoflow.config.json.',
+      createConfig: 'Create config',
+      creatingConfig: 'Creating…',
+      created: 'Created {files}.',
+      createdHint:
+        'Set devCommand and baseUrl in demoflow.config.json in the repository so DemoFlow can start your app.',
+      configInvalid:
+        'This folder has a demoflow.config.json that DemoFlow cannot read. Fix it in the repository, then type the path again.',
+      allowCommand: 'demoflow runner allow <dir>',
+      allowDocs: 'How to allow a folder',
+      name: 'Name',
+      githubUrl: 'GitHub repository',
+      githubUrlHint: 'Optional. https://github.com/<owner>/<repo>',
+      githubUrlInvalid:
+        'Enter https://github.com/<owner>/<repo>, or leave it empty.',
+      submit: 'Add project',
+      submitting: 'Adding…',
+      cancel: 'Cancel',
+      openExisting: 'Open the existing project',
+      errors: {
+        pathNotAllowed:
+          'This folder is outside the folders this machine allows. On that machine run:',
+        configMissing: 'This folder has no demoflow.config.json.',
+        configInvalid: 'The demoflow.config.json in this folder is not valid.',
+        runnerNotFound: 'This machine is gone. Choose another one.',
+        runnerOffline:
+          'This machine went offline. Start its runner and try again.',
+        runnerOutdated:
+          'Update the CLI on this machine to add projects from the website.',
+        runnerBusy: 'This machine is busy. Try again in a moment.',
+        runnerTimeout: 'The machine did not answer in time. Try again.',
+        runnerError: 'The machine could not do that. Try again.',
+        projectExists: 'This folder is already a project.',
+        invalid: 'Check the folder path, the name and the GitHub link.',
+      },
     },
     item: {
       noFolder: 'No folder bound yet',
+      github: 'Open {name} on GitHub',
       machineRemoved: 'Machine removed',
       noRuns: 'No runs yet',
       runCount: '{count} runs',
@@ -270,20 +328,6 @@ export const en = {
       saving: 'Saving…',
       cancel: 'Cancel',
     },
-    bind: {
-      action: 'Bind to a folder',
-      title: 'Bind “{name}” to a folder',
-      machine: 'Machine',
-      machinePlaceholder: 'Choose a machine',
-      path: 'Absolute folder path',
-      pathHint:
-        'The project root on that machine. If DemoFlow already made a project for this folder, its runs move here and it is removed.',
-      noMachines: 'Pair a machine first, then bind the project to it.',
-      machines: 'Go to machines',
-      submit: 'Bind',
-      submitting: 'Binding…',
-      cancel: 'Cancel',
-    },
     delete: {
       action: 'Delete',
       title: 'Delete “{name}”?',
@@ -291,7 +335,6 @@ export const en = {
     },
     errors: {
       name: 'Enter a name of 1 to 200 characters.',
-      bind: 'Choose a machine and enter an absolute folder path.',
       notFound: 'This project is already gone. The list was refreshed.',
     },
     library: {
