@@ -5,7 +5,8 @@ export const metadata = { title: 'Runner' };
 You can pair a machine with your DemoFlow account and keep it connected, so the
 website shows it online. Nothing here is needed to make videos: every other
 command works without an account. With the runner connected, the site can also
-start runs on the machine and delete a run's files.
+add a project from a folder on the machine, start runs on it and delete a run's
+files.
 
 ## Pair a machine
 
@@ -79,8 +80,10 @@ no folder or its machine was removed.
 ### Which scenarios are listed
 
 - A project can be run from the site only after this machine has reported a run
-  from its folder. Run `demoflow run` in the folder once. A folder bound by hand
-  is not enough.
+  from its folder, or after you added the folder from the website (see [Add a
+  project from the website](#add-a-project-from-the-website)). Run `demoflow
+  run` in the folder once, or add it there. A folder bound by hand is not
+  enough.
 - The list holds every `*.demo.json` under the project's `demoflow/` folder,
   subfolders included, shown by name with its path.
 - The machine reads the list when the card opens or when you press **Refresh**,
@@ -145,6 +148,98 @@ with an older `demoflow` shows only **Running**.
 - A cancelled or timed-out run's folder is left as it was. The run is not
   reported, so it never appears in the library and cannot be deleted from the
   site. To remove it, delete `runs/<id>/` in the DemoFlow home on the machine.
+
+## Add a project from the website
+
+A project appears on the site after a local run, or when you add its folder
+from the website. Adding needs a paired machine whose runner is connected and
+whose CLI is up to date. Nothing is cloned or downloaded: the folder must
+already be on that machine.
+
+1. On **Projects**, press **Add project**.
+2. Choose the machine. A machine that is offline or runs an older CLI is
+   marked and cannot be chosen. The page preselects the machine that reported
+   the latest run.
+3. Type the folder as an absolute path on that machine, for example
+   `/home/you/my-app`, `/Users/you/my-app` or `C:\Users\you\my-app`. After you
+   stop typing, the machine looks at the folder.
+4. The dialog shows what the machine found:
+   - **`demoflow.config.json` found:** the folder name, up to five scenario
+     names with the count, and the GitHub link of the `origin` remote when it
+     is on `github.com`.
+   - **No config:** press **Create config**. The machine writes
+     `demoflow.config.json` and `demoflow/first.demo.json`, the same files as
+     `demoflow init`, and never overwrites a file that exists. The dialog names
+     the files it wrote. Then set `devCommand` and `baseUrl` in
+     `demoflow.config.json` in the repository: the website cannot set them.
+   - **A config that cannot be read:** fix it in the repository, then type the
+     path again.
+5. Give the project a name and, if you like, its GitHub repository
+   (`https://github.com/<owner>/<repo>`). The link is only shown on the site and
+   can be edited later; nothing is fetched from it.
+6. Press **Add project**. The project opens, and you can run its scenarios from
+   the site.
+
+### When the dialog refuses
+
+| Message | Why | Fix |
+|---|---|---|
+| `Offline` next to a machine, or "This machine went offline" | The runner is not connected. | Run `demoflow runner start` on the machine. |
+| `Update the CLI` | The machine's CLI is older than this feature. | Update `demoflow` there and restart its runner. |
+| "This folder is outside the folders this machine allows" | The folder is not inside an allowed folder, or a part of its path below it starts with a dot. The same message appears for a folder that does not exist. | On that machine run `demoflow runner allow <dir>`. See [Allowed folders](#allowed-folders). |
+| "This folder has no demoflow.config.json" | The folder has no config. | Press **Create config**, or run `demoflow init` in it. |
+| "The demoflow.config.json in this folder is not valid" | The config does not pass validation. | Fix it in the repository, then type the path again. |
+| "This folder is already a project" | The folder is registered. | Press **Open the existing project**. |
+| "This machine is busy" or "did not answer in time" | The machine is working on another request. | Try again in a moment. |
+
+## Allowed folders
+
+The machine decides which folders the website may name, not the website. The
+list is kept in `allowed-roots.json` next to `credentials.json`, and only you
+change it, on the machine. No request from the server reads or changes it. The
+runner reads the file for every request, so a change needs no restart.
+
+By default the one allowed folder is your home directory. The website may name
+a folder inside an allowed folder, with two limits:
+
+- **No hidden folders.** A folder whose path, below the allowed folder, has a
+  segment starting with `.` is refused: `~/.ssh`, `~/.config`, `~/.cache`. Allow
+  such a folder itself if you need it.
+- **Real paths.** The folder is resolved first; a symbolic link that leads
+  outside the allowed folders is refused.
+
+```sh
+npx demoflow runner roots
+npx demoflow runner allow ~/work
+npx demoflow runner allow 'D:\Projects'
+npx demoflow runner disallow ~/work
+```
+
+| Command | What it does |
+|---|---|
+| `demoflow runner roots` | Print the allowed folders, marking the default. `--json` prints one object. Exits 1 when the file is invalid. |
+| `demoflow runner allow <dir>` | Add an existing directory, by its real path. A relative path is resolved against the current folder. The first `allow` replaces the default home directory; allow the home directory again to keep it. At most 32 folders. |
+| `demoflow runner disallow <dir>` | Remove a folder from the list. Removing the last one allows nothing: the website may name no folder. It does not bring the default back. |
+
+On Windows use a drive path such as `D:\Projects`; network (UNC) and device
+paths are refused. A file that does not parse allows nothing until you fix or
+delete it, and `roots` says so.
+
+### What the website can and cannot see
+
+For a folder inside the allowed folders the website can learn whether it holds
+a valid `demoflow.config.json`, its scenario names and its GitHub `origin`. The
+runner reads the remote from the repository's git file and never runs `git`. It
+can write the two **Create config** files into a folder that has no config, and
+register a folder that has one.
+
+It cannot clone or download anything, overwrite a file, read any other file, or
+set `devCommand`: that stays yours, in the repository. A folder outside the
+allowed folders is refused with the same answer whether or not it exists.
+
+A folder you added from the website stops being served for website-started runs
+if you `disallow` it, until you allow it again. A folder registered by a local
+run is not affected.
 
 ## Delete a run's files
 
