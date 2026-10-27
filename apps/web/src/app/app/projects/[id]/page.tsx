@@ -3,13 +3,20 @@ import { Card } from '@andrewbehma/glass-ui/card';
 import { PageHeader } from '@andrewbehma/glass-ui/page-header';
 import { SectionHeader } from '@andrewbehma/glass-ui/section-header';
 import { notFound } from 'next/navigation';
+import { CheckSchedule } from '@/components/projects/check-schedule';
 import { MachinePill } from '@/components/projects/machine-pill';
 import { ProjectPath } from '@/components/projects/project-path';
 import { RunsTable } from '@/components/projects/runs-table';
+import { ScenarioHealth } from '@/components/projects/scenario-health';
 import { StartRun } from '@/components/projects/start-run';
 import { CrumbName } from '@/components/shell/crumb-names';
 import { t } from '@/i18n';
-import { getFirstRuns, getProjects } from '../_data';
+import {
+  getFirstRuns,
+  getProjectHealth,
+  getProjectSchedules,
+  getProjects,
+} from '../_data';
 
 export default async function ProjectLibraryPage({
   params,
@@ -22,9 +29,11 @@ export default async function ProjectLibraryPage({
   const { status: rawStatus } = await searchParams;
   const status =
     rawStatus === 'passed' || rawStatus === 'failed' ? rawStatus : undefined;
-  const [projects, runs] = await Promise.all([
+  const [projects, runs, schedules, health] = await Promise.all([
     getProjects(),
     getFirstRuns(id, status),
+    getProjectSchedules(id),
+    getProjectHealth(id),
   ]);
   if (runs === 'not_found') notFound();
   const project = projects?.find((candidate) => candidate.id === id);
@@ -49,6 +58,14 @@ export default async function ProjectLibraryPage({
           ) : null
         }
       />
+      {project ? (
+        <CheckSchedule
+          projectId={id}
+          rootPath={project.rootPath}
+          schedules={schedules}
+        />
+      ) : null}
+      <ScenarioHealth projectId={id} rows={health} />
       {project ? (
         <StartRun
           projectId={id}

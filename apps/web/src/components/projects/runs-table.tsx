@@ -1,6 +1,7 @@
 'use client';
 
 import { SelectionBar } from '@andrewbehma/glass-ui';
+import { Badge } from '@andrewbehma/glass-ui/badge';
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button } from '@andrewbehma/glass-ui/button';
 import { Checkbox } from '@andrewbehma/glass-ui/checkbox';
@@ -201,12 +202,21 @@ export function RunsTable({
                   />
                 </TableCell>
                 <TableCell className={stacked.lead}>
-                  <Link
-                    href={`/app/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(run.id)}`}
-                    className="break-words font-medium text-ink underline-offset-2 hover:underline"
-                  >
-                    {run.scenarioName}
-                  </Link>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/app/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(run.id)}`}
+                      className="break-words font-medium text-ink underline-offset-2 hover:underline"
+                    >
+                      {run.scenarioName}
+                    </Link>
+                    {run.kind === 'check' ? (
+                      <Badge
+                        tone="neutral"
+                        size="md"
+                        label={t('runs.kind.check')}
+                      />
+                    ) : null}
+                  </span>
                   <div className="break-all font-mono text-xs text-ink-2">
                     {run.scenarioPath}
                   </div>

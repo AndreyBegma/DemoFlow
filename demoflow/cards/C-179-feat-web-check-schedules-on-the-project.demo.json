@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "name": "Check schedules on the project page",
+  "description": "Sign in off camera, create a project, open it and show its new Scheduled checks card, which asks for a bound folder before a schedule can be set.",
+  "viewport": { "width": 1280, "height": 720 },
+  "setup": [
+    {
+      "action": "include",
+      "fragment": "sign-in",
+      "with": { "next": "/app/projects" }
+    }
+  ],
+  "steps": [
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Projects", "exact": true }
+    },
+    {
+      "action": "fill",
+      "target": { "role": "textbox", "name": "New project", "exact": true },
+      "value": "C-179 nightly checks"
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Create project", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "link",
+        "name": "C-179 nightly checks",
+        "exact": true
+      }
+    },
+    {
+      "action": "assertVisible",
+      "target": { "role": "heading", "name": "Scheduled checks", "exact": true }
+    },
+    {
+      "action": "assertVisible",
+      "target": {
+        "text": "Bind this project to a folder on a machine to check it on a schedule.",
+        "exact": true
+      }
+    }
+  ]
+}
