@@ -86,9 +86,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -246,9 +246,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -393,9 +393,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -531,6 +531,12 @@
                 "required": ["env"],
                 "additionalProperties": false
               },
+              "typingDelayMs": {
+                "description": "Milliseconds between two typed characters of this fill; overrides pacing.typingDelayMs.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 500
+              },
               "caption": {
                 "type": "string",
                 "maxLength": 120
@@ -546,9 +552,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -696,9 +702,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -835,9 +841,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -985,9 +991,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -1212,9 +1218,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -1359,9 +1365,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -1515,9 +1521,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -1569,9 +1575,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -1628,9 +1634,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -1675,9 +1681,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },
@@ -1729,9 +1735,9 @@
                 "type": "boolean"
               },
               "hold": {
-                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Not on an off-camera step.",
+                "description": "Milliseconds to keep the page on screen after the step, recorded and never trimmed as idle. Use it, not wait, to show a result. Overrides pacing.stepDwellMs; 0 turns the dwell off. Not on an off-camera step.",
                 "type": "integer",
-                "minimum": 100,
+                "minimum": 0,
                 "maximum": 10000
               }
             },

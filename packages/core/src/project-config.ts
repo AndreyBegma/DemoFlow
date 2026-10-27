@@ -203,7 +203,7 @@ export const RenderConfigSchema = z
       })
       .prefault({}),
     // Kept on screen after the last step of a successful run (spec 365).
-    endHoldMs: z.number().int().min(0).max(10_000).default(2500).meta({
+    endHoldMs: z.number().int().min(0).max(10_000).default(3500).meta({
       description:
         'How long a successful video keeps the result on screen after the last step: the engine keeps recording and the renderer keeps the frames. 0 ends the video at the last step.',
     }),

@@ -5,7 +5,10 @@ import {
   type ScenarioStepInput,
 } from '@demoflow/core';
 
-/** An inline scenario, validated and with defaults applied. */
+/**
+ * An inline scenario, validated and with defaults applied. It does not dwell
+ * unless `pacing` says so (C-203), to keep the suite fast.
+ */
 export function scenario(
   steps: ScenarioStepInput[],
   extra: {
@@ -13,12 +16,14 @@ export function scenario(
     viewport?: { width: number; height: number };
     data?: ScenarioInput['data'];
     setup?: ScenarioInput['setup'];
+    pacing?: ScenarioInput['pacing'];
   } = {},
 ): Scenario {
   const parsed = parseScenario({
     schemaVersion: 1,
     name: 'inline',
     viewport: { width: 1280, height: 720 },
+    pacing: { stepDwellMs: 0 },
     ...extra,
     steps,
   });

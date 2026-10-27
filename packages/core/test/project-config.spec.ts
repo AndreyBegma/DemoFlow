@@ -16,7 +16,7 @@ describe('parseProjectConfig', () => {
           height: 1080,
           fps: 30,
           idle: { thresholdMs: 1000, compressToMs: 400 },
-          endHoldMs: 2500,
+          endHoldMs: 3500,
           frame: { enabled: true, marginRatio: 0.06, radius: 12, shadow: true },
           background: { preset: 'ocean' },
           cards: {

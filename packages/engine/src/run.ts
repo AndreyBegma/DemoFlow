@@ -8,6 +8,8 @@ import {
   type MaskedElement,
   type Navigation,
   offCameraSteps,
+  type Pacing,
+  resolvePacing,
   type Scenario,
   type Stage,
   type Stages,
@@ -33,6 +35,7 @@ import { MarkedMasks } from './execute/marked-masks.ts';
 import { MaskTracker } from './execute/mask.ts';
 import { NavigationRecorder } from './execute/navigations.ts';
 import type { EngineObserver, RunOutcome } from './execute/observer.ts';
+import { stepPace } from './execute/pacing.ts';
 import { installPageScripts } from './execute/page-scripts.ts';
 import { type Point, viewportCentre } from './execute/pointer.ts';
 import {
@@ -96,6 +99,7 @@ export async function runScenario(
   const stages = pendingStages();
   const recording = recordingOptions(scenario, options.runDir);
   const baseUrl = scenario.baseUrl ?? options.baseUrl;
+  const pacing = resolvePacing(scenario.pacing);
 
   await mkdir(options.runDir, { recursive: true });
   await emit('onRunStarted', {
@@ -145,10 +149,14 @@ export async function runScenario(
       session: Session,
       range: { from: number; to: number; endHoldMs?: number },
       events: TimelineEvent[],
+      onCamera: boolean,
     ): Promise<Failure | undefined> =>
       executeSteps({
         steps,
         ...range,
+        pacing,
+        onCamera,
+        recording: record,
         page: session.page,
         clock: session.clock,
         baseUrl,
@@ -176,7 +184,12 @@ export async function runScenario(
         }),
       });
       const offEvents: TimelineEvent[] = [];
-      const failure = await execute(off, { from: 0, to: hidden }, offEvents);
+      const failure = await execute(
+        off,
+        { from: 0, to: hidden },
+        offEvents,
+        false,
+      );
       if (failure === undefined) {
         start = {
           storageState: await off.context.storageState(),
@@ -222,6 +235,7 @@ export async function runScenario(
       session,
       { from: hidden, to: steps.length, endHoldMs: options.endHoldMs },
       events,
+      true,
     );
     // Before the context closes: a document's clock exchange may still be running on it.
     const maskedElements = await marked.list();
@@ -347,6 +361,11 @@ interface ExecuteInput {
   steps: readonly ExpandedStep[];
   from: number;
   to: number;
+  pacing: Pacing;
+  /** Off-camera steps (ADR-0018) are not paced. */
+  onCamera: boolean;
+  /** Whether the run records a video: a check run does not dwell. */
+  recording: boolean;
   page: Page;
   clock: Clock;
   baseUrl: string | undefined;
@@ -396,8 +415,14 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
     input.annotations.stepStarted(startMs);
     await emit('onStepStarted', { stepIndex, step, startMs });
 
+    const pace = stepPace(step, input.pacing, {
+      onCamera: input.onCamera,
+      recording: input.recording,
+      last: stepIndex === input.to - 1,
+    });
     const ctx = {
       page: input.page,
+      typingDelayMs: pace.typingDelayMs,
       stepIndex,
       baseUrl: input.baseUrl,
       guard: input.guard,
@@ -458,13 +483,9 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
       await input.masks.track(event, step.target);
     }
     // A failed step does not hold; an off-camera one has nothing to show.
-    if (
-      failure === undefined &&
-      step.hold !== undefined &&
-      step.record !== false
-    ) {
-      event.holdMs = step.hold;
-      const left = await hold(step.hold);
+    if (failure === undefined && pace.dwellMs > 0) {
+      event.holdMs = pace.dwellMs;
+      const left = await hold(pace.dwellMs);
       if (left !== undefined) {
         failure = new StepFailure('execution', originNotAllowed(left));
         event.error = { message: scrub(failure.message) };

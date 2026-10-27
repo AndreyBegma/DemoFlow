@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { type Issue, parseScenario, type StepAction } from '../src/index.ts';
+import {
+  type Issue,
+  parseScenario,
+  resolvePacing,
+  type StepAction,
+} from '../src/index.ts';
 
 function scenario(...steps: unknown[]) {
   return { schemaVersion: 1, name: 'Demo', steps };
@@ -377,7 +382,7 @@ describe('parseScenario — every action', () => {
       });
     });
 
-    it.each([99, 10_001, 500.5])('rejects hold %d at steps[0].hold', (hold) => {
+    it.each([-1, 10_001, 500.5])('rejects hold %d at steps[0].hold', (hold) => {
       expect(errorsOf(scenario({ action, ...valid, hold }))).toContainEqual(
         expect.objectContaining({ path: 'steps[0].hold' }),
       );
@@ -633,6 +638,67 @@ describe('parseScenario — scenario', () => {
   it('rejects input that is not an object', () => {
     expect(errorsOf('steps: []')).toEqual([
       expect.objectContaining({ path: '' }),
+    ]);
+  });
+});
+
+describe('parseScenario — pacing', () => {
+  const click = { action: 'click', target };
+
+  it('leaves pacing to the defaults when the scenario sets none', () => {
+    const result = parseScenario(scenario(click));
+    if (!result.ok) throw new Error('expected the scenario to parse');
+    expect(result.value.pacing).toBeUndefined();
+    expect(resolvePacing(result.value.pacing)).toEqual({
+      stepDwellMs: 1_000,
+      typingDelayMs: 80,
+    });
+  });
+
+  it('fills in the fields a partial pacing leaves out', () => {
+    const result = parseScenario({
+      ...scenario(click),
+      pacing: { stepDwellMs: 0 },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        pacing: { stepDwellMs: 0, typingDelayMs: 80 },
+      },
+    });
+  });
+
+  it('accepts a hold (0 turns the dwell off) on any step and a typing delay on a fill', () => {
+    const result = parseScenario(
+      scenario(
+        { ...click, hold: 0 },
+        { action: 'marker', title: 'Intro', hold: 2_000 },
+        { action: 'fill', target, value: 'Ada', typingDelayMs: 120 },
+      ),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        steps: [{ hold: 0 }, { hold: 2_000 }, { typingDelayMs: 120 }],
+      },
+    });
+  });
+
+  it('rejects out-of-range and misplaced pacing', () => {
+    expect(
+      errorsOf({ ...scenario(click), pacing: { stepDwellMs: -1 } }),
+    ).toEqual([expect.objectContaining({ path: 'pacing.stepDwellMs' })]);
+    expect(
+      errorsOf({ ...scenario(click), pacing: { endHoldMs: 1_000 } }),
+    ).toEqual([expect.objectContaining({ path: 'pacing.endHoldMs' })]);
+    expect(
+      errorsOf({ ...scenario(click), pacing: { typingDelayMs: 1.5 } }),
+    ).toEqual([expect.objectContaining({ path: 'pacing.typingDelayMs' })]);
+    expect(errorsOf({ ...scenario(click), pacing: { speed: 2 } })).toEqual([
+      expect.objectContaining({ path: 'pacing.speed' }),
+    ]);
+    expect(errorsOf(scenario({ ...click, typingDelayMs: 50 }))).toEqual([
+      expect.objectContaining({ path: 'steps[0].typingDelayMs' }),
     ]);
   });
 });
