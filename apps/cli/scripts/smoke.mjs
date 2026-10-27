@@ -46,6 +46,7 @@ const TOOLS = [
   'generate_demo',
   'get_task',
   'list_demos',
+  'share_demo',
   'validate_scenario',
 ];
 const browsers = process.argv.includes('--browsers');
