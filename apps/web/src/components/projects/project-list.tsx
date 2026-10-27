@@ -28,6 +28,7 @@ import { apiErrorKey } from '../auth/form-parts';
 import { GithubMark } from '../auth/github-mark';
 import { AddProjectDialog } from './add-project-dialog';
 import { MachinePill } from './machine-pill';
+import { StaleBadge } from './stale-badge';
 
 type Failure = 'projects.errors.name' | 'projects.errors.notFound';
 
@@ -210,12 +211,15 @@ function ProjectSummary({ project }: { project: Project }) {
   const { lastRun } = project;
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <Link
-        href={`/app/projects/${encodeURIComponent(project.id)}`}
-        className="break-words font-semibold text-ink underline-offset-2 hover:underline"
-      >
-        {project.name}
-      </Link>
+      <span className="flex flex-wrap items-center gap-2">
+        <Link
+          href={`/app/projects/${encodeURIComponent(project.id)}`}
+          className="break-words font-semibold text-ink underline-offset-2 hover:underline"
+        >
+          {project.name}
+        </Link>
+        <StaleBadge count={project.staleCount ?? 0} />
+      </span>
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-2">
         {project.rootPath === null ? (
           <span>{t('projects.item.noFolder')}</span>
