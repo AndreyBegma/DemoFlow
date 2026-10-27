@@ -6,7 +6,7 @@ import type {
   TimelineEvent,
 } from '@demoflow/core';
 import { showsHeldPage } from './transitions.ts';
-import type { MaskSpan } from './types.ts';
+import type { Interval, MaskSpan } from './types.ts';
 
 /** Masks overhang the field's box by this much on every side. */
 const MASK_MARGIN_PX = 4;
@@ -38,6 +38,10 @@ const MASK_MARGIN_PX = 4;
  * the engine measured it in viewport space on every frame, and a move starts
  * a new interval, so a page scroll does not move it. A document navigation
  * may lengthen its span, never shorten it (#221).
+ *
+ * A scroll that crosses a span of `removed` — the trim and the cuts (spec
+ * 354), in timeline ms — gets a key on each edge of it, the box where the
+ * scroll had it then: the page jumps there at the join, and so does the box.
  */
 export function maskSpans(
   events: readonly TimelineEvent[],
@@ -48,6 +52,7 @@ export function maskSpans(
     leadMs,
     trailMs,
     maskedElements,
+    removed = [],
     ...leaving
   }: {
     leadMs: number;
@@ -56,6 +61,7 @@ export function maskSpans(
     navigations: readonly Navigation[];
     transitions: boolean;
     sourceFrameMs: number;
+    removed?: readonly Interval[];
   },
 ): MaskSpan[] {
   const documentEnd = (fromMs: number, endMs: number): number =>
@@ -81,13 +87,18 @@ export function maskSpans(
           ) {
             continue;
           }
-          keys.push({ atMs: Math.min(out(later.startMs), endMs), box });
+          const before = box;
           box = {
             ...box,
             x: box.x - (scroll.after.x - scroll.before.x),
             y: box.y - (scroll.after.y - scroll.before.y),
           };
-          keys.push({ atMs: Math.min(out(later.endMs), endMs), box });
+          keys.push(
+            ...scrollKeys(later, before, box, removed, out).map((key) => ({
+              ...key,
+              atMs: Math.min(key.atMs, endMs),
+            })),
+          );
         }
         // The keys stay as measured: a hold reads the box at its start from them.
         spans.push({
@@ -117,13 +128,13 @@ export function maskSpans(
       const scroll = later.scroll;
       // A container scroll moves what is inside it; the masked field is not assumed to be.
       if (scroll === undefined || scroll.container !== undefined) continue;
-      keys.push({ atMs: out(later.startMs), box });
+      const before = box;
       box = {
         ...box,
         x: box.x - (scroll.after.x - scroll.before.x),
         y: box.y - (scroll.after.y - scroll.before.y),
       };
-      keys.push({ atMs: out(later.endMs), box });
+      keys.push(...scrollKeys(later, before, box, removed, out));
       if (!overlaps(box, viewport)) {
         endMs = out(later.endMs) + trailMs;
         break;
@@ -156,6 +167,40 @@ export function maskSpans(
     }
   }
   return spans;
+}
+
+/**
+ * A box's keys over a page scroll, `from → to` in page ms: one at each end,
+ * and one on each edge of a removed span inside it, the box lerped there.
+ */
+function scrollKeys(
+  scroll: { startMs: number; endMs: number },
+  from: Box,
+  to: Box,
+  removed: readonly Interval[],
+  out: (timelineMs: number) => number,
+): MaskSpan['keys'] {
+  const at = (timelineMs: number): MaskSpan['keys'][number] => {
+    const t = (timelineMs - scroll.startMs) / (scroll.endMs - scroll.startMs);
+    return {
+      atMs: out(timelineMs),
+      box: {
+        ...from,
+        x: from.x + (to.x - from.x) * t,
+        y: from.y + (to.y - from.y) * t,
+      },
+    };
+  };
+  const inside = (ms: number): boolean =>
+    ms > scroll.startMs && ms < scroll.endMs;
+  return [
+    { atMs: out(scroll.startMs), box: from },
+    ...removed.flatMap((span) => [
+      ...(inside(span.startMs) ? [at(span.startMs)] : []),
+      ...(inside(span.endMs) ? [at(span.endMs)] : []),
+    ]),
+    { atMs: out(scroll.endMs), box: to },
+  ];
 }
 
 /**

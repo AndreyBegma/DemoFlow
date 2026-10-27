@@ -26,7 +26,8 @@ export type PlacedCard = CardSpec & CardSlot;
  * card on every `scene` marker before the page ends, and — on a successful
  * run with a title — the outro after it. `out` maps timeline ms to page ms.
  * `edits` (spec 353) switch cards and replace their text; without a config
- * there are no cards, edited or not.
+ * there are no cards, edited or not. A scene the page never shows — inside a
+ * cut or outside the trim (spec 354) — places no card.
  */
 export function placeCards(input: {
   config?: CardsConfig;
@@ -39,6 +40,8 @@ export function placeCards(input: {
   description?: string;
   failed: boolean;
   edits?: RunEdits['cards'];
+  /** Whether the page never shows this timeline instant. */
+  hidden?: (timelineMs: number) => boolean;
 }): PlacedCard[] {
   const { config, events, out, pageEndMs, edits } = input;
   const annotations = input.annotations ?? [];
@@ -74,6 +77,7 @@ export function placeCards(input: {
       ),
     ].sort((a, b) => a.timelineMs - b.timelineMs);
     for (const scene of scenes) {
+      if (input.hidden?.(scene.timelineMs) === true) continue;
       const atMs = out(scene.timelineMs);
       // After a failure the page has ended; the scene never showed.
       if (atMs >= pageEndMs) continue;

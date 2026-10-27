@@ -21,8 +21,14 @@ import {
 } from '@demoflow/core';
 import { resolveBackground } from './background.ts';
 import { placeCards, shiftOverlays } from './cards.ts';
+import {
+  type CutJoin,
+  hiddenBy,
+  holdAcrossCuts,
+  splitMovesAt,
+} from './cuts.ts';
 import { probeVideo } from './ffmpeg.ts';
-import { cropSize } from './frame.ts';
+import { cameraStateAt, cropSize, followAt } from './frame.ts';
 import { measuredMaskMarginMs } from './mask-margin.ts';
 import { maskSpans } from './masks.ts';
 import { findSyncClear, syncOffset } from './sync-mark.ts';
@@ -30,9 +36,11 @@ import {
   buildTimeMap,
   idleStretches,
   insertCards,
+  subtractIntervals,
   toOutputMs,
+  toSourceMs,
 } from './time-map.ts';
-import { planHolds, shiftHolds } from './transitions.ts';
+import { planHolds, shiftHolds, withCutHolds } from './transitions.ts';
 import type {
   CameraKeyframe,
   Caption,
@@ -151,6 +159,7 @@ export async function buildRenderPlan(
   const edits = await readEdits(
     path.join(runDir, PLAN_INPUTS.edits),
     timeline,
+    result,
     options.endHoldMs ?? DEFAULTS.endHoldMs,
   );
   const videoFile = path.join(runDir, timeline.videoFile);
@@ -179,6 +188,7 @@ export async function buildRenderPlan(
 async function readEdits(
   file: string,
   timeline: Timeline,
+  result: RunResult,
   tailMs: number,
 ): Promise<RunEdits | undefined> {
   let text: string;
@@ -202,7 +212,9 @@ async function readEdits(
       `${name} is invalid at ${formatPath(issue.path) || '(root)'}: ${issue.message}`,
     );
   }
-  const [issue] = checkRunEdits(parsed.data, timeline, { tailMs });
+  const [issue] = checkRunEdits(parsed.data, timeline, result, {
+    tailMs,
+  });
   if (issue !== undefined) {
     throw new Error(
       `${name} does not fit the run at ${issue.path}: ${issue.message}`,
@@ -313,13 +325,94 @@ export function planRender(
       ? [{ startMs: toSource(event.endMs), endMs: toSource(shownUntil(event)) }]
       : []),
   ]);
-  const idle = idleStretches(source.freezes, active, thresholdMs, sourceEndMs);
+  // The trim sets the page's range, within the recording's (spec 354,
+  // Decision 1); the cuts play in 0 ms (Decision 2).
+  const trim = edits?.trim;
+  const pageStartMs =
+    trim?.startMs === undefined
+      ? startMs
+      : Math.max(startMs, toSource(trim.startMs));
+  const pageStopMs =
+    trim?.endMs === undefined
+      ? sourceEndMs
+      : Math.max(pageStartMs, Math.min(sourceEndMs, toSource(trim.endMs)));
+  const cuts = edits?.cuts ?? [];
+  const sourceCuts: Interval[] = cuts.map((cut) => ({
+    startMs: toSource(cut.startMs),
+    endMs: toSource(cut.endMs),
+  }));
+  // Timeline ms the page never shows.
+  const removed: Interval[] = [
+    ...(trim?.startMs === undefined
+      ? []
+      : [{ startMs: -Infinity, endMs: trim.startMs }]),
+    ...cuts,
+    ...(trim?.endMs === undefined
+      ? []
+      : [{ startMs: trim.endMs, endMs: Infinity }]),
+  ];
+  const hidden = (fromMs: number, toMs = fromMs): boolean =>
+    hiddenBy(removed, fromMs, toMs);
+
+  const idle = idleStretches(source.freezes, active, thresholdMs, pageStopMs);
   // Page time: the map before cards. Overlays are planned in it, then moved
   // past the cards, so no lead or trail is ever measured across a card.
-  const pageMap = buildTimeMap(idle, sourceEndMs, compressToMs, startMs);
+  const pageMap = buildTimeMap(
+    idle,
+    pageStopMs,
+    compressToMs,
+    pageStartMs,
+    sourceCuts,
+  );
   const out = (timelineMs: number): number =>
     toOutputMs(pageMap, toSource(timelineMs));
   const pageEndMs = pageMap.at(-1)?.outputEndMs ?? 0;
+  // The same map with every cut played: what moves is planned on it, then
+  // held across each join, so no move is squeezed into a cut's instant.
+  const playedMap = buildTimeMap(
+    subtractIntervals(idle, sourceCuts),
+    pageStopMs,
+    compressToMs,
+    pageStartMs,
+  );
+  const outPlayed = (timelineMs: number): number =>
+    toOutputMs(playedMap, toSource(timelineMs));
+  const playedToPage = (ms: number): number =>
+    toOutputMs(pageMap, toSourceMs(playedMap, ms));
+  const joins: CutJoin[] = sourceCuts.flatMap((cut) => {
+    const fromMs = toOutputMs(playedMap, cut.startMs);
+    const toMs = toOutputMs(playedMap, cut.endMs);
+    return toMs > fromMs
+      ? [{ fromMs, toMs, atMs: toOutputMs(pageMap, cut.startMs) }]
+      : [];
+  });
+  const playedCamera = cameraKeyframes(
+    events,
+    outPlayed,
+    viewport,
+    defaultZoom,
+    shownUntil,
+  );
+  const camera = holdAcrossCuts(
+    playedCamera,
+    joins,
+    playedToPage,
+    (ms, atMs) => ({ atMs, ...cameraStateAt(playedCamera, ms) }),
+    TIMING.zoomInMs,
+  );
+  const followAcross = (
+    crop: { width: number; height: number },
+    config: { followMs: number; deadZone: number },
+  ): FollowKey[] => {
+    const keys = followKeys(events, outPlayed, viewport, crop, config);
+    return holdAcrossCuts(
+      keys,
+      joins,
+      playedToPage,
+      (ms, atMs) => ({ atMs, ...(followAt(keys, ms) ?? { x: 0, y: 0 }) }),
+      config.followMs,
+    );
+  };
 
   const cards = placeCards({
     ...(options.cards === undefined ? {} : { config: options.cards }),
@@ -333,6 +426,7 @@ export function planRender(
       : { description: options.scenario.description }),
     failed: failure !== undefined,
     ...(edits?.cards === undefined ? {} : { edits: edits.cards }),
+    ...(removed.length === 0 ? {} : { hidden }),
   });
   const masks = maskSpans(events, out, viewport, pageEndMs, {
     leadMs: maskLeadMs,
@@ -341,6 +435,7 @@ export function planRender(
     navigations: timeline.navigations ?? [],
     transitions: options.transitions?.enabled === true,
     sourceFrameMs: 1000 / source.fps,
+    removed,
   });
   const cardBackground = frame?.background ?? resolveBackground(background);
   const verticalConfig = VerticalConfigSchema.parse(options.vertical ?? {});
@@ -348,8 +443,9 @@ export function planRender(
   const { follow, squareFollow, ...overlays } = shiftOverlays(
     {
       // A phone has no mouse pointer: the click ring is the tap (spec 307).
-      cursor: timeline.device === 'phone' ? [] : cursorMoves(events, out),
-      clicks: clickRings(events, out),
+      cursor:
+        timeline.device === 'phone' ? [] : cursorMoves(events, out, removed),
+      clicks: clickRings(events, out, hidden),
       highlights: highlights(
         events,
         out,
@@ -357,27 +453,15 @@ export function planRender(
         pageEndMs,
         cardBackground.to,
       ),
-      camera: cameraKeyframes(events, out, viewport, defaultZoom, shownUntil),
-      follow: followKeys(
-        events,
-        out,
-        viewport,
-        cropSize(viewport, VERTICAL),
-        verticalConfig,
-      ),
-      squareFollow: followKeys(
-        events,
-        out,
-        viewport,
-        cropSize(viewport, SQUARE),
-        squareConfig,
-      ),
+      camera,
+      follow: followAcross(cropSize(viewport, VERTICAL), verticalConfig),
+      squareFollow: followAcross(cropSize(viewport, SQUARE), squareConfig),
       masks,
       captions:
         edits?.captions === undefined
-          ? captions(events, timeline.annotations ?? [], out, pageEndMs)
+          ? captions(events, timeline.annotations ?? [], out, pageEndMs, hidden)
           : editedCaptions(edits.captions, out, pageEndMs),
-      keys: keyBadges(events, out, pageEndMs, viewport),
+      keys: keyBadges(events, out, pageEndMs, viewport, hidden),
     },
     cards,
   );
@@ -386,18 +470,45 @@ export function planRender(
       ? {
           durationMs: options.transitions.durationMs,
           holds: shiftHolds(
-            planHolds({
-              navigations: timeline.navigations ?? [],
-              events,
-              out,
-              toSource,
-              sourceStartMs: pageMap[0]?.sourceStartMs ?? 0,
-              pageEndMs,
-              masks,
-              sourceFrameMs: 1000 / source.fps,
-              maskLeadMs,
-              durationMs: options.transitions.durationMs,
-            }),
+            withCutHolds(
+              planHolds({
+                navigations: timeline.navigations ?? [],
+                events,
+                out,
+                toSource,
+                sourceStartMs: pageMap[0]?.sourceStartMs ?? 0,
+                pageEndMs,
+                masks,
+                sourceFrameMs: 1000 / source.fps,
+                maskLeadMs,
+                durationMs: options.transitions.durationMs,
+                removed,
+              }),
+              {
+                // The last source frame before each cut dissolves into the
+                // first after it (spec 354, Decision 4).
+                joins: sourceCuts.flatMap((cut) => {
+                  const sourceMs = Math.max(
+                    pageStartMs,
+                    cut.startMs - 1000 / source.fps,
+                  );
+                  // A cut on the page's start is a trim: nothing before it to hold.
+                  return cut.endMs > cut.startMs && cut.startMs > pageStartMs
+                    ? [
+                        {
+                          atMs: toOutputMs(pageMap, cut.startMs),
+                          sourceMs,
+                          heldAtMs: toOutputMs(pageMap, sourceMs),
+                        },
+                      ]
+                    : [];
+                }),
+                masks,
+                pageEndMs,
+                sourceFrameMs: 1000 / source.fps,
+                durationMs: options.transitions.durationMs,
+              },
+            ),
             cards,
           ),
         }
@@ -730,30 +841,41 @@ function pressMs(event: TimelineEvent): number {
     : event.endMs;
 }
 
+/** Each step's pointer move, cut at every span the page never shows (spec 354). */
 function cursorMoves(
   events: readonly TimelineEvent[],
   out: (timelineMs: number) => number,
+  removed: readonly Interval[],
 ): CursorMove[] {
-  return events.flatMap((event) =>
+  const moves = events.flatMap((event) =>
     event.pointer === undefined
       ? []
       : [
           {
-            startMs: out(event.startMs),
-            endMs: out(pressMs(event)),
+            startMs: event.startMs,
+            endMs: pressMs(event),
             from: event.pointer.from,
             to: event.pointer.to,
           },
         ],
   );
+  return splitMovesAt(moves, removed).map((move) => ({
+    ...move,
+    startMs: out(move.startMs),
+    endMs: out(move.endMs),
+  }));
 }
 
+/** A ring on every click the page shows the press of. */
 function clickRings(
   events: readonly TimelineEvent[],
   out: (timelineMs: number) => number,
+  hidden: (timelineMs: number) => boolean,
 ): ClickRing[] {
   return events.flatMap((event) =>
-    event.action !== 'click' || event.pointer === undefined
+    event.action !== 'click' ||
+    event.pointer === undefined ||
+    hidden(pressMs(event))
       ? []
       : [
           {
@@ -935,19 +1057,22 @@ function distance(a: Point, b: Point): number {
  * A badge naming the key of every `press`, hanging below its target — or, for
  * a press on the focused element, below where the pointer last rested (the
  * middle of the viewport before the first move). It shows from the step's
- * start until 600 ms after its end; a later badge cuts an earlier one.
+ * start until 600 ms after its end; a later badge cuts an earlier one. A
+ * press the page never shows (spec 354) has none.
  */
 function keyBadges(
   events: readonly TimelineEvent[],
   out: (timelineMs: number) => number,
   videoEndMs: number,
   viewport: { width: number; height: number },
+  hidden: (fromMs: number, toMs: number) => boolean,
 ): KeyBadge[] {
   let rest: Point = { x: viewport.width / 2, y: viewport.height / 2 };
   const list: KeyBadge[] = [];
   for (const event of events) {
     if (event.pointer !== undefined) rest = event.pointer.to;
     if (event.action !== 'press' || event.key === undefined) continue;
+    if (hidden(event.startMs, event.endMs)) continue;
     const anchor =
       event.target === undefined
         ? rest
@@ -973,16 +1098,18 @@ function keyBadges(
  * A lower-third for every step `caption` and `caption` marker, from the
  * step's start until 800 ms after its end, and for every `caption` the page
  * set (#201), for 3 s from the call. A later caption cuts an earlier one,
- * whichever source it came from.
+ * whichever source it came from. A step or call the page never shows (spec
+ * 354) has none: its tail would show past the cut.
  */
 function captions(
   events: readonly TimelineEvent[],
   annotations: readonly Annotation[],
   out: (timelineMs: number) => number,
   videoEndMs: number,
+  hidden: (fromMs: number, toMs?: number) => boolean,
 ): Caption[] {
   const fromPage: Caption[] = annotations.flatMap((annotation) =>
-    annotation.kind === 'caption'
+    annotation.kind === 'caption' && !hidden(annotation.atMs)
       ? [
           {
             startMs: out(annotation.atMs),
@@ -999,6 +1126,7 @@ function captions(
     const text =
       event.marker?.kind === 'caption' ? event.marker.title : event.caption;
     if (text === undefined || text.trim() === '') return [];
+    if (hidden(event.startMs, event.endMs)) return [];
     return [
       {
         startMs: out(event.startMs),
