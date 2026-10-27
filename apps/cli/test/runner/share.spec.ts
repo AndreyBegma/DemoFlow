@@ -128,7 +128,11 @@ async function prepare(
 }
 
 beforeEach(() => {
-  base = realpathSync(mkdtempSync(path.join(tmpdir(), 'demoflow-share-')));
+  // The preparer resolves with the native realpath, which expands the 8.3
+  // short names of a Windows temp dir (RUNNER~1); the JS one does not.
+  base = realpathSync.native(
+    mkdtempSync(path.join(tmpdir(), 'demoflow-share-')),
+  );
   root = path.join(base, 'project');
   runDir = path.join(base, 'home', 'runs', 'local-run');
   mkdirSync(root, { recursive: true });
