@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "description": "Signs in with the demo account and lands on an /app page.",
+  "params": {
+    "next": {
+      "description": "The /app page to land on once signed in.",
+      "default": "/app"
+    }
+  },
+  "steps": [
+    { "action": "navigate", "path": "/sign-in?next={{params.next}}" },
+    {
+      "action": "fill",
+      "target": { "label": "Email" },
+      "valueFrom": { "env": "DEMO_LOGIN_EMAIL" }
+    },
+    {
+      "action": "fill",
+      "target": { "label": "Password", "exact": true },
+      "valueFrom": { "env": "DEMO_LOGIN_PASSWORD" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Sign in", "exact": true }
+    },
+    {
+      "action": "waitFor",
+      "target": { "role": "navigation", "name": "Breadcrumb" }
+    }
+  ]
+}

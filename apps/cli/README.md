@@ -140,6 +140,65 @@ are no longer listed. The website is not told, so its runs list keeps the
 first render's formats. A run that is unfinished or has no recording is
 refused with exit 2; a render that fails exits 3.
 
+`demoflow run --check <scenario>` runs and verifies the scenario against the
+live app like `run`, but records and renders nothing: the run directory holds
+only `result.json`, with `recording` and `rendering` skipped. Without a
+scenario, `demoflow run --check` runs every valid scenario of the project
+(the files under `demoflow/`, sorted, at most 100) one after another against a
+single start of `devCommand`, and prints one line per scenario, then
+`N passed, M failed`. `--exclude <id>` leaves a scenario out of such a pass
+(repeatable; `demoflow/login.demo.json` or `login.demo.json`; an id that is no
+scenario is ignored). `--json` prints `{ "check": true, "passed", "failed",
+"runs": [...] }`, each run as `run --json` prints it. It exits 0 when every run
+passed and 1 when any failed. `--format` and `--headed` are refused with exit 2
+before anything runs. Each run is reported like any other, marked as a check.
+Unlike `demoflow check`, which only inspects files and tools, this opens the
+app.
+
+### Scheduled checks
+
+`schedule` makes the runner (`demoflow runner start`) run `demoflow run --check`
+over the whole project on its own, at a set time:
+
+```json
+{
+  "baseUrl": "http://localhost:3000",
+  "schedule": {
+    "cadence": "weekly",
+    "weekday": "mon",
+    "at": "09:30",
+    "exclude": ["demoflow/wip.demo.json"]
+  }
+}
+```
+
+- `cadence` is `daily`, `weekdays` (Monday to Friday) or `weekly`; `weekly`
+  needs `weekday` (`mon` … `sun`), the others refuse it.
+- `at` is `HH:MM`, 24-hour, in the time zone of the machine the runner runs on.
+  A time the clock skips when daylight saving starts runs at the next valid
+  minute; a time that repeats when it ends runs once, the first time.
+- `exclude` lists scenario ids the pass leaves out (at most 100), as
+  `--exclude` does.
+- The runner watches the projects it has reported runs for and the projects
+  `demoflow run` ran in on this machine. It reads each `schedule` every
+  minute, so an edit needs no restart. A project with a config that does not
+  load is skipped and named in `runner.log`.
+- One pass at a time, and never next to a run started from the website: a
+  pass that comes due waits for it. A pass is stopped after 2 hours, or after
+  15 minutes on one scenario.
+- A machine that was off or asleep at the time runs one pass when the runner
+  next looks, however many it missed. A new schedule waits for its first time:
+  it does not run at once.
+- The passes are reported like any other check run (off without
+  `demoflow login`, under `CI`, or with `DEMOFLOW_NO_REPORT=1`).
+
+Without `demoflow login`, `runner start` and `runner install` still work when a
+watched project has a schedule. The runner then runs in local mode: no
+connection, scheduled checks only. `runner status` shows each scheduled
+project, its next check (while the runner runs) and the last one, with its
+result. A schedule runs only while the runner does: use
+[`demoflow runner install`](#start-at-login) so it starts at every login.
+
 `demoflow init [--base-url <url>]` writes `demoflow.config.json` (default
 `baseUrl` `http://localhost:3000`) and `demoflow/first.demo.json`, a scenario
 that opens `/` and passes against any app at `baseUrl`, in the current folder.
@@ -185,7 +244,9 @@ typed value. Secret fills are left as recorded.
 | `demoflow record [name]` | record a scenario by using the app |
 | `demoflow validate <scenario>` | check a scenario against the schema |
 | `demoflow run <scenario>` | run it in a browser and render the video |
+| `demoflow run --check [scenario]` | run and verify one scenario, or all of them, without a video |
 | `demoflow render <runId>` | render an existing run again with the current config |
+| `demoflow share <runId>` | share a render of a reported run as a link on the website |
 | `demoflow list` | list recent runs of the current project, newest first |
 | `demoflow runs list` | list every run on this machine, with its size |
 | `demoflow runs delete <id…>` / `prune` | delete runs by id, or by age and state |
@@ -197,6 +258,7 @@ typed value. Secret fills are left as recorded.
 | `demoflow runner start` | keep this machine connected, in the background |
 | `demoflow runner stop` / `status` / `logs` | stop it, check it, read its log |
 | `demoflow runner install` / `uninstall` | start the runner at every login, or stop doing so |
+| `demoflow runner allow <dir>` / `disallow <dir>` / `roots` | choose the folders the website may name |
 
 ## Pair this machine with your account
 
@@ -215,7 +277,7 @@ expires after 10 minutes.
 - `demoflow logout` revokes the token on the server, then deletes the file. If
   the server cannot be reached it still deletes the file; the machine stays
   listed under `/app/machines` until you revoke it there.
-- The server is `https://demoflow-app.luna-realm.com` (staging) unless
+- The server is `https://demoflow.luna-realm.com` (production) unless
   `--server <url>` or `DEMOFLOW_SERVER` says otherwise. It is the website's
   origin; the API is under `/api`. `logout` uses the server stored at login.
 - The token is in `credentials.json` (`{ server, token, runnerId }`, mode 0600)
@@ -238,8 +300,9 @@ it was last seen. After `login` the CLI asks whether to start it
 the command). No jobs run over it yet.
 
 - `runner status` prints whether it runs (PID, uptime), the connection
-  (`connected`, `reconnecting in Ns`, `revoked`), the server and whether
-  autostart is installed. `--json` prints the same as one object.
+  (`connected`, `reconnecting in Ns`, `revoked`, or local mode), the server,
+  whether autostart is installed, and the next and last check of each
+  scheduled project. `--json` prints the same as one object.
 - `runner logs` prints `runner.log`; `--follow` keeps printing.
 - `runner stop` stops it; `logout` stops it first.
 - One runner per machine. A second `start` prints the running PID.
@@ -247,8 +310,10 @@ the command). No jobs run over it yet.
   and exits for good when the machine is revoked on the website.
 - Every 30 days the server rotates the token over the connection; the runner
   rewrites `credentials.json`.
-- `runner.log` (rotated at 5 MB, three files kept), `runner.lock` and
-  `runner.state.json` sit next to `credentials.json`. None holds the token.
+- `runner.log` (rotated at 5 MB, three files kept), `runner.lock`,
+  `runner.state.json`, `schedule.state.json` (each scheduled project's last
+  pass) and `local-roots.jsonl` (the projects `demoflow run` ran in, the last
+  500) sit next to `credentials.json`. None holds the token.
 
 ### Start at login
 
@@ -257,7 +322,8 @@ npx demoflow runner install
 ```
 
 Registers the runner for your user, with no admin rights, and starts it now.
-It needs `demoflow login` first. The unit runs the same `node` and CLI that
+It needs `demoflow login` first, unless a watched project has a `schedule`
+(local mode, see [Scheduled checks](#scheduled-checks)). The unit runs the same `node` and CLI that
 ran `install`, by absolute path; if you move or upgrade the CLI, run
 `install` again. `runner uninstall` removes it; a running runner keeps
 running until `runner stop`.
@@ -271,6 +337,36 @@ running until `runner stop`.
 A crash is restarted (systemd, launchd). A runner stopped on purpose, or
 revoked on the website, exits cleanly and stays down. Windows does not
 restart a crash; the next logon starts it again. Neither file holds the token.
+
+### Folders the website may name
+
+From the website you can add a project by naming a folder on this machine.
+The runner then reads that folder (whether it has `demoflow.config.json`,
+its scenarios' ids and names, the GitHub `origin` of `.git/config`), can
+create the `demoflow init` files in it, and can register it so the website
+may start runs there. It never sends a file's contents or a config value.
+
+A folder qualifies only inside an allowed root. By default the only root is
+your home directory.
+
+```sh
+npx demoflow runner allow ~/code      # the first allow replaces the home directory
+npx demoflow runner disallow ~/code   # removing the last root allows nothing
+npx demoflow runner roots             # the roots in force; --json for a script
+```
+
+- The roots are in `allowed-roots.json` (`{ "roots": [...] }`, at most 32,
+  mode 0600) next to `credentials.json`. A file that does not parse refuses
+  every folder until you fix or delete it; `roots` says so.
+- The folder must exist, be a directory, and be reached without a link that
+  leads out of its root. No folder below the root may start with `.`, so
+  `~/.ssh` or `~/.config` are never offered.
+- On Windows a drive path is required (`C:\…`); network (`\\server\…`) and
+  device (`\\?\…`) paths are refused. Windows and macOS compare paths without
+  case.
+- The folders registered from the website are kept in
+  `website-projects.jsonl` next to `credentials.json` (the last 1,000). A
+  folder whose root you disallow stops being runnable from the website.
 
 ## Runs on the website
 
@@ -289,11 +385,40 @@ fragments of URLs are removed, the project path becomes `<project>`, the home
 directory becomes `~`, and the text is cut to 1,000 characters. It can still
 contain text from the page under test or other paths.
 
-Videos, frames and step values never leave the machine.
+Videos, frames and step values never leave the machine, unless you share a
+render (below).
 
 The report waits at most two seconds and fails silently; the run's output and
 exit code are never affected. It is off without `demoflow login`, under `CI`,
 and with `DEMOFLOW_NO_REPORT=1`.
+
+## Share a render
+
+```sh
+npx demoflow share <runId>
+```
+
+Makes a link to one render of a run that this machine reported, so anyone with
+the link can watch it without an account. The runner uploads the file, so it
+must be running (`demoflow runner start`). The command prints the share page's
+link and, without a password, the file's own link, then exits 0 once the
+upload is done.
+
+- `--format <format>` picks the render (default: the run's first one).
+- `--expires <days>`: 7, 30 (default) or 90 days.
+- `--password` asks for a password twice on the terminal, without echo;
+  without a terminal it reads `DEMOFLOW_SHARE_PASSWORD`. It is never a flag
+  value, so it never lands in your shell history. A protected share has no file
+  link (it would skip the password), so only the page link is printed.
+- `--json` prints the share as one object on stdout.
+- A render already shared keeps its link; the command prints it. Revoke it on
+  the website to share the render again.
+- Only that render leaves the machine, with its poster frame, the chapters
+  (the scene cards) and the scenario's `description`.
+- It exits 2 when the share cannot be made (not logged in, a run this
+  machine did not report, no such render, the runner offline or too old, the
+  file over the size limit, the quota full), 1 when the upload fails or is
+  still going after 10 minutes, and 3 when the server cannot be reached.
 
 ## With Claude Code
 
@@ -302,7 +427,18 @@ claude mcp add demoflow -- npx demoflow mcp
 ```
 
 The server offers `generate_demo`, `get_task`, `cancel_task`,
-`validate_scenario`, `list_demos` and `check_project`.
+`validate_scenario`, `list_demos`, `check_project` and `share_demo`.
+
+`share_demo` shares a render of a reported run, like `demoflow share` without
+a password. It is refused (`share-not-allowed`) unless the run's project allows
+it in `demoflow.config.json`, which you commit:
+
+```json
+{ "share": { "allowMcp": true } }
+```
+
+It waits up to 50 seconds for the upload; when the answer is still
+`uploading`, call it again later for the same link.
 
 ## Updates
 

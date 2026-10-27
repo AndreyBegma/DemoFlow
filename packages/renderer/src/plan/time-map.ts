@@ -226,5 +226,6 @@ function lerp(
   b0: number,
   b1: number,
 ): number {
-  return a1 === a0 ? b0 : b0 + ((value - a0) / (a1 - a0)) * (b1 - b0);
+  // Multiplied first: whole milliseconds on a 1:1 segment stay whole.
+  return a1 === a0 ? b0 : b0 + ((value - a0) * (b1 - b0)) / (a1 - a0);
 }

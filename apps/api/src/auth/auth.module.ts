@@ -29,6 +29,6 @@ import { VerifiedGuard } from './verified.guard';
     GithubAuthService,
     { provide: GithubClient, useClass: HttpGithubClient },
   ],
-  exports: [SessionService, SessionGuard, VerifiedGuard],
+  exports: [SessionService, SessionGuard, VerifiedGuard, PasswordHasher],
 })
 export class AuthModule {}

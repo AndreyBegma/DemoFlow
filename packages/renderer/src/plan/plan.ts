@@ -3,8 +3,13 @@ import path from 'node:path';
 import {
   type Annotation,
   type Box,
+  checkRunEdits,
   FrameConfigSchema,
+  formatPath,
   type RenderFormat,
+  RUN_EDITS_FILE,
+  type RunEdits,
+  RunEditsSchema,
   type RunResult,
   RunResultSchema,
   SquareConfigSchema,
@@ -37,6 +42,7 @@ import type {
   FailureSpec,
   FollowKey,
   FrameSpec,
+  Highlight,
   Interval,
   KeyBadge,
   OutputFile,
@@ -51,6 +57,8 @@ import type {
 export const PLAN_INPUTS = {
   timeline: 'timeline.json',
   result: 'result.json',
+  /** Optional: a run without it renders as recorded (ADR-0020 §1). */
+  edits: RUN_EDITS_FILE,
 } as const;
 
 /** The Playwright video leads the engine clock by ~100 ms (#3, measured −90…−123 ms). */
@@ -60,6 +68,8 @@ export const DEFAULTS = {
   idleThresholdMs: 1_000,
   idleCompressToMs: 400,
   output: { width: 1920, height: 1080, fps: 30 },
+  /** `render.endHoldMs`'s default (spec 365). */
+  endHoldMs: 2_500,
   /** What `zoom: true` means on a source with at least two pixels per CSS pixel (ADR-0012). */
   zoom: 1.35,
   /** Zoom on a 1× source: past the source pixels already, so kept gentle (spec 4, Risks). */
@@ -87,8 +97,8 @@ const TIMING = {
   maskLeadMs: 200,
   /** Masks end this late, for the same reason: an early end leaks, a late one is safe (#48). */
   maskTrailMs: 200,
-  /** A successful run keeps this much video after its last event. */
-  tailMs: 1_000,
+  /** An asserted element's outline fades in over this long (spec 365). */
+  highlightFadeMs: 200,
   /** A target box fills at most this share of the zoomed view. */
   targetFill: 0.9,
 } as const;
@@ -104,6 +114,12 @@ const ACTIVE: ReadonlySet<StepAction> = new Set([
   'scroll',
 ]);
 
+/** Steps whose `zoom` stays on the element through the hold, outlined (spec 365, Decision 5). */
+const ASSERTIONS: ReadonlySet<StepAction> = new Set([
+  'assertVisible',
+  'assertText',
+]);
+
 export interface PlanInput {
   timeline: Timeline;
   result: RunResult;
@@ -111,12 +127,16 @@ export interface PlanInput {
   source: VideoProbe;
   /** The source time of the first frame after `timeline.syncMark`, when it was found. */
   syncClearMs?: number;
+  /** The run's `edits.json`, already checked against the timeline (spec 353). */
+  edits?: RunEdits;
 }
 
 /**
  * Reads a run directory and plans its video: `timeline.json`, `result.json`,
- * one FFmpeg pass over the source (size, frame rate, frozen stretches) and,
- * when the timeline has a sync mark, one over its start to find the mark.
+ * `edits.json` when there is one, one FFmpeg pass over the source (size,
+ * frame rate, frozen stretches) and, when the timeline has a sync mark, one
+ * over its start to find the mark. Edits that fail their schema or do not fit
+ * the timeline fail the plan: a render that drops them would look like a bug.
  */
 export async function buildRenderPlan(
   runDir: string,
@@ -127,6 +147,11 @@ export async function buildRenderPlan(
   );
   const result = RunResultSchema.parse(
     await readJson(path.join(runDir, PLAN_INPUTS.result)),
+  );
+  const edits = await readEdits(
+    path.join(runDir, PLAN_INPUTS.edits),
+    timeline,
+    options.endHoldMs ?? DEFAULTS.endHoldMs,
   );
   const videoFile = path.join(runDir, timeline.videoFile);
   const source = await probeVideo(videoFile, {
@@ -144,9 +169,50 @@ export async function buildRenderPlan(
       result,
       source,
       ...(syncClearMs === undefined ? {} : { syncClearMs }),
+      ...(edits === undefined ? {} : { edits }),
     },
     options,
   );
+}
+
+/** The run's edits, or `undefined` when it has no `edits.json`. */
+async function readEdits(
+  file: string,
+  timeline: Timeline,
+  tailMs: number,
+): Promise<RunEdits | undefined> {
+  let text: string;
+  try {
+    text = await readFile(file, 'utf8');
+  } catch (error) {
+    if (isNotFound(error)) return undefined;
+    throw error;
+  }
+  const name = PLAN_INPUTS.edits;
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${name} is not JSON: ${(error as Error).message}`);
+  }
+  const parsed = RunEditsSchema.safeParse(json);
+  if (!parsed.success) {
+    const [issue] = parsed.error.issues;
+    throw new Error(
+      `${name} is invalid at ${formatPath(issue.path) || '(root)'}: ${issue.message}`,
+    );
+  }
+  const [issue] = checkRunEdits(parsed.data, timeline, { tailMs });
+  if (issue !== undefined) {
+    throw new Error(
+      `${name} does not fit the run at ${issue.path}: ${issue.message}`,
+    );
+  }
+  return parsed.data;
+}
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof Error && Reflect.get(error, 'code') === 'ENOENT';
 }
 
 async function readJson(file: string): Promise<unknown> {
@@ -158,7 +224,7 @@ export function planRender(
   input: PlanInput,
   options: RenderPlanOptions = {},
 ): RenderPlan {
-  const { timeline, result, source } = input;
+  const { timeline, result, source, edits } = input;
   // Measured on the sync mark when it was found (#19); otherwise the defaults.
   const measuredMs =
     timeline.syncMark === undefined
@@ -186,15 +252,20 @@ export function planRender(
     fps: options.output?.fps ?? DEFAULTS.output.fps,
   };
   const viewport = timeline.viewport;
-  const frameConfig = FrameConfigSchema.parse(options.frame ?? {});
+  // Edited style: the background replaces the config's, the window's fields
+  // replace the config's one by one (spec 353, Decision 5).
+  const frameConfig = FrameConfigSchema.parse({
+    ...options.frame,
+    ...edits?.frame,
+  });
+  const background = edits?.background ??
+    options.background ?? { preset: 'ocean' };
   // The radius and margin are given at 1080p and follow the output height.
   const frame: FrameSpec | undefined = frameConfig.enabled
     ? {
         radius: (frameConfig.radius * output.height) / 1080,
         shadow: frameConfig.shadow,
-        background: resolveBackground(
-          options.background ?? { preset: 'ocean' },
-        ),
+        background: resolveBackground(background),
       }
     : undefined;
   const fit =
@@ -207,30 +278,41 @@ export function planRender(
     options.zoom ??
     (sourceScale >= 2 ? DEFAULTS.zoom : DEFAULTS.zoomOnLowResSource);
 
-  const events = timeline.events;
+  const events = withZoomEdits(timeline.events, edits?.zoom ?? []);
   const failure = failedStage(result);
   const toSource = (timelineMs: number): number =>
     clamp(timelineMs + offsetMs, 0, source.durationMs);
 
-  // The video ends at the failure, or a little after the last event.
+  // The video ends at the failure, or `endHoldMs` after the last event and
+  // its hold (spec 365). A source that ends sooner, as one recorded before
+  // the end hold did, ends it sooner: `toSource` clamps (Decision 6).
   const failedEvent =
     failure?.stepIndex === undefined
       ? undefined
       : events.find((event) => event.stepIndex === failure.stepIndex);
   const lastEvent = events.at(-1);
+  const endHoldMs =
+    failure === undefined ? (options.endHoldMs ?? DEFAULTS.endHoldMs) : 0;
+  // Timeline time each event stays on screen until: its hold, and the end
+  // hold after the last.
+  const shownUntil = (event: TimelineEvent): number =>
+    heldUntil(event) + (event === lastEvent ? endHoldMs : 0);
   const sourceEndMs =
     failure !== undefined
       ? toSource(failedEvent?.endMs ?? lastEvent?.endMs ?? source.durationMs)
       : lastEvent === undefined
         ? source.durationMs
-        : toSource(lastEvent.endMs + TIMING.tailMs);
+        : toSource(shownUntil(lastEvent));
 
-  const active: Interval[] = events
-    .filter((event) => ACTIVE.has(event.action))
-    .map((event) => ({
-      startMs: toSource(event.startMs),
-      endMs: toSource(event.endMs),
-    }));
+  // A hold is never idle: a page frozen on its result plays at 1:1 (Decision 3).
+  const active: Interval[] = events.flatMap((event) => [
+    ...(ACTIVE.has(event.action)
+      ? [{ startMs: toSource(event.startMs), endMs: toSource(event.endMs) }]
+      : []),
+    ...(shownUntil(event) > event.endMs
+      ? [{ startMs: toSource(event.endMs), endMs: toSource(shownUntil(event)) }]
+      : []),
+  ]);
   const idle = idleStretches(source.freezes, active, thresholdMs, sourceEndMs);
   // Page time: the map before cards. Overlays are planned in it, then moved
   // past the cards, so no lead or trail is ever measured across a card.
@@ -250,6 +332,7 @@ export function planRender(
       ? {}
       : { description: options.scenario.description }),
     failed: failure !== undefined,
+    ...(edits?.cards === undefined ? {} : { edits: edits.cards }),
   });
   const masks = maskSpans(events, out, viewport, pageEndMs, {
     leadMs: maskLeadMs,
@@ -259,6 +342,7 @@ export function planRender(
     transitions: options.transitions?.enabled === true,
     sourceFrameMs: 1000 / source.fps,
   });
+  const cardBackground = frame?.background ?? resolveBackground(background);
   const verticalConfig = VerticalConfigSchema.parse(options.vertical ?? {});
   const squareConfig = SquareConfigSchema.parse(options.square ?? {});
   const { follow, squareFollow, ...overlays } = shiftOverlays(
@@ -266,7 +350,14 @@ export function planRender(
       // A phone has no mouse pointer: the click ring is the tap (spec 307).
       cursor: timeline.device === 'phone' ? [] : cursorMoves(events, out),
       clicks: clickRings(events, out),
-      camera: cameraKeyframes(events, out, viewport, defaultZoom),
+      highlights: highlights(
+        events,
+        out,
+        shownUntil,
+        pageEndMs,
+        cardBackground.to,
+      ),
+      camera: cameraKeyframes(events, out, viewport, defaultZoom, shownUntil),
       follow: followKeys(
         events,
         out,
@@ -282,7 +373,10 @@ export function planRender(
         squareConfig,
       ),
       masks,
-      captions: captions(events, timeline.annotations ?? [], out, pageEndMs),
+      captions:
+        edits?.captions === undefined
+          ? captions(events, timeline.annotations ?? [], out, pageEndMs)
+          : editedCaptions(edits.captions, out, pageEndMs),
       keys: keyBadges(events, out, pageEndMs, viewport),
     },
     cards,
@@ -359,15 +453,26 @@ export function planRender(
     durationMs: videoEndMs + (failureSpec?.endCard.durationMs ?? 0),
     timeMap,
     cards: cards.map(({ atMs: _, ...card }) => card),
-    cardBackground:
-      frame?.background ??
-      resolveBackground(options.background ?? { preset: 'ocean' }),
+    cardBackground,
     ...overlays,
     ...(transitions === undefined ? {} : { transitions }),
     ...(failureSpec === undefined ? {} : { failure: failureSpec }),
     ...(vertical === undefined ? {} : { vertical }),
     ...(square === undefined ? {} : { square }),
   };
+}
+
+/** Each event's `zoom` replaced by its edit (spec 353, Decision 3). */
+function withZoomEdits(
+  events: readonly TimelineEvent[],
+  zoom: NonNullable<RunEdits['zoom']>,
+): readonly TimelineEvent[] {
+  if (zoom.length === 0) return events;
+  const byStep = new Map(zoom.map((entry) => [entry.stepIndex, entry.zoom]));
+  return events.map((event) => {
+    const edited = byStep.get(event.stepIndex);
+    return edited === undefined ? event : { ...event, zoom: edited };
+  });
 }
 
 /** The vertical output's size and caption type (spec 176, Decisions 1 and 4). */
@@ -660,6 +765,54 @@ function clickRings(
   );
 }
 
+/** The end of an event's hold, or of the event itself without one. */
+function heldUntil(event: TimelineEvent): number {
+  return event.endMs + (event.holdMs ?? 0);
+}
+
+/** Whether the step asked for a zoom (ADR-0012): `true`, or a strength above 1. */
+function asksForZoom(event: TimelineEvent): boolean {
+  return (
+    event.zoom === true || (typeof event.zoom === 'number' && event.zoom > 1)
+  );
+}
+
+/**
+ * An outline around the element of every assertion with `zoom`, from the end
+ * of the assertion for as long as its hold keeps it on screen (spec 365,
+ * Decision 5).
+ */
+function highlights(
+  events: readonly TimelineEvent[],
+  out: (timelineMs: number) => number,
+  shownUntil: (event: TimelineEvent) => number,
+  videoEndMs: number,
+  colour: string,
+): Highlight[] {
+  return events.flatMap((event) => {
+    if (
+      !ASSERTIONS.has(event.action) ||
+      event.target === undefined ||
+      !asksForZoom(event)
+    ) {
+      return [];
+    }
+    const startMs = out(event.endMs);
+    const endMs = Math.min(videoEndMs, out(shownUntil(event)));
+    return endMs > startMs
+      ? [
+          {
+            startMs,
+            endMs,
+            box: event.target.box,
+            colour,
+            fadeMs: TIMING.highlightFadeMs,
+          },
+        ]
+      : [];
+  });
+}
+
 interface Shot {
   /** The action itself: the press of a click, the whole of a fill or select. */
   startMs: number;
@@ -680,6 +833,7 @@ function cameraKeyframes(
   out: (timelineMs: number) => number,
   viewport: { width: number; height: number },
   defaultZoom: number,
+  shownUntil: (event: TimelineEvent) => number,
 ): CameraKeyframe[] {
   // `null`: a targeted step that does not zoom.
   const shots: (Shot | null)[] = events.flatMap((event) => {
@@ -700,11 +854,17 @@ function cameraKeyframes(
       ),
     );
     if (zoom === 1) return [null];
-    // A click and a press zoom for the moment of the press.
+    // A click and a press zoom for the moment of the press; an assertion
+    // stays on its element through its hold (spec 365, Decision 5).
     const action =
       event.action === 'click' || event.action === 'press'
         ? { startMs: out(pressMs(event)), endMs: out(pressMs(event)) }
-        : { startMs: out(event.startMs), endMs: out(event.endMs) };
+        : {
+            startMs: out(event.startMs),
+            endMs: out(
+              ASSERTIONS.has(event.action) ? shownUntil(event) : event.endMs,
+            ),
+          };
     return [{ ...action, centre: centreOf(box), zoom }];
   });
 
@@ -858,4 +1018,21 @@ function captions(
     }
   }
   return list.filter((caption) => caption.endMs > caption.startMs);
+}
+
+/**
+ * The edited caption list in place of every step and page caption (spec 353,
+ * Decision 2): each at its own times, kept within the page. The list is
+ * ordered and does not overlap, so no caption cuts another.
+ */
+function editedCaptions(
+  list: NonNullable<RunEdits['captions']>,
+  out: (timelineMs: number) => number,
+  videoEndMs: number,
+): Caption[] {
+  return list.flatMap((caption) => {
+    const startMs = out(caption.startMs);
+    const endMs = Math.min(videoEndMs, out(caption.endMs));
+    return endMs > startMs ? [{ startMs, endMs, text: caption.text }] : [];
+  });
 }

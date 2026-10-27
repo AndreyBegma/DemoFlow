@@ -216,7 +216,7 @@ afterAll(async () => {
 });
 
 describe('demoflow mcp', () => {
-  it('lists its six tools with input schemas', async () => {
+  it('lists its seven tools with input schemas', async () => {
     const { tools } = await server.client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       'cancel_task',
@@ -224,6 +224,7 @@ describe('demoflow mcp', () => {
       'generate_demo',
       'get_task',
       'list_demos',
+      'share_demo',
       'validate_scenario',
     ]);
     for (const tool of tools) expect(tool.inputSchema.type).toBe('object');
@@ -243,6 +244,12 @@ describe('demoflow mcp', () => {
     expect(properties.scenario?.properties).toHaveProperty('steps');
     const getTask = tools.find((tool) => tool.name === 'get_task');
     expect(getTask?.inputSchema.required).toEqual(['taskId']);
+    const share = tools.find((tool) => tool.name === 'share_demo');
+    expect(Object.keys(share?.inputSchema.properties ?? {}).sort()).toEqual([
+      'expiresInDays',
+      'format',
+      'runId',
+    ]);
   });
 
   let finished: Record<string, unknown>;

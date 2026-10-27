@@ -94,6 +94,16 @@ export const RENDER_FORMATS = [
 ] as const;
 export type RenderFormat = (typeof RENDER_FORMATS)[number];
 
+/** A scene card of a render: its title and where it starts, in output ms (spec 349). */
+export const ChapterSchema = z.strictObject({
+  title: NonEmptyStringSchema.max(200),
+  atMs: z.number().int().nonnegative(),
+});
+export type Chapter = z.infer<typeof ChapterSchema>;
+
+/** A render carries at most this many chapters (spec 349, Decision 1). */
+export const MAX_CHAPTERS = 100;
+
 export const RenderOutputSchema = z.strictObject({
   renderer: NonEmptyStringSchema,
   // Runs before spec 133 rendered only MP4 and wrote no `format`.
@@ -105,6 +115,8 @@ export const RenderOutputSchema = z.strictObject({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   fps: z.number().positive(),
+  // One per scene card, in output ms; renders before spec 349 have none.
+  chapters: z.array(ChapterSchema).max(MAX_CHAPTERS).optional(),
 });
 /** One rendered file; for a GIF, its own size and frame rate. */
 export type RenderOutput = z.infer<typeof RenderOutputSchema>;

@@ -6,6 +6,7 @@ import {
   parsePort,
   type RenderFormat,
   type RunResult,
+  type Scenario,
 } from '@demoflow/core';
 import {
   createCaptureObserver,
@@ -28,12 +29,18 @@ import {
   loadGlobalConfig,
   PROJECT_CONFIG_FILE,
   projectFragments,
+  projectRootAbove,
   projectRootAt,
   resolveHome,
   runDir as runDirFor,
   scenarioId,
 } from '../config/index.ts';
+import { nodeLaunchFs } from '../runner/launch/checks.ts';
+import { LIST_MAX_SCENARIOS, listScenarios } from '../runner/launch/list.ts';
+import { runnerPaths } from '../runner/paths.ts';
+import { recordLocalRoot } from '../runner/schedule/local-roots.ts';
 import {
+  canonicalRoot,
   defaultReportDeps,
   type ReportDeps,
   reportRun,
@@ -42,8 +49,17 @@ import { type BrowserDeps, ensureChromium } from './browser.ts';
 import { CommandError, EXIT_STAGE_FAILED } from './errors.ts';
 import { exitCodeFor } from './exit.ts';
 import type { Io } from './io.ts';
-import { formatJson, formatSummary } from './output.ts';
-import { emitProgress, progressObserver } from './progress.ts';
+import {
+  formatCheckJson,
+  formatCheckLine,
+  formatJson,
+  formatSummary,
+} from './output.ts';
+import {
+  emitCheckProgress,
+  emitProgress,
+  progressObserver,
+} from './progress.ts';
 import { renderPlanOptions } from './render.ts';
 import { assertSafeRunId, generateRunId } from './run-id.ts';
 import { loadScenario } from './scenario-file.ts';
@@ -66,6 +82,10 @@ export interface RunFlags {
   project?: string;
   /** Hidden: one JSON progress line on stdout per phase change and step (spec 302). */
   progress?: boolean;
+  /** `--check`: run and verify, record and render nothing (spec 360). */
+  check?: boolean;
+  /** `--exclude`: a scenario id a check pass leaves out, repeatable (spec 360). */
+  exclude?: string[];
 }
 
 export interface RunDeps {
@@ -76,29 +96,59 @@ export interface RunDeps {
   browser?: BrowserDeps;
   /** The report to the server after the run; the real one by default. */
   report?: ReportDeps;
+  /** Starts `devCommand`; the real start by default. */
+  startApp?: typeof startApp;
 }
 
 export function defaultRunDeps(): RunDeps {
   return { host: currentHost(), cwd: process.cwd(), runId: generateRunId };
 }
 
+/** A scenario about to run, and the run it became. */
+interface Planned {
+  file: string;
+  id: string;
+  scenario: Scenario;
+}
+
+interface Finished {
+  result: RunResult;
+  runDir: string;
+  /** A render crash before the stage was recorded (an ordinary run only). */
+  renderError?: unknown;
+}
+
 /**
  * `demoflow run <scenario>`: validate, load the config, resolve the home, run
  * the engine, render, print. Input errors are thrown (exit 2); a finished run
  * returns its exit code.
+ *
+ * With `--check` (spec 360) nothing is recorded or rendered, and without a
+ * scenario every scenario of the project runs, one after another, against one
+ * start of the app: a check pass.
  */
 export async function runCommand(
-  file: string,
+  file: string | undefined,
   flags: RunFlags,
   io: Io,
   deps: RunDeps = defaultRunDeps(),
 ): Promise<number> {
   const { host } = deps;
+  const check = flags.check === true;
+  if (check) assertCheckFlags(file, flags);
+  else if (file === undefined) {
+    throw new CommandError(
+      'missing-scenario',
+      'a scenario is required; only --check runs every scenario of the project',
+    );
+  }
   const port = flags.port === undefined ? undefined : portFlag(flags.port);
   const root =
-    flags.project === undefined
-      ? findProjectRoot(file)
-      : projectRootAt(path.resolve(deps.cwd, flags.project));
+    flags.project !== undefined
+      ? projectRootAt(path.resolve(deps.cwd, flags.project))
+      : file !== undefined
+        ? findProjectRoot(file)
+        : projectRootAbove(deps.cwd);
   const app = loadAppConfig(root, {
     port,
     baseUrl: flags.baseUrl,
@@ -118,32 +168,39 @@ export async function runCommand(
     projectConfig: config,
     globalConfig: loadGlobalConfig(host),
   });
-  const { scenario, warnings } = loadScenario(
-    file,
-    projectFragments(root, config.fragmentsDir),
-  );
-  for (const warning of warnings) {
-    io.stderr(`warning ${warning.path}: ${warning.message}\n`);
-  }
+  const files =
+    file !== undefined
+      ? [file]
+      : await passFiles(root, config.fragmentsDir, flags.exclude ?? [], io);
+  const fragments = projectFragments(root, config.fragmentsDir);
+  const planned: Planned[] = files.map((scenarioFile) => {
+    const { scenario, warnings } = loadScenario(scenarioFile, fragments);
+    for (const warning of warnings) {
+      io.stderr(`warning ${warning.path}: ${warning.message}\n`);
+    }
+    return { file: scenarioFile, id: scenarioId(root, scenarioFile), scenario };
+  });
 
-  const runId = flags.runId ?? deps.runId();
-  if (flags.runId !== undefined) assertSafeRunId(flags.runId);
-  const runDir = runDirFor(home, runId, host.platform);
-  if (flags.runId !== undefined && existsSync(runDir)) {
-    throw new CommandError(
-      'invalid-run-id',
-      `run directory already exists: ${runDir}`,
-    );
+  if (flags.runId !== undefined) {
+    assertSafeRunId(flags.runId);
+    const runDir = runDirFor(home, flags.runId, host.platform);
+    if (existsSync(runDir)) {
+      throw new CommandError(
+        'invalid-run-id',
+        `run directory already exists: ${runDir}`,
+      );
+    }
   }
   const fresh = flags.freshApp === true;
   if (fresh) await assertNoAppRunning(config.devCommand);
   // After every input check: a bad scenario never costs a browser download
   // or an app start. The start overlaps with the download; the app's output
-  // is kept and shown only if the start fails.
+  // is kept and shown only if the start fails. A check pass starts the app
+  // once for all its scenarios (spec 360, Decision 3).
   const progress = flags.progress === true;
   if (progress) emitProgress(io, { phase: 'app' });
   const tail = outputTail();
-  const starting: Promise<Started> = startApp(config, root, {
+  const starting: Promise<Started> = (deps.startApp ?? startApp)(config, root, {
     log: (text) => tail.push(text),
     env: app.port === undefined ? undefined : { PORT: String(app.port) },
     fresh,
@@ -167,43 +224,79 @@ export async function runCommand(
       return EXIT_STAGE_FAILED;
     }
     const started = await starting;
-    if ('error' in started) {
-      if (!(started.error instanceof AppStartError)) throw started.error;
-      return await reportAppNotReady({
-        error: started.error,
-        output: tail.lines(),
-        scenarioName: scenario.name,
-        scenarioFile: scenarioId(root, file),
-        runId,
-        runDir,
-        json: flags.json === true,
-        io,
-      });
+    if ('error' in started && !(started.error instanceof AppStartError)) {
+      throw started.error;
     }
-    return await execute();
+    const output = tail.lines();
+    if ('error' in started && output.length > 0) {
+      io.stderr(`${output.join('\n')}\n`);
+    }
+    const finished: Finished[] = [];
+    for (const [index, run] of planned.entries()) {
+      if (check && progress) {
+        emitCheckProgress(io, { run: index + 1, runs: planned.length });
+      }
+      const runId = flags.runId ?? deps.runId();
+      const runDir = runDirFor(home, runId, host.platform);
+      const done: Finished =
+        'error' in started
+          ? {
+              result: await writeAppNotReady({
+                error: started.error as AppStartError,
+                output,
+                scenarioName: run.scenario.name,
+                scenarioFile: run.id,
+                runId,
+                runDir,
+              }),
+              runDir,
+            }
+          : await execute(run, runId, runDir);
+      // Spec 361, Decision 4: the daemon watches this root's schedule.
+      if (index === 0) await recordRoot(root, host);
+      // A run whose app never answered was never reported before spec 360; a
+      // check reports it, so the stale state sees a readiness failure too.
+      if (!('error' in started) || check) {
+        await reportRun(
+          { root, runDir, result: done.result, check },
+          deps.report ?? defaultReportDeps(host),
+        );
+      }
+      if (check && flags.json !== true) {
+        io.stdout(formatCheckLine(done.result));
+      }
+      finished.push(done);
+    }
+    return check ? concludeCheck(finished) : concludeRun(finished);
   } finally {
     process.off('SIGINT', onInterrupt);
     process.off('SIGTERM', onTerminate);
     await stopApp();
   }
 
-  async function execute(): Promise<number> {
-    io.stderr(`Running ${scenarioId(root, file)} (${runId})\n`);
+  async function execute(
+    run: Planned,
+    runId: string,
+    runDir: string,
+  ): Promise<Finished> {
+    io.stderr(`${check ? 'Checking' : 'Running'} ${run.id} (${runId})\n`);
     // Secrets come from the process environment only (spec 5).
-    await runScenario(scenario, {
+    await runScenario(run.scenario, {
       runDir,
       baseUrl: flags.baseUrl ?? config.baseUrl,
       allowedOrigins: config.allowedOrigins,
       env: host.env,
       headless: flags.headed !== true,
+      endHoldMs: check ? 0 : config.render.endHoldMs,
+      record: !check,
       observers: [
-        createCaptureObserver({ scenarioId: scenarioId(root, file), runId }),
+        createCaptureObserver({ scenarioId: run.id, runId }),
         ...(progress ? [progressObserver(io)] : []),
       ],
     });
 
     // A recorded run is rendered whatever the verdict: the video of a failed
-    // verification is the evidence (ADR-0004 §4).
+    // verification is the evidence (ADR-0004 §4). A check recorded nothing.
     let renderError: unknown;
     if (existsSync(path.join(runDir, RUN_FILES.video))) {
       io.stderr('Rendering\n');
@@ -211,7 +304,7 @@ export async function runCommand(
       try {
         const plan = await buildRenderPlan(
           runDir,
-          renderPlanOptions(config, flags.format, scenario.description),
+          renderPlanOptions(config, flags.format, run.scenario.description),
         );
         await ffmpegRenderer.render(runDir, plan);
       } catch (error) {
@@ -227,18 +320,114 @@ export async function runCommand(
           : String(renderError);
       io.stderr(`rendering failed: ${reason}\n`);
     }
+    return { result, runDir, renderError };
+  }
+
+  /** An ordinary run: its result as before spec 360, and its exit code. */
+  function concludeRun([done]: Finished[]): number {
+    if (done === undefined) return EXIT_STAGE_FAILED;
+    const { result, runDir, renderError } = done;
     io.stdout(
       flags.json === true
         ? formatJson(result, runDir)
         : formatSummary(result, runDir),
     );
-    await reportRun(
-      { root, runDir, result },
-      deps.report ?? defaultReportDeps(host),
-    );
     const code = exitCodeFor(result);
     // A render crash before the stage was recorded must not read as success.
     return code === 0 && renderError !== undefined ? EXIT_STAGE_FAILED : code;
+  }
+
+  /** Spec 360, Decision 4: every run, then `0` when all passed, else `1`. */
+  function concludeCheck(finished: Finished[]): number {
+    const failed = finished.filter(
+      ({ result }) => result.status === 'failed',
+    ).length;
+    io.stdout(
+      flags.json === true
+        ? formatCheckJson(finished)
+        : `${finished.length - failed} passed, ${failed} failed\n`,
+    );
+    return failed === 0 ? 0 : EXIT_CHECK_FAILED;
+  }
+}
+
+/** A check run or pass that failed: any run of it failed, whatever the stage. */
+export const EXIT_CHECK_FAILED = 1;
+
+/**
+ * Spec 360, Decision 2: what a check refuses before anything runs. A check
+ * renders nothing and nobody watches it.
+ */
+function assertCheckFlags(file: string | undefined, flags: RunFlags): void {
+  if (flags.format !== undefined) {
+    throw new CommandError(
+      'check-flag',
+      '--check renders nothing: --format cannot be used with it',
+    );
+  }
+  if (flags.headed === true) {
+    throw new CommandError(
+      'check-flag',
+      '--check runs headless: --headed cannot be used with it',
+    );
+  }
+  if (file === undefined && flags.runId !== undefined) {
+    throw new CommandError(
+      'check-flag',
+      '--run-id names one run: give a scenario, or leave --run-id out of a check pass',
+    );
+  }
+  if (file !== undefined && (flags.exclude ?? []).length > 0) {
+    throw new CommandError(
+      'check-flag',
+      '--exclude applies to a check pass: leave out the scenario, or --exclude',
+    );
+  }
+}
+
+/**
+ * The scenarios of a check pass: the daemon's own listing (spec 247), sorted
+ * by id, minus `--exclude`. An excluded id that is no scenario is ignored: a
+ * deleted scenario must not break a schedule. An id may leave out the
+ * leading `demoflow/`.
+ */
+async function passFiles(
+  root: string,
+  fragmentsDir: string | undefined,
+  exclude: readonly string[],
+  io: Io,
+): Promise<string[]> {
+  // The listing compares real paths: a Windows 8.3 root would list nothing.
+  const real = await canonicalRoot(root);
+  const listing = await listScenarios(real, nodeLaunchFs, fragmentsDir);
+  const excluded = new Set(
+    exclude.map((id) =>
+      id.startsWith(SCENARIOS_PREFIX) ? id : `${SCENARIOS_PREFIX}${id}`,
+    ),
+  );
+  if (listing.skipped > 0) {
+    io.stderr(
+      `warning: ${listing.skipped} scenario file(s) left out: not valid (run demoflow validate)\n`,
+    );
+  }
+  if (listing.truncated) {
+    io.stderr(
+      `warning: the project has more scenarios than a check pass runs (${LIST_MAX_SCENARIOS})\n`,
+    );
+  }
+  return listing.scenarios
+    .filter((scenario) => !excluded.has(scenario.id))
+    .map((scenario) => path.join(root, ...scenario.id.split('/')));
+}
+
+const SCENARIOS_PREFIX = 'demoflow/';
+
+/** Never throws: a run's outcome does not depend on the local roots file. */
+async function recordRoot(root: string, host: HostEnvironment): Promise<void> {
+  try {
+    recordLocalRoot(runnerPaths(host).localRoots, await canonicalRoot(root));
+  } catch {
+    // A root not recorded waits for the next run.
   }
 }
 
@@ -282,24 +471,21 @@ async function assertNoAppRunning(
 /**
  * The app never answered, so the engine never ran: the CLI writes the run's
  * `result.json` itself — readiness failed with the app's last output, the
- * other stages skipped (spec 5) — and prints it like any finished run.
+ * other stages skipped (spec 5) — and settles it like any finished run.
  */
-async function reportAppNotReady(input: {
+async function writeAppNotReady(input: {
   error: AppStartError;
   output: string[];
   scenarioName: string;
   scenarioFile: string;
   runId: string;
   runDir: string;
-  json: boolean;
-  io: Io;
-}): Promise<number> {
-  const { error, output, runDir, io } = input;
+}): Promise<RunResult> {
+  const { error, output, runDir } = input;
   const message =
     output.length === 0
       ? error.message
       : `${error.message}\nLast output of devCommand:\n${output.join('\n')}`;
-  if (output.length > 0) io.stderr(`${output.join('\n')}\n`);
   const now = new Date().toISOString();
   const skipped = { status: 'skipped' } as const;
   const pending = { status: 'pending' } as const;
@@ -333,9 +519,5 @@ async function reportAppNotReady(input: {
     path.join(runDir, RUN_FILES.result),
     `${JSON.stringify(unsettled, null, 2)}\n`,
   );
-  const result = await settleRun(runDir);
-  io.stdout(
-    input.json ? formatJson(result, runDir) : formatSummary(result, runDir),
-  );
-  return exitCodeFor(result);
+  return settleRun(runDir);
 }

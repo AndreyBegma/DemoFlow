@@ -1,16 +1,20 @@
 import { Banner } from '@andrewbehma/glass-ui/banner';
-import { Card } from '@andrewbehma/glass-ui/card';
 import { KeyValueList } from '@andrewbehma/glass-ui/key-value-list';
+import { PageHeader } from '@andrewbehma/glass-ui/page-header';
 import { notFound } from 'next/navigation';
 import { RunPlayback } from '@/components/player/run-playback';
 import { DeleteRun } from '@/components/projects/delete-run';
+import { formatList } from '@/components/projects/format-choice';
+import { MachinePill } from '@/components/projects/machine-pill';
 import { RunAgain } from '@/components/projects/run-again';
-import { RunBreadcrumbs } from '@/components/projects/run-breadcrumbs';
 import {
-  RunDetails,
-  RunFailureBanner,
+  RunFailure,
+  RunFiles,
+  RunStages,
 } from '@/components/projects/run-details';
 import { RunStatus } from '@/components/projects/run-status';
+import { ShareButton } from '@/components/shares/share-button';
+import { CrumbName } from '@/components/shell/crumb-names';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format-date';
 import { formatDuration } from '@/lib/format-duration';
@@ -27,11 +31,7 @@ export default async function RunPage({
   const detail = await getRunDetail(runId);
   if (detail === 'not_found') notFound();
   if (detail === 'error') {
-    return (
-      <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 p-6">
-        <Banner tone="danger">{t('runPage.pageFailed')}</Banner>
-      </main>
-    );
+    return <Banner tone="danger">{t('runPage.pageFailed')}</Banner>;
   }
   const { run, project, machine } = detail;
   if (project.id !== id) notFound();
@@ -43,102 +43,143 @@ export default async function RunPage({
     machine,
     scenarioPath: run.scenarioPath,
   });
-  return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 p-6">
-      <RunBreadcrumbs
-        projectId={project.id}
-        projectName={project.name}
-        runName={run.scenarioName}
+  const check = run.kind === 'check';
+  const details = (
+    <>
+      <KeyValueList
+        columns={1}
+        dense
+        items={[
+          ...(check
+            ? [
+                {
+                  key: 'kind',
+                  label: t('runPage.kind'),
+                  value: t('runs.kind.check'),
+                },
+              ]
+            : []),
+          {
+            key: 'status',
+            label: t('runPage.metadata.status'),
+            value: <RunStatus status={run.status} />,
+          },
+          {
+            key: 'scenario',
+            label: t('runPage.metadata.scenario'),
+            value: <span className="break-words">{run.scenarioName}</span>,
+          },
+          {
+            key: 'path',
+            label: t('runPage.metadata.path'),
+            value: (
+              <span className="break-all font-mono text-xs">
+                {run.scenarioPath}
+              </span>
+            ),
+          },
+          {
+            key: 'when',
+            label: t('runPage.metadata.when'),
+            value: (
+              <time dateTime={run.startedAt}>
+                {formatDate(run.startedAt)} (
+                {relative ?? t('runPage.metadata.justNow')})
+              </time>
+            ),
+          },
+          {
+            key: 'duration',
+            label: t('runPage.metadata.duration'),
+            value: formatDuration(run.durationMs),
+          },
+          {
+            key: 'failedStep',
+            label: t('runPage.metadata.failedStep'),
+            value:
+              run.failedStep === null
+                ? t('runPage.metadata.noFailedStep')
+                : t('runPage.metadata.step', {
+                    number: run.failedStep + 1,
+                  }),
+          },
+          {
+            key: 'machine',
+            label: t('runPage.metadata.machine'),
+            value: <MachinePill machine={machine} />,
+          },
+          {
+            key: 'formats',
+            label: t('runPage.metadata.formats'),
+            value:
+              run.formats.length > 0
+                ? formatList(run.formats)
+                : t('runPage.metadata.noFormats'),
+          },
+          {
+            key: 'cliVersion',
+            label: t('runPage.metadata.cliVersion'),
+            value: <span className="font-mono text-xs">{run.cliVersion}</span>,
+          },
+        ]}
       />
-      <Card pad="lg">
-        <h1 className="break-words text-2xl font-semibold">
-          {t('runPage.title', { name: run.scenarioName })}
-        </h1>
-        <div className="mt-4">
-          <KeyValueList
-            columns={2}
-            items={[
-              {
-                key: 'scenario',
-                label: t('runPage.metadata.scenario'),
-                value: run.scenarioName,
-              },
-              {
-                key: 'path',
-                label: t('runPage.metadata.path'),
-                value: run.scenarioPath,
-              },
-              {
-                key: 'status',
-                label: t('runPage.metadata.status'),
-                value: <RunStatus status={run.status} />,
-              },
-              {
-                key: 'when',
-                label: t('runPage.metadata.when'),
-                value: (
-                  <time dateTime={run.startedAt}>
-                    {formatDate(run.startedAt)} (
-                    {relative ?? t('runPage.metadata.justNow')})
-                  </time>
-                ),
-              },
-              {
-                key: 'duration',
-                label: t('runPage.metadata.duration'),
-                value: formatDuration(run.durationMs),
-              },
-              {
-                key: 'failedStep',
-                label: t('runPage.metadata.failedStep'),
-                value:
-                  run.failedStep === null
-                    ? t('runPage.metadata.noFailedStep')
-                    : t('runPage.metadata.step', {
-                        number: run.failedStep + 1,
-                      }),
-              },
-              {
-                key: 'machine',
-                label: t('runPage.metadata.machine'),
-                value: machine?.name ?? t('projects.item.machineRemoved'),
-              },
-              {
-                key: 'cliVersion',
-                label: t('runPage.metadata.cliVersion'),
-                value: run.cliVersion,
-              },
-            ]}
+      <RunFailure failure={run.failure} />
+      <RunStages stages={run.stages} />
+    </>
+  );
+  return (
+    <>
+      <CrumbName segment={project.id} name={project.name} />
+      <CrumbName segment={run.id} name={run.scenarioName} />
+      <PageHeader
+        title={
+          <span className="break-words">
+            {t('runPage.title', { name: run.scenarioName })}
+          </span>
+        }
+        description={project.name}
+        actions={
+          <ShareButton
+            run={{
+              id: run.id,
+              formats: run.formats,
+              renders: run.renders,
+              artifactsDeletedAt: run.artifactsDeletedAt,
+            }}
+            machine={machine}
           />
-        </div>
-        <DeleteRun
-          runId={run.id}
-          projectId={project.id}
-          filesRemain={
-            run.formats.length > 0 && run.artifactsDeletedAt === null
-          }
-        />
-      </Card>
-      <RunFailureBanner failure={run.failure} />
-      {machine !== null && againState !== 'hidden' ? (
-        <RunAgain
-          projectId={project.id}
-          scenarioId={run.scenarioPath}
-          scenarioName={run.scenarioName}
-          machineName={machine.name}
-          offline={againState === 'offline'}
-          formats={runAgainFormats(run.formats, machine.runOptions)}
-        />
-      ) : null}
-      <Card pad="lg">
-        <RunPlayback
-          runId={run.id}
-          formats={run.formats}
-          machine={machine}
-          artifactsDeletedAt={run.artifactsDeletedAt}
-        />
-      </Card>
-      <RunDetails stages={run.stages} renders={run.renders} />
-    </main>
+        }
+      />
+      <RunPlayback
+        runId={run.id}
+        formats={run.formats}
+        machine={machine}
+        artifactsDeletedAt={run.artifactsDeletedAt}
+        details={details}
+        check={check}
+        runAgain={
+          machine !== null && againState !== 'hidden' ? (
+            <RunAgain
+              projectId={project.id}
+              scenarioId={run.scenarioPath}
+              scenarioName={run.scenarioName}
+              machineName={machine.name}
+              offline={againState === 'offline'}
+              formats={runAgainFormats(run.formats, machine.runOptions)}
+            />
+          ) : null
+        }
+        deleteRun={
+          <DeleteRun
+            runId={run.id}
+            projectId={project.id}
+            filesRemain={
+              run.formats.length > 0 && run.artifactsDeletedAt === null
+            }
+          />
+        }
+      />
+      <RunFiles renders={run.renders} />
+    </>
   );
 }

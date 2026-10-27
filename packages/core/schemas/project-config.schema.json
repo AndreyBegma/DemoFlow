@@ -99,6 +99,13 @@
           },
           "additionalProperties": false
         },
+        "endHoldMs": {
+          "default": 2500,
+          "description": "How long a successful video keeps the result on screen after the last step: the engine keeps recording and the renderer keeps the frames. 0 ends the video at the last step.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
         "frame": {
           "default": {},
           "type": "object",
@@ -365,6 +372,49 @@
             }
           },
           "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "schedule": {
+      "type": "object",
+      "properties": {
+        "cadence": {
+          "type": "string",
+          "enum": ["daily", "weekdays", "weekly"],
+          "description": "daily, weekdays (Monday to Friday) or weekly (on weekday)."
+        },
+        "weekday": {
+          "description": "The day of a weekly schedule; only with cadence weekly.",
+          "type": "string",
+          "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+        },
+        "at": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+          "description": "HH:MM, 24-hour, in the time zone of the machine the runner runs on."
+        },
+        "exclude": {
+          "description": "Scenario ids, relative to the project root, the scheduled pass leaves out.",
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        }
+      },
+      "required": ["cadence", "at"],
+      "additionalProperties": false
+    },
+    "share": {
+      "type": "object",
+      "properties": {
+        "allowMcp": {
+          "default": false,
+          "description": "Let the MCP server (share_demo) publish the video of a run as a public link without asking anyone. Off by default; anyone with the link can watch until it expires or is revoked.",
+          "type": "boolean"
         }
       },
       "additionalProperties": false

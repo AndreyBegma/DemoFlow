@@ -17,6 +17,8 @@ import type {
   RelaySender,
   VideoRelayPort,
 } from '../../src/runner/relay/index.ts';
+import type { ProjectsPort } from '../../src/runner/roots/index.ts';
+import type { SharePort } from '../../src/runner/share/prepare.ts';
 import type { ConnectionState } from '../../src/runner/state.ts';
 import {
   FakeClock,
@@ -28,7 +30,12 @@ import {
 
 const TOKEN = 'dfr_old-token';
 const NEW_TOKEN = 'dfr_new-token';
-const EMPTY_SYNC = { type: 'launches.sync', running: [], runOptions: [] };
+const EMPTY_SYNC = {
+  type: 'launches.sync',
+  running: [],
+  runOptions: [],
+  features: [],
+};
 
 let clock: FakeClock;
 let sockets: FakeSocket[];
@@ -45,6 +52,8 @@ function start(
   relay?: VideoRelayPort,
   artifacts?: ArtifactsPort,
   launches?: LaunchPort,
+  projects?: ProjectsPort,
+  share?: SharePort,
 ) {
   const fake = fakeSockets();
   sockets = fake.sockets;
@@ -70,6 +79,8 @@ function start(
     ...(relay === undefined ? {} : { relay }),
     ...(artifacts === undefined ? {} : { artifacts }),
     ...(launches === undefined ? {} : { launches }),
+    ...(projects === undefined ? {} : { projects }),
+    ...(share === undefined ? {} : { share }),
   });
   void connection.run().then((value) => {
     outcome = value;
@@ -491,6 +502,8 @@ describe('RunnerConnection and the video relay', () => {
       type: 'launches.sync',
       running: ids,
       runOptions: ['formats'],
+      features: [],
+      checks: true,
     });
     expect(logger.text()).toContain('announced 1 running launch');
     first.serverClose(1006);
@@ -500,13 +513,102 @@ describe('RunnerConnection and the video relay', () => {
     last().open();
     expect(last()).not.toBe(first);
     expect(last().sent).toEqual([
-      { type: 'launches.sync', running: [], runOptions: ['formats'] },
+      {
+        type: 'launches.sync',
+        running: [],
+        runOptions: ['formats'],
+        features: [],
+        checks: true,
+      },
     ]);
   });
 
   it('sends an empty launches.sync without a launcher', () => {
     start();
     last().open();
+    expect(last().sent).toEqual([EMPTY_SYNC]);
+  });
+
+  it('announces the projects feature and routes project.* to it (spec 377)', () => {
+    const handled: Array<Record<string, unknown>> = [];
+    start(0.5, undefined, undefined, undefined, {
+      handle: (message, sender) => {
+        handled.push(message);
+        sender.send({ type: 'project.error', requestId: 'q', code: 'busy' });
+      },
+    });
+    last().open();
+    expect(last().sent[0]).toEqual({ ...EMPTY_SYNC, features: ['projects'] });
+    for (const type of [
+      'project.inspect',
+      'project.init',
+      'project.register',
+    ]) {
+      last().receive({ type, requestId: 'q', path: '/x' });
+    }
+    expect(handled.map((message) => message.type)).toEqual([
+      'project.inspect',
+      'project.init',
+      'project.register',
+    ]);
+    expect(last().sent).toContainEqual({
+      type: 'project.error',
+      requestId: 'q',
+      code: 'busy',
+    });
+  });
+
+  it('logs project.inspect as unknown without the projects port', () => {
+    start();
+    last().open();
+    last().receive({ type: 'project.inspect', requestId: 'q', path: '/x' });
+    expect(logger.text()).toMatch(
+      /ignored a message of type "project.inspect"/,
+    );
+  });
+
+  it('announces the share feature and routes share.prepare to it (spec 349)', () => {
+    const relay = recordingRelay();
+    const handled: Array<Record<string, unknown>> = [];
+    const share: SharePort = {
+      handle(message, sender) {
+        handled.push(message);
+        sender.send({ type: 'share.error', requestId: 'q', code: 'io' });
+      },
+    };
+    start(0.5, relay, undefined, undefined, undefined, share);
+    last().open();
+    expect(last().sent[0]).toEqual({ ...EMPTY_SYNC, features: ['share'] });
+    last().receive({
+      type: 'share.prepare',
+      requestId: 'q',
+      runId: 'r',
+      format: 'mp4',
+    });
+    expect(handled).toEqual([
+      { type: 'share.prepare', requestId: 'q', runId: 'r', format: 'mp4' },
+    ]);
+    expect(last().sent).toContainEqual({
+      type: 'share.error',
+      requestId: 'q',
+      code: 'io',
+    });
+    expect(logger.text()).not.toMatch(/ignored/);
+  });
+
+  it('does not announce share without the relay that streams its poster', () => {
+    start(0.5, undefined, undefined, undefined, undefined, {
+      handle: () => {},
+    });
+    last().open();
+    expect(last().sent[0]).toEqual(EMPTY_SYNC);
+  });
+
+  it('logs share.prepare as unknown without the share port, as a daemon before #349 did', () => {
+    start(0.5, recordingRelay());
+    last().open();
+    last().receive({ type: 'share.prepare', requestId: 'q' });
+    expect(logger.text()).toMatch(/ignored a message of type "share.prepare"/);
     expect(last().sent).toEqual([EMPTY_SYNC]);
   });
 

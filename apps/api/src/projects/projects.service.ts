@@ -1,12 +1,22 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type Run, type Runner, type RunStatus } from '@prisma/client';
+import {
+  Prisma,
+  type ProjectSource,
+  type Run,
+  type Runner,
+  type RunStatus,
+} from '@prisma/client';
+import { rebuildHealth, recordHealth } from '../checks/health/health';
 import { PrismaService } from '../database/prisma.service';
+import { ShareStorage } from '../shares/share-storage';
 import {
   type CreateProjectDto,
   RUN_FORMATS,
@@ -35,6 +45,8 @@ export interface RunView {
   cliVersion: string;
   /** When the machine deleted the run's directory (spec #233); null while it is there. */
   artifactsDeletedAt: Date | null;
+  /** `check` for a check run (spec 360); null for an ordinary run. */
+  kind: 'check' | null;
 }
 
 export interface ProjectView {
@@ -43,7 +55,13 @@ export interface ProjectView {
   rootPath: string | null;
   /** Null for a project never bound, or whose machine was revoked. */
   runner: { id: string; name: string } | null;
+  /** `https://github.com/<owner>/<repo>`, display only (ADR-0022 §5). */
+  githubUrl: string | null;
+  /** `website` when added through the folder dialog (spec #378). */
+  source: ProjectSource;
   runCount: number;
+  /** Scenarios whose latest run failed (spec #362, Decision 6). */
+  staleCount: number;
   lastRun: RunView | null;
   createdAt: Date;
   updatedAt: Date;
@@ -62,7 +80,9 @@ const NEWEST_FIRST: Prisma.RunOrderByWithRelationInput[] = [
 const PROJECT_INCLUDE = {
   runner: { select: { id: true, name: true } },
   runs: { orderBy: NEWEST_FIRST, take: 1 },
-  _count: { select: { runs: true } },
+  _count: {
+    select: { runs: true, health: { where: { state: 'failed' } } },
+  },
 } satisfies Prisma.ProjectInclude;
 
 type ProjectWithSummary = Prisma.ProjectGetPayload<{
@@ -81,6 +101,7 @@ export function toRunView(run: Run): RunView {
     failedStep: run.failedStep,
     cliVersion: run.cliVersion,
     artifactsDeletedAt: run.artifactsDeletedAt,
+    kind: run.kind,
   };
 }
 
@@ -153,7 +174,7 @@ function parseStages(value: Prisma.JsonValue): RunStages | null {
 
 const RENDER_KEYS = ['format', 'width', 'height', 'sizeBytes', 'durationMs'];
 
-function parseRenders(value: Prisma.JsonValue): RunRender[] | null {
+export function parseRenders(value: Prisma.JsonValue): RunRender[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
@@ -189,7 +210,10 @@ function toProjectView(project: ProjectWithSummary): ProjectView {
     name: project.name,
     rootPath: project.rootPath,
     runner: project.runner,
+    githubUrl: project.githubUrl,
+    source: project.source,
     runCount: project._count.runs,
+    staleCount: project._count.health,
     lastRun: lastRun ? toRunView(lastRun) : null,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
@@ -209,7 +233,10 @@ function lastActivity(project: ProjectView): number {
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly shareStorage: ShareStorage,
+  ) {}
 
   /** Upserts the folder's project and adds the run (Decision 3). */
   async report(
@@ -249,9 +276,11 @@ export class ProjectsService {
             : Prisma.DbNull,
           failureStage: report.failure?.stage ?? null,
           failureMessage: report.failure?.message ?? null,
+          kind: report.kind ?? null,
         },
-        select: { id: true },
+        select: { id: true, scenarioPath: true, status: true, startedAt: true },
       });
+      await recordHealth(tx, project.id, run);
       return { projectId: project.id, runId: run.id };
     });
   }
@@ -279,6 +308,50 @@ export class ProjectsService {
   }
 
   /**
+   * The project of a folder the machine registered (spec #378, Decision 5):
+   * `rootPath` is the machine's canonical answer, never the browser's path.
+   * A folder another project already holds answers `409 project-exists`
+   * with that project's id.
+   */
+  async createFromFolder(
+    userId: string,
+    folder: {
+      runnerId: string;
+      rootPath: string;
+      name: string;
+      githubUrl: string | null;
+    },
+  ): Promise<ProjectView> {
+    try {
+      const project = await this.prisma.project.create({
+        data: { userId, ...folder, source: 'website' },
+        include: PROJECT_INCLUDE,
+      });
+      return toProjectView(project);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const holder = await this.prisma.project.findUnique({
+          where: {
+            runnerId_rootPath: {
+              runnerId: folder.runnerId,
+              rootPath: folder.rootPath,
+            },
+          },
+          select: { id: true },
+        });
+        throw new HttpException(
+          { error: 'project-exists', projectId: holder?.id ?? null },
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Renames and binds. Binding to a folder another project already holds
    * merges it into this one, in one transaction: its runs move here, it is
    * deleted, and this project keeps its name (Decision 4).
@@ -300,6 +373,9 @@ export class ProjectsService {
         const data: Prisma.ProjectUpdateInput = {};
         if (body.name !== undefined) {
           data.name = body.name;
+        }
+        if (body.githubUrl !== undefined) {
+          data.githubUrl = body.githubUrl;
         }
         if (body.runnerId !== undefined && body.rootPath !== undefined) {
           const runner = await tx.runner.findFirst({
@@ -327,6 +403,7 @@ export class ProjectsService {
               data: { projectId: id },
             });
             await tx.project.delete({ where: { id: holder.id } });
+            await rebuildHealth(tx, id);
           }
           data.runner = { connect: { id: runner.id } };
           data.rootPath = body.rootPath;
@@ -346,14 +423,22 @@ export class ProjectsService {
     return this.get(userId, id);
   }
 
-  /** Deletes the project; its runs cascade. */
+  /**
+   * Deletes the project; its runs and their shares cascade, and the shares'
+   * directories go once the rows are gone (spec #347, Decision 9).
+   */
   async remove(userId: string, id: string): Promise<void> {
+    const shares = await this.prisma.share.findMany({
+      where: { run: { project: { id, userId } } },
+      select: { id: true },
+    });
     const { count } = await this.prisma.project.deleteMany({
       where: { id, userId },
     });
     if (count !== 1) {
       throw new NotFoundException();
     }
+    await this.shareStorage.remove(shares.map((share) => share.id));
   }
 
   /**
@@ -400,7 +485,7 @@ export class ProjectsService {
   /**
    * Deletes the project's runs among `runIds` in one statement (spec #286).
    * Ids that are not runs of this project are skipped; only the rows go, the
-   * video files on the machine stay.
+   * video files on the machine stay. Shares of those runs go with them.
    */
   async removeRuns(
     userId: string,
@@ -414,12 +499,17 @@ export class ProjectsService {
     if (!project) {
       throw new NotFoundException();
     }
+    const shares = await this.prisma.share.findMany({
+      where: { run: { projectId: id, id: { in: runIds } } },
+      select: { id: true },
+    });
     const { count } = await this.prisma.run.deleteMany({
       where: { projectId: id, id: { in: runIds } },
     });
     this.logger.log(
       `runs.delete project=${id} asked=${runIds.length} deleted=${count}`,
     );
+    await this.shareStorage.remove(shares.map((share) => share.id));
     return { deleted: count };
   }
 

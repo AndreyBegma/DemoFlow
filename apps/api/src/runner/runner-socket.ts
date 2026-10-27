@@ -11,10 +11,12 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
   Length,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -23,8 +25,10 @@ import {
   validateSync,
 } from 'class-validator';
 import type { RawData } from 'ws';
+import { IsTimeZone } from '../checks/schedules/time-zone';
+import { CADENCES, type Cadence, TIME_OF_DAY, WEEKDAYS } from '../checks/slots';
 import { IsScenarioId } from '../launches/scenario-id';
-import type { RunFormat } from '../projects/projects.dto';
+import { PATH_MAX, type RunFormat } from '../projects/projects.dto';
 import type { RunnerContext } from './runner-token';
 
 /**
@@ -75,6 +79,8 @@ export type ServerMessage =
       runId: string;
       format: string;
       range: VideoRange | null;
+      /** The share's poster instead of the render (spec #347), only to a daemon with `share`. */
+      asset?: VideoAsset;
     }
   | { type: 'video.ack'; streamId: string; bytes: number }
   | { type: 'video.cancel'; streamId: string }
@@ -88,7 +94,23 @@ export type ServerMessage =
       /** Only when the browser chose formats (spec #325): the default frame is unchanged. */
       options?: RunStartOptions;
     }
-  | { type: 'run.cancel'; requestId: string };
+  | { type: 'run.cancel'; requestId: string }
+  /** A check pass of the whole project (spec 360), cancelled with `run.cancel`. */
+  | {
+      type: 'check.start';
+      requestId: string;
+      rootPath: string;
+      exclude: string[];
+    }
+  | { type: 'share.prepare'; requestId: string; runId: string; format: string }
+  | {
+      type: 'project.inspect' | 'project.init' | 'project.register';
+      requestId: string;
+      path: string;
+    };
+
+/** What `video.open` may ask for besides the render itself (spec #347). */
+export type VideoAsset = 'poster';
 
 /** What a website-started run may choose (ADR-0017): the output formats, nothing else. */
 export interface RunStartOptions {
@@ -102,7 +124,10 @@ export type ClientMessage =
   | ByeMessage
   | VideoMessage
   | ArtifactsMessage
-  | LaunchMessage;
+  | LaunchMessage
+  | ShareMessage
+  | SchedulesMessage
+  | ProjectMessage;
 
 export type VideoMessage =
   | VideoHeadMessage
@@ -127,7 +152,38 @@ export type LaunchMessage =
   | RunErrorMessage
   | RunFinishedMessage
   | RunProgressMessage
-  | LaunchesSyncMessage;
+  | LaunchesSyncMessage
+  | CheckMessage;
+
+/** A machine's project-config schedules (spec 361, Decision 6). */
+export type SchedulesMessage = SchedulesSyncMessage;
+
+/** A Runner's answers to `check.start` (spec 360, Decision 6). */
+export type CheckMessage =
+  | CheckStartedMessage
+  | CheckFinishedMessage
+  | CheckErrorMessage;
+
+/** A Runner's answer to `share.prepare` (spec #347, Decision 4). */
+export type ShareMessage = SharePreparedMessage | ShareErrorMessage;
+
+/** A Runner's answers to `project.*` (spec #377, Decision 4; spec #378). */
+export type ProjectMessage =
+  | ProjectInspectedMessage
+  | ProjectInitialisedMessage
+  | ProjectRegisteredMessage
+  | ProjectErrorMessage;
+
+/** A file name `project.initialised` lists, relative to the folder. */
+const INIT_FILE_MAX = 512;
+/** `demoflow init` writes two files; room for a newer template. */
+const MAX_INIT_FILES = 16;
+
+/** `share.prepared` limits (Decision 4). */
+export const SHARE_DESCRIPTION_MAX = 2000;
+export const SHARE_CHAPTERS_MAX = 100;
+export const SHARE_CHAPTER_TITLE_MAX = 200;
+export const SHARE_POSTER_MAX_BYTES = 1024 * 1024;
 
 /** `scenarios.listed` carries this many entries at most. */
 export const MAX_LISTED_SCENARIOS = 100;
@@ -151,6 +207,22 @@ export type RunOption = (typeof RUN_OPTIONS)[number];
 /** `launches.sync` announces this many options at most, each this long at most. */
 export const MAX_RUN_OPTIONS = 8;
 export const RUN_OPTION_MAX_LENGTH = 32;
+/**
+ * The capabilities this API knows a daemon may announce (ADR-0019 §7): `share`
+ * answers `share.prepare` and `video.open` with an `asset`; `projects` answers
+ * `project.*` (ADR-0022 §6).
+ */
+export const FEATURES = ['share', 'projects'] as const;
+export type Feature = (typeof FEATURES)[number];
+/** `launches.sync` announces this many features at most, each this long at most. */
+export const MAX_FEATURES = 8;
+export const FEATURE_MAX_LENGTH = 32;
+/** `schedules.sync` carries this many projects at most (spec 361, Decision 6). */
+export const MAX_SYNCED_SCHEDULES = 500;
+/** A schedule excludes this many scenarios at most (ADR-0021 §5). */
+export const MAX_SCHEDULE_EXCLUDES = 100;
+/** `check.finished` counts this many scenarios at most. */
+const MAX_CHECK_COUNT = 100_000;
 
 class PingMessage {
   @IsIn(['ping'])
@@ -379,9 +451,9 @@ class RunProgressMessage {
 
 /**
  * The daemon's first frame on every socket (spec #284, Decision 1): the
- * launch ids whose child it still has, possibly none, and the `run.start`
- * options it accepts (spec #325). Unknown options pass here and are dropped
- * when the frame is routed.
+ * launch ids whose child it still has, possibly none, the `run.start`
+ * options it accepts (spec #325) and its features (spec #347). Unknown
+ * options and features pass here and are dropped when the frame is routed.
  */
 class LaunchesSyncMessage {
   @IsIn(['launches.sync'])
@@ -399,6 +471,264 @@ class LaunchesSyncMessage {
   @IsString({ each: true })
   @MaxLength(RUN_OPTION_MAX_LENGTH, { each: true })
   runOptions?: string[];
+
+  /** Absent from a daemon before #349: it can do none. Unknown ones are dropped. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_FEATURES)
+  @IsString({ each: true })
+  @MaxLength(FEATURE_MAX_LENGTH, { each: true })
+  features?: string[];
+
+  /** `true` from a daemon that answers `check.start` (spec 360); absent before. */
+  @IsOptional()
+  @IsBoolean()
+  checks?: boolean;
+}
+
+/** The `demoflow run --check` child is running. `requestId` is the launch id. */
+class CheckStartedMessage {
+  @IsIn(['check.started'])
+  type!: 'check.started';
+
+  @IsUUID('4')
+  requestId!: string;
+}
+
+/** The pass ended; both counts are 0 when it was cancelled, timed out or crashed. */
+class CheckFinishedMessage {
+  @IsIn(['check.finished'])
+  type!: 'check.finished';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(MAX_CHECK_COUNT)
+  passed!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(MAX_CHECK_COUNT)
+  failed!: number;
+}
+
+/** Sent instead of `check.started`; any code string, as for `run.error`. */
+class CheckErrorMessage {
+  @IsIn(['check.error'])
+  type!: 'check.error';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @MaxLength(64)
+  code!: string;
+}
+
+/** A project config's `schedule` block (spec 361, Decision 1). */
+export class SyncedSchedule {
+  @IsIn(CADENCES)
+  cadence!: Cadence;
+
+  @ValidateIf((schedule: SyncedSchedule) => schedule.cadence === 'weekly')
+  @IsIn(WEEKDAYS)
+  weekday?: string;
+
+  @Matches(TIME_OF_DAY)
+  at!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_SCHEDULE_EXCLUDES)
+  @IsScenarioId({ each: true })
+  exclude?: string[];
+}
+
+class SyncedProject {
+  @IsString()
+  @Length(1, PATH_MAX)
+  rootPath!: string;
+
+  @ValidateIf((_, value) => value !== null)
+  @ValidateNested()
+  @Type(() => SyncedSchedule)
+  schedule!: SyncedSchedule | null;
+}
+
+/**
+ * The schedules of a machine's project configs (spec 361, Decision 6), with
+ * the machine's time zone: sent after `launches.sync` and on every change.
+ */
+class SchedulesSyncMessage {
+  @IsIn(['schedules.sync'])
+  type!: 'schedules.sync';
+
+  @IsTimeZone()
+  zone!: string;
+
+  @IsArray()
+  @ArrayMaxSize(MAX_SYNCED_SCHEDULES)
+  @ValidateNested({ each: true })
+  @Type(() => SyncedProject)
+  projects!: SyncedProject[];
+}
+
+class ShareChapter {
+  @IsString()
+  @Length(1, SHARE_CHAPTER_TITLE_MAX)
+  title!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  atMs!: number;
+}
+
+/** The daemon has the render and its poster; the bytes follow over `video.open`. */
+class SharePreparedMessage {
+  @IsIn(['share.prepared'])
+  type!: 'share.prepared';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  /** The scenario's description, read from its file at share time (ADR-0019 §2). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(SHARE_DESCRIPTION_MAX)
+  description?: string;
+
+  @IsArray()
+  @ArrayMaxSize(SHARE_CHAPTERS_MAX)
+  @ValidateNested({ each: true })
+  @Type(() => ShareChapter)
+  chapters!: ShareChapter[];
+
+  @IsInt()
+  @Min(1)
+  @Max(SHARE_POSTER_MAX_BYTES)
+  posterSize!: number;
+}
+
+/**
+ * `not-found`, `no-render` or `io`. Any string, so a code a newer daemon adds
+ * still ends the request instead of being dropped.
+ */
+class ShareErrorMessage {
+  @IsIn(['share.error'])
+  type!: 'share.error';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @MaxLength(64)
+  code!: string;
+}
+
+/**
+ * What a Runner says about a folder (spec #377, Decision 5): never a file's
+ * contents nor a config value. `githubUrl` is any string here; the API keeps
+ * it only when it is a plain `https://github.com/<owner>/<repo>`.
+ */
+export class FolderInspection {
+  /** Canonical: the folder's real path. */
+  @IsString()
+  @Length(1, PATH_MAX)
+  rootPath!: string;
+
+  /** The folder's base name. */
+  @IsString()
+  @MaxLength(PATH_MAX)
+  name!: string;
+
+  @IsBoolean()
+  hasConfig!: boolean;
+
+  @IsBoolean()
+  configValid!: boolean;
+
+  @IsArray()
+  @ArrayMaxSize(MAX_LISTED_SCENARIOS)
+  @ValidateNested({ each: true })
+  @Type(() => ListedScenario)
+  scenarios!: ListedScenario[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(PATH_MAX)
+  githubUrl?: string;
+}
+
+class ProjectInspectedMessage {
+  @IsIn(['project.inspected'])
+  type!: 'project.inspected';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => FolderInspection)
+  inspection!: FolderInspection;
+}
+
+/** `demoflow init`'s files: those written now, and those already there. */
+class ProjectInitialisedMessage {
+  @IsIn(['project.initialised'])
+  type!: 'project.initialised';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsArray()
+  @ArrayMaxSize(MAX_INIT_FILES)
+  @IsString({ each: true })
+  @Length(1, INIT_FILE_MAX, { each: true })
+  created!: string[];
+
+  @IsArray()
+  @ArrayMaxSize(MAX_INIT_FILES)
+  @IsString({ each: true })
+  @Length(1, INIT_FILE_MAX, { each: true })
+  kept!: string[];
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => FolderInspection)
+  inspection!: FolderInspection;
+}
+
+/** The folder is in the machine's registry; `rootPath` is its canonical path. */
+class ProjectRegisteredMessage {
+  @IsIn(['project.registered'])
+  type!: 'project.registered';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @Length(1, PATH_MAX)
+  rootPath!: string;
+}
+
+/**
+ * `path-not-allowed`, `config-missing`, `config-invalid`, `busy` or
+ * `internal`. Any string, so a code a newer daemon adds still ends the
+ * request instead of being dropped; the API maps it to `runner-error`.
+ */
+class ProjectErrorMessage {
+  @IsIn(['project.error'])
+  type!: 'project.error';
+
+  @IsUUID('4')
+  requestId!: string;
+
+  @IsString()
+  @MaxLength(64)
+  code!: string;
 }
 
 const CLIENT_MESSAGES: Record<
@@ -421,6 +751,16 @@ const CLIENT_MESSAGES: Record<
   'run.finished': RunFinishedMessage,
   'run.progress': RunProgressMessage,
   'launches.sync': LaunchesSyncMessage,
+  'check.started': CheckStartedMessage,
+  'check.finished': CheckFinishedMessage,
+  'check.error': CheckErrorMessage,
+  'schedules.sync': SchedulesSyncMessage,
+  'share.prepared': SharePreparedMessage,
+  'share.error': ShareErrorMessage,
+  'project.inspected': ProjectInspectedMessage,
+  'project.initialised': ProjectInitialisedMessage,
+  'project.registered': ProjectRegisteredMessage,
+  'project.error': ProjectErrorMessage,
 };
 
 /** A binary frame: part of a stream's file, in order. */

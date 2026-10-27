@@ -18,6 +18,8 @@ that contradicts this file wins, and this file is updated with it.
 6. **Phase 5 — Website and Runner pairing.**
 7. **Phase 6 — Luna Player.**
 8. **Phase 7 — Optional SDK.**
+9. **Phase 8 — Share, edit, keep fresh** (below): sharing first, then the
+   website editor, then scheduled checks.
 
 The release branch flow applies from the first phase completed after this file
 lands; the GitHub Action follows the npm release whenever the queue allows.
@@ -86,10 +88,11 @@ lands; the GitHub Action follows the npm release whenever the queue allows.
 - **Order**: sign-in → Runner pairing
   ([ADR-0007](../adr/0007-runner-pairing-and-connection.md)) → projects → demo
   library.
-- **No public share links.** Videos stay on the user's machine (ADR-0008) and
-  play through the relay
+- **No public share links** in this phase. Videos stay on the user's machine
+  (ADR-0008) and play through the relay
   ([ADR-0009](../adr/0009-playback-relay-and-luna-player-adapter.md)). Sharing
-  is by file or through the GitHub Action.
+  is by file or through the GitHub Action. *Superseded in Phase 8 by
+  [ADR-0019](../adr/0019-opt-in-share-links.md).*
 - **Language**: English UI, with strings in an i18n dictionary from the start.
 - **A simple public landing page**: what DemoFlow is, a demo video made with
   DemoFlow, "Install" (`npx demoflow`) and "Sign in"; documentation as its own
@@ -166,6 +169,29 @@ All four, in this order:
   tests" page),
   [224](../specs/224-record-wait-for-ready.md) (a "Wait for ready" control in
   the `demoflow record` panel, spec 198's follow-up).
+
+## Phase 8 — Share, edit, keep fresh
+
+Decided by the owner in an interview on 2026-10-26. Voiceover (TTS, music) and
+a render matrix (theme × locale × device) are **later**, not in this phase.
+
+- **Sharing** ([ADR-0019](../adr/0019-opt-in-share-links.md)): an explicit,
+  per-video upload of one chosen render to the server's disk, behind an
+  unlisted link `/s/<token>` with an optional password; 7 / 30 (default) / 90
+  days, extendable; 200 MB per file and 2 GB per user. Entry points: the run
+  page, `demoflow share`, and the MCP `share_demo` tool, which is refused until
+  the project config sets `share.allowMcp: true`. Specs: #347–#352.
+- **Editor** ([ADR-0020](../adr/0020-edits-from-the-website.md)): captions,
+  per-step zoom, cards and style, free trimming and cuts, edited on the run
+  page with an in-browser preview; the edits live in `runs/<id>/edits.json`
+  on the machine and are exported as a patch the person commits. Specs:
+  #353–#359.
+- **Scheduled checks** ([ADR-0021](../adr/0021-scheduled-checks.md)):
+  `demoflow run --check`, schedules on the website and in
+  `demoflow.config.json` (the config wins), one catch-up run, a stale badge on
+  the website when a scenario goes from passed to failed. Specs: #360–#364.
+- **Hold the result** (#365): `render.endHoldMs` and a per-step `hold`, so a
+  demo shows what its last action did.
 
 ## Cross-cutting
 

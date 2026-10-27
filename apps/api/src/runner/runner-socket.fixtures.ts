@@ -25,6 +25,19 @@ export interface LaunchRequest extends Received {
   requestId: string;
 }
 
+/** `share.prepare` (spec #347). */
+export interface SharePrepare extends Received {
+  requestId: string;
+  runId: string;
+  format: string;
+}
+
+/** `project.inspect`, `project.init` or `project.register` (spec #378). */
+export interface ProjectRequest extends Received {
+  requestId: string;
+  path: string;
+}
+
 export interface Closed {
   code: number;
   reason: string;
@@ -128,9 +141,9 @@ export class TestSocket {
     return ask as ArtifactsDelete;
   }
 
-  /** The next `scenarios.list`, `run.start` or `run.cancel`, with its request id. */
+  /** The next `scenarios.list`, `run.start`, `run.cancel` or `check.start`, with its request id. */
   async nextLaunch(
-    type: 'scenarios.list' | 'run.start' | 'run.cancel',
+    type: 'scenarios.list' | 'run.start' | 'run.cancel' | 'check.start',
   ): Promise<LaunchRequest> {
     const ask = await this.next(type);
     if (typeof ask.requestId !== 'string') {
@@ -139,16 +152,45 @@ export class TestSocket {
     return ask as LaunchRequest;
   }
 
+  /** The next `share.prepare` (spec #347), with its request id as a string. */
+  async nextShare(): Promise<SharePrepare> {
+    const ask = await this.next('share.prepare');
+    if (typeof ask.requestId !== 'string') {
+      throw new Error('share.prepare carries no requestId');
+    }
+    return ask as SharePrepare;
+  }
+
+  /** The next `project.*` request (spec #378), with its request id and path. */
+  async nextProject(
+    type: 'project.inspect' | 'project.init' | 'project.register',
+  ): Promise<ProjectRequest> {
+    const ask = await this.next(type);
+    if (typeof ask.requestId !== 'string' || typeof ask.path !== 'string') {
+      throw new Error(`${type} carries no requestId or path`);
+    }
+    return ask as ProjectRequest;
+  }
+
   /**
    * `launches.sync` (spec #284): the launch ids this daemon still runs, and
    * the `run.start` options it accepts (spec #325) — none sent when omitted.
+   * `features` is its capability list, as `share` (spec #347); `checks`
+   * says it answers `check.start` (spec 360).
    */
-  sync(running: string[], runOptions?: unknown): void {
-    this.send(
-      runOptions === undefined
-        ? { type: 'launches.sync', running }
-        : { type: 'launches.sync', running, runOptions },
-    );
+  sync(
+    running: string[],
+    runOptions?: unknown,
+    features?: string[],
+    checks?: boolean,
+  ): void {
+    this.send({
+      type: 'launches.sync',
+      running,
+      ...(runOptions === undefined ? {} : { runOptions }),
+      ...(features === undefined ? {} : { features }),
+      ...(checks === undefined ? {} : { checks }),
+    });
   }
 
   /** `run.progress` (spec #301): `step` of `steps` for `steps`, both null otherwise. */

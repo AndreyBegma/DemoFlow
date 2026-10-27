@@ -178,6 +178,7 @@ describe('run details (integration)', () => {
           'failedStep',
           'cliVersion',
           'artifactsDeletedAt',
+          'kind',
         ].sort(),
       );
     }

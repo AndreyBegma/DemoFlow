@@ -2,34 +2,13 @@
 
 import { Button } from '@andrewbehma/glass-ui/button';
 import { Progress } from '@andrewbehma/glass-ui/progress';
-import { StatusPill } from '@andrewbehma/glass-ui/status-pill';
 import Link from 'next/link';
+import { StatusIndicator } from '@/components/status/status-indicator';
 import { t } from '@/i18n';
-import type { LaunchState, LaunchView } from '@/lib/api';
+import type { LaunchView } from '@/lib/api';
 import { formatElapsed, isActive, launchProgress } from '@/lib/launch';
+import { launchStatus } from '@/lib/status';
 import { formatList } from './format-choice';
-
-const PILL: Record<LaunchState, Parameters<typeof StatusPill>[0]['status']> = {
-  starting: 'waiting',
-  running: 'running',
-  cancelling: 'paused',
-  passed: 'done',
-  failed: 'error',
-  cancelled: 'idle',
-  'timed-out': 'error',
-  lost: 'blocked',
-};
-
-function stateLabel(state: LaunchState): string {
-  switch (state) {
-    case 'timed-out':
-      return t('projects.launch.state.timedOut');
-    case 'lost':
-      return t('projects.launch.state.lostLabel');
-    default:
-      return t(`projects.launch.state.${state}`);
-  }
-}
 
 /** The row of a launch: name, state, elapsed time, cancel, and the new run. */
 export function LaunchStatus({
@@ -57,10 +36,7 @@ export function LaunchStatus({
         <span className="min-w-0 break-words font-medium">
           {launch.scenarioName ?? launch.scenarioId}
         </span>
-        <StatusPill
-          status={PILL[launch.state]}
-          label={stateLabel(launch.state)}
-        />
+        <StatusIndicator status={launchStatus(launch.state)} />
         {active ? (
           <span className="text-sm text-ink-2">
             {t('projects.launch.elapsed', {
@@ -100,7 +76,7 @@ export function LaunchStatus({
         <p className="text-sm text-ink-2">{t(progress.key)}</p>
       ) : null}
       {launch.state === 'lost' ? (
-        <p className="text-sm text-ink-2">{t('projects.launch.state.lost')}</p>
+        <p className="text-sm text-ink-2">{t('projects.launch.lost')}</p>
       ) : null}
       {!active && launch.runId ? (
         <Link

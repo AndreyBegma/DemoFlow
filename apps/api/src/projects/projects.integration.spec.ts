@@ -88,8 +88,11 @@ describe('projects (integration)', () => {
         id: res.body.projectId,
         name: 'shop',
         rootPath: ROOT,
+        githubUrl: null,
+        source: 'reported',
         runner: { id: laptop.runnerId, name: 'Laptop' },
         runCount: 1,
+        staleCount: 0,
         lastRun: {
           id: res.body.runId,
           scenarioName: 'checkout',
@@ -101,6 +104,7 @@ describe('projects (integration)', () => {
           failedStep: null,
           cliVersion: '0.4.0',
           artifactsDeletedAt: null,
+          kind: null,
         },
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
@@ -127,6 +131,7 @@ describe('projects (integration)', () => {
         expect.objectContaining({
           name: 'shop',
           runCount: 2,
+          staleCount: 1,
           lastRun: expect.objectContaining({
             id: second.body.runId,
             status: 'failed',
@@ -169,6 +174,43 @@ describe('projects (integration)', () => {
       await report(laptop.token, runReport({ formats })).expect(201);
       const { projects } = (await list(alice.cookie).expect(200)).body;
       expect(projects[0].lastRun.formats).toEqual(formats);
+    });
+
+    it('stores a check run with kind check, and an ordinary run with none (#360)', async () => {
+      const check = await report(
+        laptop.token,
+        runReport({ kind: 'check', formats: [] }),
+      ).expect(201);
+      const ordinary = await report(laptop.token).expect(201);
+
+      const rows = await t.prisma.run.findMany({
+        where: { id: { in: [check.body.runId, ordinary.body.runId] } },
+        select: { id: true, kind: true },
+      });
+      expect(new Map(rows.map((row) => [row.id, row.kind]))).toEqual(
+        new Map([
+          [check.body.runId, 'check'],
+          [ordinary.body.runId, null],
+        ]),
+      );
+      const page = (await runs(alice.cookie, check.body.projectId).expect(200))
+        .body;
+      expect(
+        page.runs.map((run: { id: string; kind: string | null }) => [
+          run.id,
+          run.kind,
+        ]),
+      ).toEqual(
+        expect.arrayContaining([
+          [check.body.runId, 'check'],
+          [ordinary.body.runId, null],
+        ]),
+      );
+    });
+
+    it('refuses any kind but check', async () => {
+      await report(laptop.token, runReport({ kind: 'video' })).expect(400);
+      await report(laptop.token, runReport({ kind: null })).expect(201);
     });
 
     it('stores no field it was not given a column for', async () => {
@@ -275,8 +317,15 @@ describe('projects (integration)', () => {
           rootPath: ROOT,
           runner: { id: laptop.runnerId, name: 'Laptop' },
           runCount: 2,
+          staleCount: 0,
         }),
       );
+      expect(
+        await t.prisma.scenarioHealth.findMany({
+          where: { projectId: body.project.id },
+          select: { scenarioPath: true, state: true },
+        }),
+      ).toEqual([{ scenarioPath: 'demos/checkout.yaml', state: 'passed' }]);
       expect(
         await t.prisma.project.findUnique({
           where: { id: auto1.body.projectId },

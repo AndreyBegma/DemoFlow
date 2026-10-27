@@ -169,8 +169,9 @@ agent host. `deploy-staging` then replaces the containers in
 `/home/archi/stacks/demoflow-staging`.
 
 ```
-Cloudflare ──tunnel──▶ cloudflared ──▶ proxy (Caddy :80) ─┬─ /api/* ─▶ api :8370 ─▶ postgres
-                                                          └─ /*     ─▶ web :3670
+Cloudflare ──tunnel──▶ cloudflared ──▶ proxy (Caddy :80) ─┬─ /api/*                  ─▶ api :8370 ─▶ postgres
+                                                          ├─ /s/<token>/file|poster ─▶ api :8370
+                                                          └─ /*                      ─▶ web :3670
 ```
 
 Nothing is published on the host. The stack runs on its own compose network
@@ -191,8 +192,8 @@ Nothing is published on the host. The stack runs on its own compose network
    - Timeout: 60 min.
 3. **The first run.** Push to `develop`, or run the pipeline by hand on
    `develop`. `refresh.sh` creates the stack directory, copies the examples in
-   and generates `POSTGRES_PASSWORD`. It then stops, because the tunnel token
-   is missing.
+   and generates `POSTGRES_PASSWORD` and `SHARE_SIGNING_SECRET`. It then
+   stops, because the tunnel token is missing.
 4. **Add the token and start the stack:**
    ```sh
    cp ~/.demoflow/cloudflared.env /home/archi/stacks/demoflow-staging/env/cloudflared.env
@@ -203,7 +204,7 @@ Nothing is published on the host. The stack runs on its own compose network
 
 | Command (on the host) | What it does |
 |---|---|
-| `/home/archi/stacks/demoflow-staging/status.sh` | the deployed commit, containers, image revisions, and the public `/` and `/api/health` |
+| `/home/archi/stacks/demoflow-staging/status.sh` | the deployed commit, containers, image revisions, and the public `/`, `/api/health` and `/demo/landing-poster.png` (non-zero exit unless all answer 200) |
 | `/home/archi/stacks/demoflow-staging/up.sh` | starts the stack from the images already built |
 | `/home/archi/stacks/demoflow-staging/down.sh` | stops it; the volumes are kept |
 | `sh deploy/staging/refresh.sh` (from a checkout) | what `deploy-staging` runs |
@@ -273,6 +274,38 @@ The app asks for `read:user user:email` only, and keeps no GitHub token. The
 client secret also signs the short-lived `df_oauth` cookie, so rotating it
 only fails sign-ins that are in flight.
 
+### Shared videos on staging
+
+A share link (ADR-0019, spec #347) keeps a copy of one render and its poster
+on the server, so the link plays while the Runner is offline. The API writes
+them to `SHARE_DIR`, which `docker-compose.yml` sets to `/data/shares`: the
+named volume `demoflow-staging_shares`. The image creates that directory
+owned by `node`, so a new volume starts writable.
+
+- **Limits.** `SHARE_MAX_FILE_BYTES` (default 200 MB) caps one render, and
+  `SHARE_USER_QUOTA_BYTES` (default 2 GB) caps one account's shares, posters
+  included. Both are in `env/api.env`; a change needs an API restart. A value
+  that is not a positive whole number stops the API at boot.
+- **Cleanup.** Every 10 minutes, and at boot, the API deletes expired shares
+  and their files, fails uploads stuck for 15 minutes, and removes directories
+  no share row points at. At boot it also marks a ready share whose file is
+  missing as lost. Each pass logs one `share.sweep` line.
+- **Not backed up.** Losing the volume loses every shared video; the rows
+  turn `lost` at the next boot and their owners share again. Watch its size
+  with `docker system df -v | grep shares`.
+- **The public link** (spec #348). `/s/<token>` is the web app's page; it
+  reads `GET /api/s/<token>`. The file and the poster live on the page's own
+  path, `/s/<token>/file` and `/s/<token>/poster`, so Caddy sends exactly
+  those two paths (a 43-character token) to the API before the web handler.
+  Without a password they embed in other sites and are cached for 5 minutes;
+  with one they need the unlock cookie.
+- **`SHARE_SIGNING_SECRET`.** Signs the 12-hour cookie a password unlock
+  sets. `refresh.sh` generates it in the stack's `.env` like
+  `POSTGRES_PASSWORD`, adding it to a stack that predates it, and compose
+  passes it to `api`; the API refuses to start in production without one.
+  Changing it ends every unlock, nothing more: viewers type the password
+  again.
+
 ## Production — https://demoflow.luna-realm.com
 
 Every push to `main` runs the pipeline. Once `check`, `build` and the full
@@ -283,8 +316,9 @@ approval gate, and neither step runs on `develop`, on a manual run or on a
 pull request.
 
 ```
-Cloudflare ──tunnel demoflow-prod──▶ cloudflared ──▶ proxy (Caddy :80) ─┬─ /api/* ─▶ api :8370 ─▶ postgres
-                                                                        └─ /*     ─▶ web :3670
+Cloudflare ──tunnel demoflow-prod──▶ cloudflared ──▶ proxy (Caddy :80) ─┬─ /api/*                  ─▶ api :8370 ─▶ postgres
+                                                                        ├─ /s/<token>/file|poster ─▶ api :8370
+                                                                        └─ /*                      ─▶ web :3670
 ```
 
 Production runs on the same host and Docker daemon as staging and shares
@@ -297,12 +331,13 @@ nothing with it:
 | Compose project | `demoflow-staging` | `demoflow-production` |
 | Network | `demoflow-staging_staging` | `demoflow-production` |
 | Postgres volume | `demoflow-staging_pgdata` | `demoflow-production_pgdata` |
+| Shares volume | `demoflow-staging_shares` | `demoflow-production_shares` |
 | Containers | `demoflow-staging-*` | `demoflow-production-*` |
 | Images | `demoflow-{api,web}:staging` | `demoflow-{api,web}:production` |
 | Tunnel | `demoflow-app` | `demoflow-prod` |
 
-Nothing is published on the host. Backups of the production database are not
-set up yet.
+Nothing is published on the host. The production database is backed up daily
+(see *Backups of the production database*).
 
 ### One-time setup
 
@@ -311,8 +346,8 @@ set up yet.
    `~/.demoflow/production/cloudflared.env`, mode 600, as one line:
    `TUNNEL_TOKEN=...`.
 2. **The first run.** Push to `main`. `refresh.sh` creates the stack directory,
-   copies the examples in and generates `POSTGRES_PASSWORD`. It then stops,
-   because the tunnel token is missing.
+   copies the examples in and generates `POSTGRES_PASSWORD` and
+   `SHARE_SIGNING_SECRET`. It then stops, because the tunnel token is missing.
 3. **Add the token and start the stack:**
    ```sh
    cp ~/.demoflow/production/cloudflared.env /home/archi/stacks/demoflow-production/env/cloudflared.env
@@ -325,10 +360,12 @@ The Woodpecker settings are the staging ones; nothing else is needed.
 
 | Command (on the host) | What it does |
 |---|---|
-| `/home/archi/stacks/demoflow-production/status.sh` | the deployed commit, containers, image revisions, and the public `/` and `/api/health` |
+| `/home/archi/stacks/demoflow-production/status.sh` | the deployed commit, containers, image revisions, and the public `/`, `/api/health` and `/demo/landing-poster.png` (non-zero exit unless all answer 200) |
 | `/home/archi/stacks/demoflow-production/up.sh` | starts the stack from the images already built |
 | `/home/archi/stacks/demoflow-production/down.sh` | stops it; the volumes are kept |
 | `sh deploy/production/refresh.sh` (from a checkout of `main`) | what `deploy-production` runs |
+| `/home/archi/stacks/demoflow-production/backup.sh` | dumps the database now (see below) |
+| `/home/archi/stacks/demoflow-production/restore.sh <dump> --yes-replace-production-database` | replaces the database with a dump |
 
 Secrets, migrations, zero-drop deploys, the runner socket and `530` / error
 1033 behave as on staging (see above), with `demoflow-production-*` container
@@ -350,3 +387,73 @@ Hidden until both `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are set in
 `https://demoflow.luna-realm.com` and authorization callback URL
 `https://demoflow.luna-realm.com/api/auth/github/callback`, puts its client id
 and secret in `env/api.env` on the host, and restarts the API container.
+
+### Backups of the production database
+
+A systemd user timer runs `backup.sh` every day at 03:30 UTC (plus up to 10
+minutes of random delay). The script runs `pg_dump -Fc` inside
+`demoflow-production-postgres` and writes
+`/home/archi/backups/demoflow-production/demoflow-production-<UTC timestamp>.dump`.
+The directory is mode 700 and each dump 600. The shares volume is not backed
+up (see *Shared videos on staging*).
+
+- **Retention.** The newest 14 dumps are kept; older ones are deleted after a
+  new dump has been written and `pg_restore --list` has read it back.
+- **A failed dump** exits non-zero, deletes its partial file and leaves every
+  existing dump and `last-backup.env` as they were. The timer's service then
+  shows as failed.
+- **Off-host copies** are not made: the dumps live on the same disk as the
+  database, so they protect against a bad migration or a deleted row, not
+  against losing the host.
+
+#### One-time setup
+
+`refresh.sh` copies `backup.sh`, `restore.sh` and `install-backup-timer.sh` into
+the stack directory on every deploy; the pipeline never installs the timer.
+Once, on the host, as the operator (uid 1000, in the `docker` group):
+
+```sh
+/home/archi/stacks/demoflow-production/install-backup-timer.sh
+sudo loginctl enable-linger archi   # if the script says lingering is off
+```
+
+It writes `demoflow-production-backup.service` and `.timer` to
+`~/.config/systemd/user`, enables the timer and lists its next run. Lingering
+keeps user timers running when nobody is logged in. Running the script again
+rewrites the units.
+
+#### Checking the last backup
+
+```sh
+cat /home/archi/backups/demoflow-production/last-backup.env      # file, time and size of the last good dump
+systemctl --user list-timers demoflow-production-backup.timer    # last and next run
+systemctl --user status demoflow-production-backup.service       # result of the last run
+journalctl --user -u demoflow-production-backup.service -n 50    # its output
+ls -l /home/archi/backups/demoflow-production
+```
+
+`last-backup.env` changes only on success, so a `LAST_BACKUP_AT` older than a
+day means the backup has stopped working.
+
+#### Restoring
+
+```sh
+/home/archi/stacks/demoflow-production/restore.sh \
+  /home/archi/backups/demoflow-production/demoflow-production-<timestamp>.dump \
+  --yes-replace-production-database
+```
+
+Without the flag it only says what it would do. With it, it checks the dump is
+readable, stops `demoflow-production-api`, restores with
+`pg_restore --clean --if-exists --single-transaction` — a failed restore rolls
+back and leaves the database as it was — and starts the API again either way.
+Take a fresh `backup.sh` first if the current data may still be needed.
+
+#### Testing the scripts
+
+`sh deploy/production/test-backup.sh`, from a checkout on a host with Docker,
+runs both scripts against two throwaway Postgres containers, never the
+production one: a backup restores with the same row counts (also over a
+database that has drifted, with a stand-in API container stopped and started),
+dumps beyond the newest 14 are deleted, a failed dump exits non-zero and changes
+nothing, and `restore.sh` refuses without the flag.

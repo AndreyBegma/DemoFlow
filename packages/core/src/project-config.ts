@@ -61,7 +61,7 @@ export type FrameConfig = z.infer<typeof FrameConfigSchema>;
 
 const CardDurationSchema = z.number().int().min(500).max(10_000);
 
-const CardTextSchema = z
+export const CardTextSchema = z
   .string()
   .min(1)
   .max(80)
@@ -202,6 +202,11 @@ export const RenderConfigSchema = z
         compressToMs: z.number().int().nonnegative().default(400),
       })
       .prefault({}),
+    // Kept on screen after the last step of a successful run (spec 365).
+    endHoldMs: z.number().int().min(0).max(10_000).default(2500).meta({
+      description:
+        'How long a successful video keeps the result on screen after the last step: the engine keeps recording and the renderer keeps the frames. 0 ends the video at the last step.',
+    }),
     frame: FrameConfigSchema,
     background: BackgroundConfigSchema.default({ preset: 'ocean' }),
     cards: CardsConfigSchema,
@@ -264,6 +269,109 @@ export const RenderConfigSchema = z
   .prefault({});
 export type RenderConfig = z.infer<typeof RenderConfigSchema>;
 
+/**
+ * Share links (spec 349, ADR-0019 §6). Off unless committed: an agent may
+ * then publish a video outside the machine without asking.
+ */
+export const ShareConfigSchema = z.strictObject({
+  allowMcp: z.boolean().default(false).meta({
+    description:
+      'Let the MCP server (share_demo) publish the video of a run as a public link without asking anyone. Off by default; anyone with the link can watch until it expires or is revoked.',
+  }),
+});
+export type ShareConfig = z.infer<typeof ShareConfigSchema>;
+
+/** How often a scheduled check pass runs (spec 361, Decision 1). */
+export const SCHEDULE_CADENCES = ['daily', 'weekdays', 'weekly'] as const;
+export type ScheduleCadence = (typeof SCHEDULE_CADENCES)[number];
+
+/** The day of a `weekly` schedule, Monday first. */
+export const SCHEDULE_WEEKDAYS = [
+  'mon',
+  'tue',
+  'wed',
+  'thu',
+  'fri',
+  'sat',
+  'sun',
+] as const;
+export type ScheduleWeekday = (typeof SCHEDULE_WEEKDAYS)[number];
+
+/** A scheduled pass leaves out at most this many scenarios (spec 361, Decision 1). */
+export const SCHEDULE_EXCLUDE_MAX = 100;
+
+/**
+ * Spec 247's scenario id: a `/`-separated path inside `demoflow/`, ending in
+ * `.demo.json`, with no empty, `.` or `..` segment and no `\`, `:` or control
+ * character.
+ */
+const ScheduleScenarioIdSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .refine(
+    (id) =>
+      id.startsWith('demoflow/') &&
+      id.endsWith('.demo.json') &&
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses.
+      !/[\u0000-\u001f\u007f\\:]/.test(id) &&
+      id
+        .split('/')
+        .every(
+          (segment) => segment !== '' && segment !== '.' && segment !== '..',
+        ),
+    'expected a scenario id such as demoflow/sign-in.demo.json',
+  );
+
+/**
+ * `schedule` (spec 361, ADR-0021 §5): the runner daemon runs a check pass of
+ * the project at `at`, machine-local time, on the days of `cadence`.
+ */
+export const ScheduleConfigSchema = z
+  .strictObject({
+    cadence: z.enum(SCHEDULE_CADENCES).meta({
+      description: 'daily, weekdays (Monday to Friday) or weekly (on weekday).',
+    }),
+    weekday: z.enum(SCHEDULE_WEEKDAYS).optional().meta({
+      description: 'The day of a weekly schedule; only with cadence weekly.',
+    }),
+    at: z
+      .string()
+      .regex(
+        /^([01]\d|2[0-3]):[0-5]\d$/,
+        'expected a 24-hour time such as 09:30',
+      )
+      .meta({
+        description:
+          'HH:MM, 24-hour, in the time zone of the machine the runner runs on.',
+      }),
+    exclude: z
+      .array(ScheduleScenarioIdSchema)
+      .max(SCHEDULE_EXCLUDE_MAX)
+      .optional()
+      .meta({
+        description:
+          'Scenario ids, relative to the project root, the scheduled pass leaves out.',
+      }),
+  })
+  .superRefine(({ cadence, weekday }, ctx) => {
+    if (cadence === 'weekly' && weekday === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'expected a weekday with cadence weekly',
+        path: ['weekday'],
+      });
+    }
+    if (cadence !== 'weekly' && weekday !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `expected no weekday with cadence ${cadence}`,
+        path: ['weekday'],
+      });
+    }
+  });
+export type ScheduleConfig = z.infer<typeof ScheduleConfigSchema>;
+
 const PORT_TEMPLATE =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: `${PORT}` is the config's own syntax.
   '${PORT} is the port of the run: --port, else PORT from the environment, else the default in ${PORT:-3000}. $${ is a literal ${.';
@@ -301,6 +409,8 @@ export const ProjectConfigSchema = z
         'Where the fragments scenarios include live, relative to the project root. Default demoflow/fragments.',
     }),
     render: RenderConfigSchema,
+    schedule: ScheduleConfigSchema.optional(),
+    share: ShareConfigSchema.optional(),
   })
   .transform(({ allowedOrigins, ...config }) => {
     const origin = new URL(config.baseUrl).origin;

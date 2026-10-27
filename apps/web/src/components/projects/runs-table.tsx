@@ -11,9 +11,16 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@andrewbehma/glass-ui/segmented-control';
+import {
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+} from '@andrewbehma/glass-ui/table';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { StatusIndicator } from '@/components/status/status-indicator';
 import { t } from '@/i18n';
 import {
   deleteProjectRuns,
@@ -25,7 +32,9 @@ import {
 import { formatDate } from '@/lib/format-date';
 import { formatDuration } from '@/lib/format-duration';
 import { bulkDeleteOutcome, DELETE_RUNS_MAX } from '@/lib/run-delete';
+import { artifactStatus } from '@/lib/status';
 import { RunStatus } from './run-status';
+import { CellLabel, stacked } from './stacked-rows';
 
 const FILTERS: { status: RunStatusFilter | undefined; label: string }[] = [
   { status: undefined, label: 'projects.library.filter.all' },
@@ -147,42 +156,43 @@ export function RunsTable({
   return (
     <div className="flex flex-col gap-4">
       <div>{filter}</div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[44rem] text-left text-sm">
-          <thead className="text-ink-2">
-            <tr>
-              <th scope="col" className="w-10 py-2 pr-2 font-normal">
-                <Checkbox
-                  aria-label={t('projects.library.select.all')}
-                  checked={allSelected}
-                  indeterminate={selected.size > 0 && !allSelected}
-                  onChange={toggleAll}
-                />
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
-                {t('projects.library.columns.scenario')}
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
-                {t('projects.library.columns.status')}
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
-                {t('projects.library.columns.when')}
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
-                {t('projects.library.columns.duration')}
-              </th>
-              <th scope="col" className="py-2 pr-4 font-normal">
-                {t('projects.library.columns.formats')}
-              </th>
-              <th scope="col" className="py-2 font-normal">
-                {t('projects.library.columns.failedStep')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => (
-              <tr key={run.id} className="border-t border-current/10">
-                <td className="py-3 pr-2 align-top">
+      <Table className={stacked.table}>
+        <TableHead className={stacked.head}>
+          <tr>
+            <TableCell head scope="col" className="w-10">
+              <Checkbox
+                aria-label={t('projects.library.select.all')}
+                checked={allSelected}
+                indeterminate={selected.size > 0 && !allSelected}
+                onChange={toggleAll}
+              />
+            </TableCell>
+            <TableCell head scope="col">
+              {t('projects.library.columns.scenario')}
+            </TableCell>
+            <TableCell head scope="col">
+              {t('projects.library.columns.status')}
+            </TableCell>
+            <TableCell head scope="col">
+              {t('projects.library.columns.when')}
+            </TableCell>
+            <TableCell head scope="col">
+              {t('projects.library.columns.duration')}
+            </TableCell>
+            <TableCell head scope="col">
+              {t('projects.library.columns.formats')}
+            </TableCell>
+            <TableCell head scope="col">
+              {t('projects.library.columns.failedStep')}
+            </TableCell>
+          </tr>
+        </TableHead>
+        <tbody className={stacked.body}>
+          {runs.map((run) => {
+            const artifacts = artifactStatus(run);
+            return (
+              <TableRow key={run.id} className={stacked.row}>
+                <TableCell className={stacked.control}>
                   <Checkbox
                     aria-label={t('projects.library.select.row', {
                       name: run.scenarioName,
@@ -190,59 +200,71 @@ export function RunsTable({
                     checked={selected.has(run.id)}
                     onChange={() => toggle(run.id)}
                   />
-                </td>
-                <td className="py-3 pr-4 align-top">
-                  <Link
-                    href={`/app/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(run.id)}`}
-                    className="break-words font-medium underline"
-                  >
-                    {run.scenarioName}
-                  </Link>
-                  <div className="break-all text-xs text-ink-2">
-                    {run.scenarioPath}
-                  </div>
-                </td>
-                <td className="py-3 pr-4 align-top">
-                  <RunStatus status={run.status} />
-                </td>
-                <td className="py-3 pr-4 align-top">
-                  <time dateTime={run.startedAt}>
-                    {formatDate(run.startedAt)}
-                  </time>
-                </td>
-                <td className="py-3 pr-4 align-top">
-                  {formatDuration(run.durationMs)}
-                </td>
-                <td className="py-3 pr-4 align-top">
-                  {run.formats.length === 0 ? (
-                    <span className="text-ink-2">
-                      {t('projects.library.noFormats')}
-                    </span>
-                  ) : (
-                    <span>{run.formats.join(', ')}</span>
-                  )}
-                  {run.artifactsDeletedAt === null ? null : (
-                    <div className="mt-1">
+                </TableCell>
+                <TableCell className={stacked.lead}>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/app/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(run.id)}`}
+                      className="break-words font-medium text-ink underline-offset-2 hover:underline"
+                    >
+                      {run.scenarioName}
+                    </Link>
+                    {run.kind === 'check' ? (
                       <Badge
                         tone="neutral"
                         size="md"
-                        label={t('projects.library.filesDeleted')}
+                        label={t('runs.kind.check')}
                       />
-                    </div>
-                  )}
-                </td>
-                <td className="py-3 align-top">
+                    ) : null}
+                  </span>
+                  <div className="break-all font-mono text-xs text-ink-2">
+                    {run.scenarioPath}
+                  </div>
+                </TableCell>
+                <TableCell className={stacked.cell}>
+                  <CellLabel>{t('projects.library.columns.status')}</CellLabel>
+                  <RunStatus status={run.status} />
+                </TableCell>
+                <TableCell className={`${stacked.cell} whitespace-nowrap`}>
+                  <CellLabel>{t('projects.library.columns.when')}</CellLabel>
+                  <time dateTime={run.startedAt}>
+                    {formatDate(run.startedAt)}
+                  </time>
+                </TableCell>
+                <TableCell className={`${stacked.cell} tabular-nums`}>
+                  <CellLabel>
+                    {t('projects.library.columns.duration')}
+                  </CellLabel>
+                  {formatDuration(run.durationMs)}
+                </TableCell>
+                <TableCell className={stacked.cell}>
+                  <CellLabel>{t('projects.library.columns.formats')}</CellLabel>
+                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                    {run.formats.length === 0 ? (
+                      <span className="text-ink-2">
+                        {t('projects.library.noFormats')}
+                      </span>
+                    ) : (
+                      <span>{run.formats.join(', ')}</span>
+                    )}
+                    {artifacts ? <StatusIndicator status={artifacts} /> : null}
+                  </span>
+                </TableCell>
+                <TableCell className={stacked.cell}>
+                  <CellLabel>
+                    {t('projects.library.columns.failedStep')}
+                  </CellLabel>
                   {run.failedStep === null
                     ? t('projects.library.noFailedStep')
                     : t('projects.library.step', {
                         number: run.failedStep + 1,
                       })}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </tbody>
+      </Table>
       {failed ? (
         <Banner tone="danger">{t('projects.library.loadFailed')}</Banner>
       ) : null}

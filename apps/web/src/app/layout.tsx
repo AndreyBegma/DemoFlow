@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { t } from '@/i18n';
+import { THEME_BOOTSTRAP_SCRIPT } from '@/lib/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -12,10 +13,17 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Glass UI reads its appearance from these attributes: a dark developer
-  // tool at desk density until there is an appearance setting.
+  // Glass UI reads its appearance from attributes on <html>. The theme ones
+  // are set by the inline script before first paint (spec #373, Decision 6),
+  // so the server's markup differs from the client's on purpose.
   return (
-    <html lang="en" data-theme="dark" data-scale="desk">
+    <html lang="en" data-scale="desk" suppressHydrationWarning>
+      <head>
+        <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: a constant, bundled script
+          dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }}
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

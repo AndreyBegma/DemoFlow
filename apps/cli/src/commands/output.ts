@@ -40,3 +40,41 @@ function failedStep(error: NonNullable<Stage['error']>): string {
       : ` (repeat steps[${error.origin.repeatIndex}], iteration ${error.origin.iteration + 1})`;
   return `step ${error.stepIndex}${origin}: `;
 }
+
+/**
+ * One line per scenario of a check (spec 360, Decision 4): its verdict, its
+ * id and, when it failed, the first failed stage with its error.
+ */
+export function formatCheckLine(result: RunResult): string {
+  const verdict = result.status === 'failed' ? 'failed' : 'passed';
+  const line = `${verdict}  ${result.scenarioId}`;
+  if (result.status !== 'failed') return `${line}\n`;
+  const failed = STAGE_NAMES.find(
+    (name) => result.stages[name].status === 'failed',
+  );
+  if (failed === undefined) return `${line}\n`;
+  const { error } = result.stages[failed];
+  const detail =
+    error === undefined
+      ? ''
+      : ` ${failedStep(error)}${firstLine(error.message)}`;
+  return `${line}  ${failed}:${detail}\n`;
+}
+
+/** `--check --json`: every run of the check, each with its `runDir`. */
+export function formatCheckJson(
+  runs: readonly { result: RunResult; runDir: string }[],
+): string {
+  const failed = runs.filter(({ result }) => result.status === 'failed').length;
+  return `${JSON.stringify({
+    check: true,
+    passed: runs.length - failed,
+    failed,
+    runs: runs.map(({ result, runDir }) => ({ ...result, runDir })),
+  })}\n`;
+}
+
+function firstLine(text: string): string {
+  const end = text.indexOf('\n');
+  return end === -1 ? text : text.slice(0, end);
+}

@@ -18,6 +18,19 @@ import { acquireLock, releaseLock } from './lock.ts';
 import { fileLogger, type Logger } from './log.ts';
 import { runnerPaths } from './paths.ts';
 import { nodeRelayFs, VideoRelay } from './relay/index.ts';
+import {
+  defaultWriteTemplate,
+  isWebsiteRegistered,
+  ProjectRequests,
+} from './roots/index.ts';
+import {
+  hasScheduledRoot,
+  machineZone,
+  scheduleLoader,
+  watchedRoots,
+} from './schedule/roots.ts';
+import { Scheduler } from './schedule/scheduler.ts';
+import { sharePreparer } from './share/prepare.ts';
 import { type ConnectionState, writeState } from './state.ts';
 
 /** How often the daemon looks for `runner.stop`. */
@@ -43,6 +56,8 @@ export interface DaemonDeps {
   spawn: SpawnRun;
   /** Mirror log lines here as well, e.g. a terminal running `--foreground`. */
   echo?: (line: string) => void;
+  /** The machine's IANA zone for schedules (spec 361); the system's when absent. */
+  zone?: () => string;
 }
 
 export const defaultDaemonDeps = (host: HostEnvironment): DaemonDeps => ({
@@ -60,12 +75,14 @@ export const defaultDaemonDeps = (host: HostEnvironment): DaemonDeps => ({
 
 /**
  * `demoflow runner --foreground`: the daemon itself. `runner start` spawns it
- * detached; the autostart units run it directly. One per machine.
+ * detached; the autostart units run it directly. One per machine. Without an
+ * account it runs scheduled checks only, when a watched root has a schedule
+ * (spec 361, Decision 5).
  */
 export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
   const paths = runnerPaths(deps.host);
   const credentials = readCredentials(deps.host);
-  if (credentials === null) {
+  if (credentials === null && !hasScheduledRoot(paths, deps.host.env)) {
     io.stderr('Not logged in; run demoflow login first\n');
     return EXIT_DAEMON_NOT_LOGGED_IN;
   }
@@ -80,16 +97,19 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
     now: () => new Date(deps.clock.now()),
     ...(deps.echo === undefined ? {} : { echo: deps.echo }),
   });
-  logger.log('info', `runner started (PID ${deps.pid})`);
+  logger.log(
+    'info',
+    `runner started (PID ${deps.pid})${credentials === null ? ', local mode: scheduled checks only' : ''}`,
+  );
 
   let current: { state: ConnectionState; retryAt?: number } = {
-    state: 'connecting',
+    state: credentials === null ? 'local' : 'connecting',
   };
   const saveState = () => {
     writeState(paths.state, {
       pid: deps.pid,
       startedAt,
-      server: credentials.server,
+      ...(credentials === null ? {} : { server: credentials.server }),
       state: current.state,
       ...(current.retryAt === undefined
         ? {}
@@ -99,54 +119,101 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
   };
   saveState();
 
-  const relay = new VideoRelay({
-    indexFile: paths.reportedRuns,
-    fs: nodeRelayFs,
-    logger,
-    platform: deps.host.platform,
-  });
-  const launcher = new Launcher({
-    indexFile: paths.reportedRuns,
-    fs: nodeLaunchFs,
-    logger,
+  // Spec 361, Decision 5: without an account, no socket, relay or launches.
+  let connection: RunnerConnection | null = null;
+  let launcher: Launcher | null = null;
+  const scheduler = new Scheduler({
     clock: deps.clock,
-    env: deps.host.env,
+    logger,
+    zone: deps.zone ?? machineZone,
+    roots: () => watchedRoots(paths),
+    loadSchedule: scheduleLoader(deps.host.env),
+    stateFile: paths.scheduleState,
     spawn: deps.spawn,
-    ...defaultLauncherDeps(deps.host),
+    // Spec 248: one launch slot per machine, shared with the website.
+    claim: () => (launcher === null ? () => {} : launcher.claim()),
+    onSchedules: () => connection?.syncSchedules(),
+    local: credentials === null,
   });
-  const connection = new RunnerConnection({
-    server: credentials.server,
-    token: credentials.token,
-    runnerId: credentials.runnerId,
-    connect: deps.connect,
-    clock: deps.clock,
-    random: deps.random,
-    logger,
-    saveToken: (token) =>
-      writeCredentials(deps.host, { ...credentials, token }),
-    isRevoked: async (token) =>
-      (await fetchSelf(credentials.server, token, deps.fetch)) === null,
-    onState: (state, retryAt) => {
-      current = retryAt === undefined ? { state } : { state, retryAt };
-      saveState();
-    },
-    relay,
-    artifacts: new ArtifactsDeleter({
+  if (credentials !== null) {
+    const relay = new VideoRelay({
       indexFile: paths.reportedRuns,
-      fs: nodeArtifactsFs,
+      fs: nodeRelayFs,
       logger,
       platform: deps.host.platform,
-      homeDir: deps.host.homedir,
-      closeRun: (runId) => relay.closeRun(runId),
-    }),
-    launches: launcher,
-  });
+    });
+    const projectsFiles = {
+      allowedRootsFile: paths.allowedRoots,
+      websiteProjectsFile: paths.websiteProjects,
+      host: deps.host,
+    };
+    const launcherDeps = defaultLauncherDeps(deps.host);
+    launcher = new Launcher({
+      indexFile: paths.reportedRuns,
+      websiteRegistered: (rootPath) =>
+        isWebsiteRegistered(rootPath, { ...projectsFiles, fs: nodeLaunchFs }),
+      fs: nodeLaunchFs,
+      logger,
+      clock: deps.clock,
+      env: deps.host.env,
+      spawn: deps.spawn,
+      onIdle: () => scheduler.wake(),
+      ...launcherDeps,
+    });
+    connection = new RunnerConnection({
+      server: credentials.server,
+      token: credentials.token,
+      runnerId: credentials.runnerId,
+      connect: deps.connect,
+      clock: deps.clock,
+      random: deps.random,
+      logger,
+      saveToken: (token) =>
+        writeCredentials(deps.host, { ...credentials, token }),
+      isRevoked: async (token) =>
+        (await fetchSelf(credentials.server, token, deps.fetch)) === null,
+      onState: (state, retryAt) => {
+        current = retryAt === undefined ? { state } : { state, retryAt };
+        saveState();
+      },
+      relay,
+      artifacts: new ArtifactsDeleter({
+        indexFile: paths.reportedRuns,
+        fs: nodeArtifactsFs,
+        logger,
+        platform: deps.host.platform,
+        homeDir: deps.host.homedir,
+        closeRun: (runId) => relay.closeRun(runId),
+      }),
+      launches: launcher,
+      projects: new ProjectRequests({
+        ...projectsFiles,
+        fs: nodeLaunchFs,
+        logger,
+        clock: deps.clock,
+        loadProject: launcherDeps.loadProject,
+        writeTemplate: defaultWriteTemplate,
+      }),
+      schedules: () => scheduler.schedules(),
+      share: sharePreparer({
+        indexFile: paths.reportedRuns,
+        logger,
+        platform: deps.host.platform,
+      }),
+    });
+  }
 
+  let stopped = (): void => {};
+  const stopping = new Promise<void>((resolve) => {
+    stopped = resolve;
+  });
   const stop = (why: string) => {
     logger.log('info', `stopping (${why})`);
     // Spec 248, Decision 11: the run is cancelled; `finally` waits for it.
-    void launcher.close();
-    void connection.stop();
+    void launcher?.close();
+    void scheduler.stop();
+    if (connection === null) stopped();
+    else void connection.stop();
   };
   const watch = setInterval(() => {
     if (existsSync(paths.stop)) stop('runner stop');
@@ -159,6 +226,13 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
   process.on('SIGINT', onSignal);
 
   try {
+    scheduler.start();
+    if (connection === null) {
+      await stopping;
+      rmSync(paths.state, { force: true });
+      logger.log('info', 'stopped');
+      return EXIT_DAEMON_DONE;
+    }
     const outcome = await connection.run();
     if (outcome === 'revoked') {
       current = { state: 'revoked' };
@@ -173,7 +247,7 @@ export async function runForeground(io: Io, deps: DaemonDeps): Promise<number> {
     return EXIT_DAEMON_CRASHED;
   } finally {
     // No child outlives the daemon, whatever ended it.
-    await launcher.close();
+    await Promise.all([launcher?.close(), scheduler.stop()]);
     clearInterval(watch);
     clearInterval(tick);
     process.off('SIGTERM', onSignal);

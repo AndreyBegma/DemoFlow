@@ -1,11 +1,22 @@
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Card } from '@andrewbehma/glass-ui/card';
-import Link from 'next/link';
+import { PageHeader } from '@andrewbehma/glass-ui/page-header';
+import { SectionHeader } from '@andrewbehma/glass-ui/section-header';
 import { notFound } from 'next/navigation';
+import { CheckSchedule } from '@/components/projects/check-schedule';
+import { MachinePill } from '@/components/projects/machine-pill';
+import { ProjectPath } from '@/components/projects/project-path';
 import { RunsTable } from '@/components/projects/runs-table';
+import { ScenarioHealth } from '@/components/projects/scenario-health';
 import { StartRun } from '@/components/projects/start-run';
+import { CrumbName } from '@/components/shell/crumb-names';
 import { t } from '@/i18n';
-import { getFirstRuns, getProjects } from '../_data';
+import {
+  getFirstRuns,
+  getProjectHealth,
+  getProjectSchedules,
+  getProjects,
+} from '../_data';
 
 export default async function ProjectLibraryPage({
   params,
@@ -18,36 +29,43 @@ export default async function ProjectLibraryPage({
   const { status: rawStatus } = await searchParams;
   const status =
     rawStatus === 'passed' || rawStatus === 'failed' ? rawStatus : undefined;
-  const [projects, runs] = await Promise.all([
+  const [projects, runs, schedules, health] = await Promise.all([
     getProjects(),
     getFirstRuns(id, status),
+    getProjectSchedules(id),
+    getProjectHealth(id),
   ]);
   if (runs === 'not_found') notFound();
   const project = projects?.find((candidate) => candidate.id === id);
   if (projects && !project) notFound();
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 p-6">
-      <header>
-        <Link href="/app/projects" className="text-sm text-ink-2 underline">
-          {t('projects.back')}
-        </Link>
-      </header>
-      <Card pad="lg">
-        <h1 className="break-words text-2xl font-semibold">
-          {project?.name ?? t('projects.title')}
-        </h1>
-        {project?.rootPath ? (
-          <div className="mt-1 flex flex-col gap-0.5 text-sm text-ink-2">
-            <p className="break-all">
-              {t('projects.library.path')}: {project.rootPath}
-            </p>
-            <p className="break-words">
-              {t('projects.library.machine')}:{' '}
-              {project.runner?.name ?? t('projects.item.machineRemoved')}
-            </p>
-          </div>
-        ) : null}
-      </Card>
+    <>
+      {project ? <CrumbName segment={id} name={project.name} /> : null}
+      <PageHeader
+        title={
+          <span className="break-words">
+            {project?.name ?? t('projects.title')}
+          </span>
+        }
+        status={
+          project?.rootPath ? <MachinePill machine={project.runner} /> : null
+        }
+        description={
+          project?.rootPath ? (
+            <ProjectPath path={project.rootPath} />
+          ) : project ? (
+            t('projects.item.noFolder')
+          ) : null
+        }
+      />
+      {project ? (
+        <CheckSchedule
+          projectId={id}
+          rootPath={project.rootPath}
+          schedules={schedules}
+        />
+      ) : null}
+      <ScenarioHealth projectId={id} rows={health} />
       {project ? (
         <StartRun
           projectId={id}
@@ -55,18 +73,24 @@ export default async function ProjectLibraryPage({
           machine={project.runner}
         />
       ) : null}
-      <Card pad="lg">
-        {runs === 'error' ? (
-          <Banner tone="danger">{t('projects.library.pageFailed')}</Banner>
-        ) : (
-          <RunsTable
-            key={status ?? 'all'}
-            projectId={id}
-            first={runs}
-            status={status}
-          />
-        )}
-      </Card>
-    </main>
+      <section aria-labelledby="project-runs" className="flex flex-col gap-3">
+        <SectionHeader
+          title={t('projects.library.runsTitle')}
+          headingId="project-runs"
+        />
+        <Card pad="md">
+          {runs === 'error' ? (
+            <Banner tone="danger">{t('projects.library.pageFailed')}</Banner>
+          ) : (
+            <RunsTable
+              key={status ?? 'all'}
+              projectId={id}
+              first={runs}
+              status={status}
+            />
+          )}
+        </Card>
+      </section>
+    </>
   );
 }

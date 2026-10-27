@@ -16,15 +16,20 @@ import {
   CLOSE_REPLACED,
   CLOSE_REVOKED,
   type ClientMessage,
+  FEATURES,
+  type Feature,
   HEARTBEAT_TICK_MS,
   IDLE_TIMEOUT_MS,
   LAST_SEEN_WRITE_INTERVAL_MS,
   type LaunchMessage,
   PING_INTERVAL_MS,
+  type ProjectMessage,
   parseClientMessage,
   RUN_OPTIONS,
   type RunOption,
+  type SchedulesMessage,
   type ServerMessage,
+  type ShareMessage,
   type VideoChunk,
   type VideoMessage,
 } from './runner-socket';
@@ -49,6 +54,14 @@ interface Connection {
   warnedStrayLaunch: boolean;
   /** The known `run.start` options this socket's `launches.sync` announced (spec #325, Decision 4). */
   runOptions: RunOption[];
+  /** The known features the same frame announced (spec #347, Decision 6). */
+  features: Feature[];
+  /** Whether the same frame said it answers `check.start` (spec 360); null before it. */
+  checks: boolean | null;
+  /** A `share.*` answer for no pending request was logged on this socket. */
+  warnedStrayShare: boolean;
+  /** A `project.*` answer for no pending request was logged on this socket. */
+  warnedStrayProject: boolean;
 }
 
 /**
@@ -85,6 +98,31 @@ export interface LaunchSink {
 }
 
 /**
+ * Where share uploads (spec #347) hear from the sockets. `message` answers
+ * false for a request it does not hold.
+ */
+export interface ShareSink {
+  message(runnerId: string, message: ShareMessage): boolean;
+  /** The machine's socket is gone: closed, replaced, revoked or shut down. */
+  closed(runnerId: string): void;
+}
+
+/** Where check schedules (spec #362) hear a machine's config schedules. */
+export interface SchedulesSink {
+  sync(runnerId: string, message: SchedulesMessage): void;
+}
+
+/**
+ * Where folder requests (spec #378) hear from the sockets. `message` answers
+ * false for a request it does not hold.
+ */
+export interface ProjectSink {
+  message(runnerId: string, message: ProjectMessage): boolean;
+  /** The machine's socket is gone: closed, replaced, revoked or shut down. */
+  closed(runnerId: string): void;
+}
+
+/**
  * The open runner sockets of this API instance (one today, #120): online is
  * "has an entry here", never a column. One socket per machine — a second one
  * replaces the first with `4409`. Heartbeats run on the injected clock, so
@@ -101,6 +139,9 @@ export class RunnerConnections
   private videoSink: VideoSink | undefined;
   private artifactsSink: ArtifactsSink | undefined;
   private launchSink: LaunchSink | undefined;
+  private shareSink: ShareSink | undefined;
+  private projectSink: ProjectSink | undefined;
+  private schedulesSink: SchedulesSink | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -154,6 +195,19 @@ export class RunnerConnections
     return this.open.get(runnerId)?.runOptions ?? [];
   }
 
+  /** What the machine's current socket can do (spec #347); none offline or before its sync. */
+  features(runnerId: string): readonly Feature[] {
+    return this.open.get(runnerId)?.features ?? [];
+  }
+
+  /**
+   * Whether the machine's current socket answers `check.start` (spec #362,
+   * Decision 4); null offline or before its `launches.sync`.
+   */
+  checks(runnerId: string): boolean | null {
+    return this.open.get(runnerId)?.checks ?? null;
+  }
+
   /** To the machine's current socket; false when it is not online. */
   sendTo(runnerId: string, message: ServerMessage): boolean {
     const connection = this.open.get(runnerId);
@@ -179,6 +233,21 @@ export class RunnerConnections
     this.launchSink = sink;
   }
 
+  /** Share uploads' hook (spec #347). One sink per instance. */
+  setShareSink(sink: ShareSink): void {
+    this.shareSink = sink;
+  }
+
+  /** Folder requests' hook (spec #378). One sink per instance. */
+  setProjectSink(sink: ProjectSink): void {
+    this.projectSink = sink;
+  }
+
+  /** Check schedules' hook (spec #362). One sink per instance. */
+  setSchedulesSink(sink: SchedulesSink): void {
+    this.schedulesSink = sink;
+  }
+
   /** An authenticated socket, straight after the upgrade. */
   async accept(
     socket: WebSocket,
@@ -196,6 +265,10 @@ export class RunnerConnections
       warnedStrayArtifacts: false,
       warnedStrayLaunch: false,
       runOptions: [],
+      features: [],
+      checks: null,
+      warnedStrayShare: false,
+      warnedStrayProject: false,
     };
     // Listeners first: a frame that arrives during the writes below counts.
     socket.on('message', (data, isBinary) =>
@@ -357,14 +430,34 @@ export class RunnerConnections
       case 'run.error':
       case 'run.finished':
       case 'run.progress':
+      case 'check.started':
+      case 'check.finished':
+      case 'check.error':
         this.relayLaunch(connection, message);
         return;
       case 'launches.sync':
-        // Unknown options are dropped without a log (spec #325).
+        // Unknown options and features are dropped without a log (specs #325, #347).
         connection.runOptions = RUN_OPTIONS.filter((option) =>
           message.runOptions?.includes(option),
         );
+        connection.features = FEATURES.filter((feature) =>
+          message.features?.includes(feature),
+        );
+        connection.checks = message.checks === true;
         this.relayLaunch(connection, message);
+        return;
+      case 'schedules.sync':
+        this.schedulesSink?.sync(connection.runnerId, message);
+        return;
+      case 'share.prepared':
+      case 'share.error':
+        this.relayShare(connection, message);
+        return;
+      case 'project.inspected':
+      case 'project.initialised':
+      case 'project.registered':
+      case 'project.error':
+        this.relayProject(connection, message);
         return;
     }
   }
@@ -376,6 +469,32 @@ export class RunnerConnections
     }
     if (!connection.warnedStrayLaunch) {
       connection.warnedStrayLaunch = true;
+      this.logger.warn(
+        `Dropped ${message.type} from runner ${connection.runnerId} for a request that is not pending`,
+      );
+    }
+  }
+
+  /** As `relayArtifacts`, with its own once-per-socket warning. */
+  private relayShare(connection: Connection, message: ShareMessage): void {
+    if (this.shareSink?.message(connection.runnerId, message)) {
+      return;
+    }
+    if (!connection.warnedStrayShare) {
+      connection.warnedStrayShare = true;
+      this.logger.warn(
+        `Dropped ${message.type} from runner ${connection.runnerId} for a request that is not pending`,
+      );
+    }
+  }
+
+  /** As `relayArtifacts`, with its own once-per-socket warning. */
+  private relayProject(connection: Connection, message: ProjectMessage): void {
+    if (this.projectSink?.message(connection.runnerId, message)) {
+      return;
+    }
+    if (!connection.warnedStrayProject) {
+      connection.warnedStrayProject = true;
       this.logger.warn(
         `Dropped ${message.type} from runner ${connection.runnerId} for a request that is not pending`,
       );
@@ -405,6 +524,8 @@ export class RunnerConnections
     this.videoSink?.closed(runnerId);
     this.artifactsSink?.closed(runnerId);
     this.launchSink?.closed(runnerId);
+    this.shareSink?.closed(runnerId);
+    this.projectSink?.closed(runnerId);
   }
 
   private touch(connection: Connection): void {

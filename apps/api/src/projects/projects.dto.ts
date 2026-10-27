@@ -1,3 +1,4 @@
+import { applyDecorators } from '@nestjs/common';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -11,6 +12,7 @@ import {
   IsOptional,
   IsString,
   Length,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -23,6 +25,21 @@ const trim = ({ value }: { value: unknown }): unknown =>
 
 export const PROJECT_NAME_MAX = 200;
 export const PATH_MAX = 4096;
+/**
+ * A repository page and nothing else (spec #378, Decision 1): no other host,
+ * no credentials, no path below the repository.
+ */
+export const GITHUB_URL_PATTERN =
+  /^https:\/\/github\.com\/[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/;
+
+/** With `@IsOptional()`, which also lets `null` through: no URL. */
+export const IsGithubUrl = () =>
+  applyDecorators(
+    IsString(),
+    Matches(GITHUB_URL_PATTERN, {
+      message: 'githubUrl must be https://github.com/<owner>/<repo>',
+    }),
+  );
 
 /** `RENDER_FORMATS` of `@demoflow/core`, which the API does not depend on. */
 export const RUN_FORMATS = [
@@ -38,6 +55,9 @@ export const RUN_FORMATS = [
 ] as const;
 export type RunFormat = (typeof RUN_FORMATS)[number];
 export const RUN_STATUSES = ['passed', 'failed'] as const;
+/** A run's kind (spec 360); an ordinary run sends none. */
+export const RUN_KINDS = ['check'] as const;
+export type RunKind = (typeof RUN_KINDS)[number];
 
 /** `STAGE_NAMES` of `@demoflow/core`. */
 export const RUN_STAGES = [
@@ -194,6 +214,11 @@ export class RunReportDto {
   @ValidateNested()
   @Type(() => RunFailureDto)
   failure?: RunFailureDto;
+
+  /** `check` for a check run (spec 360); absent for an ordinary run. */
+  @IsOptional()
+  @IsIn(RUN_KINDS)
+  kind?: RunKind;
 }
 
 export class CreateProjectDto {
@@ -203,13 +228,20 @@ export class CreateProjectDto {
   name!: string;
 }
 
-/** Renames and binds. `runnerId` and `rootPath` come together or not at all. */
+/**
+ * Renames, binds, and sets or clears the GitHub URL (spec #378, Decision 7).
+ * `runnerId` and `rootPath` come together or not at all.
+ */
 export class UpdateProjectDto {
   @IsOptional()
   @Transform(trim)
   @IsString()
   @Length(1, PROJECT_NAME_MAX)
   name?: string;
+
+  @IsOptional()
+  @IsGithubUrl()
+  githubUrl?: string | null;
 
   @ValidateIf((dto: UpdateProjectDto) => dto.rootPath !== undefined)
   @IsString()

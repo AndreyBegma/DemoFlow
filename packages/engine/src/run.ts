@@ -1,4 +1,5 @@
 import { mkdir } from 'node:fs/promises';
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   type Annotation,
   deriveRunStatus,
@@ -53,7 +54,18 @@ export interface RunOptions {
   env?: Readonly<Record<string, string | undefined>>;
   /** Defaults to `true`. */
   headless?: boolean;
+  /**
+   * Defaults to `true`. With `false` (a check run, ADR-0021 §1) the steps run
+   * in a context with no video, no sync mark is recorded and the `recording`
+   * stage is `skipped`.
+   */
+  record?: boolean;
   observers?: readonly EngineObserver[];
+  /**
+   * Milliseconds the recording goes on after the last step of a successful
+   * run (`render.endHoldMs`, spec 365). Defaults to 0: the video ends there.
+   */
+  endHoldMs?: number;
 }
 
 const ASSERTIONS = new Set(['assertVisible', 'assertText']);
@@ -80,6 +92,7 @@ export async function runScenario(
   };
 
   const startedAt = timestamp();
+  const record = options.record ?? true;
   const stages = pendingStages();
   const recording = recordingOptions(scenario, options.runDir);
   const baseUrl = scenario.baseUrl ?? options.baseUrl;
@@ -130,7 +143,7 @@ export async function runScenario(
     }
     const execute = (
       session: Session,
-      range: { from: number; to: number },
+      range: { from: number; to: number; endHoldMs?: number },
       events: TimelineEvent[],
     ): Promise<Failure | undefined> =>
       executeSteps({
@@ -150,6 +163,7 @@ export async function runScenario(
         annotations: session.annotations,
         scrub,
         emit,
+        endHoldMs: range.endHoldMs ?? 0,
       });
 
     // The opening off-camera steps run in a context of their own with no
@@ -184,10 +198,12 @@ export async function runScenario(
       }
     }
 
-    stages.recording = { status: 'running', startedAt: timestamp() };
+    stages.recording = record
+      ? { status: 'running', startedAt: timestamp() }
+      : { status: 'skipped' };
     const session = await openSession(browser, scenario, guard, {
       options: {
-        ...toContextOptions(recording, browser.version()),
+        ...toContextOptions(recording, browser.version(), { video: record }),
         ...(start === undefined ? {} : { storageState: start.storageState }),
       },
     });
@@ -198,12 +214,13 @@ export async function runScenario(
     if (start !== undefined && /^https?:/.test(start.url)) {
       failure = await reopen(page, start.url, hidden - 1, steps, scrub);
     }
-    const syncMark = await recordSyncMark(page, clock);
+    // The sync mark is read from the video; a check records none.
+    const syncMark = record ? await recordSyncMark(page, clock) : undefined;
 
     const events: TimelineEvent[] = [];
     failure ??= await execute(
       session,
-      { from: hidden, to: steps.length },
+      { from: hidden, to: steps.length, endHoldMs: options.endHoldMs },
       events,
     );
     // Before the context closes: a document's clock exchange may still be running on it.
@@ -220,19 +237,23 @@ export async function runScenario(
 
     // Closing the context finalises the video, also after a failed step.
     await context.close();
-    const video = page.video();
+    const video = record ? page.video() : null;
     let videoPath: string | undefined;
-    try {
-      videoPath = video === null ? undefined : await video.path();
-      stages.recording = finish(
-        stages.recording,
-        videoPath === undefined ? 'failed' : 'passed',
-        videoPath === undefined ? { message: 'no video recorded' } : undefined,
-      );
-    } catch (error) {
-      stages.recording = finish(stages.recording, 'failed', {
-        message: errorMessage(error),
-      });
+    if (record) {
+      try {
+        videoPath = video === null ? undefined : await video.path();
+        stages.recording = finish(
+          stages.recording,
+          videoPath === undefined ? 'failed' : 'passed',
+          videoPath === undefined
+            ? { message: 'no video recorded' }
+            : undefined,
+        );
+      } catch (error) {
+        stages.recording = finish(stages.recording, 'failed', {
+          message: errorMessage(error),
+        });
+      }
     }
 
     const outcome = conclude(startedAt, stages, events, {
@@ -343,6 +364,8 @@ interface ExecuteInput {
     hook: K,
     event: Parameters<NonNullable<EngineObserver[K]>>[0],
   ) => Promise<void>;
+  /** Slept after the last step when every step passed. */
+  endHoldMs: number;
 }
 
 interface Failure {
@@ -355,6 +378,15 @@ interface Failure {
 /** Runs the steps in order and returns the first failure, if any. */
 async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
   const { clock, emit, scrub } = input;
+  // Keeps the page on camera; a field that shows up meanwhile is masked from
+  // then, and a page that leaves meanwhile is the step's failure (spec 365).
+  const hold = async (ms: number): Promise<string | undefined> => {
+    const fromMs = clock.now();
+    await sleep(ms);
+    const sightings = await input.masks.look();
+    input.masks.record(sightings, fromMs, Math.max(fromMs, clock.now()));
+    return input.navigation.take();
+  };
   let pointer = input.pointer;
   for (let stepIndex = input.from; stepIndex < input.to; stepIndex++) {
     const step = input.steps[stepIndex];
@@ -425,6 +457,19 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
     if (step.action === 'fill') {
       await input.masks.track(event, step.target);
     }
+    // A failed step does not hold; an off-camera one has nothing to show.
+    if (
+      failure === undefined &&
+      step.hold !== undefined &&
+      step.record !== false
+    ) {
+      event.holdMs = step.hold;
+      const left = await hold(step.hold);
+      if (left !== undefined) {
+        failure = new StepFailure('execution', originNotAllowed(left));
+        event.error = { message: scrub(failure.message) };
+      }
+    }
     input.events.push(event);
     await emit('onStepFinished', { stepIndex, step, event });
 
@@ -434,6 +479,20 @@ async function executeSteps(input: ExecuteInput): Promise<Failure | undefined> {
         message: scrub(failure.message),
         stepIndex,
         origin: step.origin,
+      };
+    }
+  }
+  const last = input.events.at(-1);
+  if (input.endHoldMs > 0 && last !== undefined) {
+    const left = await hold(input.endHoldMs);
+    if (left !== undefined) {
+      const message = scrub(originNotAllowed(left));
+      last.error = { message };
+      return {
+        stage: 'execution',
+        message,
+        stepIndex: last.stepIndex,
+        origin: last.origin,
       };
     }
   }

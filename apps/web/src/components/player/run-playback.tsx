@@ -2,14 +2,15 @@
 
 import { Banner } from '@andrewbehma/glass-ui/banner';
 import { Button } from '@andrewbehma/glass-ui/button';
+import { Card } from '@andrewbehma/glass-ui/card';
 import { ConfirmDialog } from '@andrewbehma/glass-ui/confirm-dialog';
-import { EmptyState } from '@andrewbehma/glass-ui/empty-state';
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@andrewbehma/glass-ui/segmented-control';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
+import { StatusIndicator } from '@/components/status/status-indicator';
 import { t } from '@/i18n';
 import { deleteRunArtifacts, getRun, type RunDetail } from '@/lib/api';
 import { formatDate } from '@/lib/format-date';
@@ -24,22 +25,66 @@ import {
   playerShape,
   videoUrl,
 } from '@/lib/playback';
+import { type StatusView, videoStatus } from '@/lib/status';
 import { choosePlayer } from './video-player';
 
 /**
- * The format switcher, the player (or image), the availability messages and
- * the control that deletes the run's files from its machine.
+ * Why the video cannot be shown, inside the black frame. The message sits on a
+ * solid surface, so its text keeps the theme's contrast over the black.
+ */
+function FrameMessage({
+  status,
+  title,
+  body,
+  children,
+}: {
+  status: StatusView | null;
+  title: string;
+  body?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex aspect-video items-center justify-center p-4">
+      <Card
+        variant="content"
+        pad="md"
+        className="flex max-w-md flex-col items-center gap-2 text-center"
+      >
+        {status ? <StatusIndicator status={status} /> : null}
+        <p className="font-medium">{title}</p>
+        {body ? <p className="text-sm text-ink-2">{body}</p> : null}
+        {children}
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * The run page's body (spec #374, Decision 4): the player on a black frame,
+ * and beside it the glass panel with the run's `details` and its actions —
+ * `runAgain`, Download, the control that deletes the run's files from its
+ * machine, and `deleteRun`. Below 1024px the panel stacks under the player.
+ * A `check` run records no video (spec #363, Decision 5): the frame says so,
+ * and there is no format switch, Download or file deletion.
  */
 export function RunPlayback({
   runId,
   formats: runFormats,
   machine: initialMachine,
   artifactsDeletedAt: initialDeletedAt,
+  details,
+  runAgain,
+  deleteRun,
+  check = false,
 }: {
   runId: string;
   formats: string[];
   machine: RunDetail['machine'];
   artifactsDeletedAt: string | null;
+  details: ReactNode;
+  runAgain: ReactNode;
+  deleteRun: ReactNode;
+  check?: boolean;
 }) {
   const router = useRouter();
   const formats = orderFormats(runFormats);
@@ -59,19 +104,6 @@ export function RunPlayback({
   const [deleteError, setDeleteError] = useState<
     DeleteFailureKey | undefined
   >();
-
-  if (deletedAt !== null) {
-    return (
-      <EmptyState
-        title={t('runPage.deleted.title')}
-        description={t('runPage.deleted.body', { date: formatDate(deletedAt) })}
-      />
-    );
-  }
-
-  if (format === undefined) {
-    return <Banner tone="info">{t('runPage.noFormats')}</Banner>;
-  }
 
   /** Asks the API again whether the machine is still there and online. */
   async function refetchMachine() {
@@ -134,108 +166,169 @@ export function RunPlayback({
     setAttempt((current) => current + 1);
   }
 
-  const state = deleting ? 'deleting' : availability(machine, playerFailed);
   const online = machine?.online === true;
-  const Player = choosePlayer();
-  const src = videoUrl(runId, format);
-  const isGif = isGifFormat(format);
+  const unavailable = videoStatus(
+    { artifactsDeletedAt: deletedAt, formats: runFormats },
+    machine,
+  );
+  // Download and Delete video files only make sense while there are files.
+  const hasFiles = !check && deletedAt === null && format !== undefined;
 
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        {formats.length > 1 ? (
-          <SegmentedControl aria-label={t('runPage.formats.label')}>
-            {formats.map((candidate) => (
-              <SegmentedControlItem
-                key={candidate}
-                active={candidate === format}
-                layoutId="run-format"
-              >
-                <button
-                  type="button"
-                  aria-pressed={candidate === format}
-                  className="px-3 py-1 text-sm"
-                  onClick={() => {
-                    setFormat(candidate);
-                    setPlayerFailed(false);
-                  }}
-                >
-                  {t(`runPage.formats.${candidate}`)}
-                </button>
-              </SegmentedControlItem>
-            ))}
-          </SegmentedControl>
-        ) : null}
-        <Button
-          type="button"
-          variant="glass"
-          disabled={!online || deleting || checking}
-          onClick={() => void download(format)}
-        >
-          {checking
-            ? t('runPage.download.checking')
-            : t('runPage.download.button')}
-        </Button>
-        {online ? null : (
-          <span className="text-sm text-ink-2">
-            {t('runPage.download.offlineHint')}
-          </span>
-        )}
-      </div>
-      {state === 'ready' && isGif ? (
+  function frame(): ReactNode {
+    if (check) {
+      return <FrameMessage status={null} title={t('runPage.checkNoVideo')} />;
+    }
+    if (deletedAt !== null) {
+      return (
+        <FrameMessage
+          status={unavailable}
+          title={t('runPage.deleted.title')}
+          body={t('runPage.deleted.body', { date: formatDate(deletedAt) })}
+        />
+      );
+    }
+    if (format === undefined) {
+      return (
+        <FrameMessage status={unavailable} title={t('runPage.noFormats')} />
+      );
+    }
+    const state = deleting ? 'deleting' : availability(machine, playerFailed);
+    const src = videoUrl(runId, format);
+    if (state === 'ready' && isGifFormat(format)) {
+      return (
         // biome-ignore lint/performance/noImgElement: a relay stream, not a static asset next/image can optimize
         <img
           key={`${src}-${attempt}`}
           src={src}
           alt={t('runPage.gifAlt')}
           onError={handlePlayerError}
-          className="mx-auto max-h-[70vh] rounded-control"
+          className="mx-auto max-h-[70vh]"
         />
-      ) : null}
-      {state === 'ready' && !isGif ? (
+      );
+    }
+    if (state === 'ready') {
+      const Player = choosePlayer();
+      return (
         <Player
           key={`${src}-${attempt}`}
           src={src}
           shape={playerShape(format)}
           onError={handlePlayerError}
         />
-      ) : null}
-      {state === 'removed' ? (
-        <Banner tone="warn">{t('runPage.removed')}</Banner>
-      ) : null}
-      {state === 'offline' && machine ? (
-        <Banner tone="warn">
-          {t('runPage.offline', { name: machine.name })}
-        </Banner>
-      ) : null}
-      {state === 'failed' && machine ? (
-        <Banner tone="danger">
-          {t('runPage.failed', { name: machine.name })}
-        </Banner>
-      ) : null}
-      {state === 'offline' || state === 'failed' ? (
-        <div>
-          <Button type="button" variant="glass" disabled={busy} onClick={retry}>
-            {busy ? t('runPage.retrying') : t('runPage.retry')}
-          </Button>
-        </div>
-      ) : null}
-      {deleteError ? <Banner tone="danger">{t(deleteError)}</Banner> : null}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          variant="danger"
-          disabled={!online || deleting}
-          onClick={() => setConfirming(true)}
+      );
+    }
+    if (state === 'deleting') return <div className="aspect-video" />;
+    const retryButton = (
+      <Button type="button" variant="glass" disabled={busy} onClick={retry}>
+        {busy ? t('runPage.retrying') : t('runPage.retry')}
+      </Button>
+    );
+    if (state === 'removed') {
+      return <FrameMessage status={unavailable} title={t('runPage.removed')} />;
+    }
+    const name = machine?.name ?? '';
+    return state === 'offline' ? (
+      <FrameMessage status={unavailable} title={t('runPage.offline', { name })}>
+        {retryButton}
+      </FrameMessage>
+    ) : (
+      <FrameMessage status={null} title={t('runPage.failed', { name })}>
+        {retryButton}
+      </FrameMessage>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+      <div className="flex min-w-0 flex-col gap-3">
+        <div
+          data-testid="run-player"
+          className="overflow-hidden rounded-surface bg-black"
         >
-          {t('runPage.delete.open')}
-        </Button>
-        {online ? null : (
-          <span className="text-sm text-ink-2">
-            {t('runPage.delete.offlineHint')}
-          </span>
-        )}
+          {frame()}
+        </div>
+        {hasFiles && formats.length > 1 ? (
+          <div className="max-w-full overflow-x-auto">
+            <SegmentedControl aria-label={t('runPage.formats.label')}>
+              {formats.map((candidate) => (
+                <SegmentedControlItem
+                  key={candidate}
+                  active={candidate === format}
+                  layoutId="run-format"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={candidate === format}
+                    className="whitespace-nowrap px-3 py-1 text-sm"
+                    onClick={() => {
+                      setFormat(candidate);
+                      setPlayerFailed(false);
+                    }}
+                  >
+                    {t(`runPage.formats.${candidate}`)}
+                  </button>
+                </SegmentedControlItem>
+              ))}
+            </SegmentedControl>
+          </div>
+        ) : null}
       </div>
+      <Card
+        variant="glass"
+        pad="md"
+        role="complementary"
+        aria-label={t('runPage.panel')}
+        className="flex min-w-0 flex-col gap-4"
+      >
+        {details}
+        <section
+          aria-labelledby="run-actions"
+          className="flex flex-col gap-3 border-t border-line pt-4"
+        >
+          <h2 id="run-actions" className="text-sm font-semibold">
+            {t('runPage.actions')}
+          </h2>
+          {runAgain}
+          {hasFiles && format !== undefined ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="solid"
+                disabled={!online || deleting || checking}
+                onClick={() => void download(format)}
+              >
+                {checking
+                  ? t('runPage.download.checking')
+                  : t('runPage.download.button')}
+              </Button>
+              {online ? null : (
+                <span className="text-sm text-ink-2">
+                  {t('runPage.download.offlineHint')}
+                </span>
+              )}
+            </div>
+          ) : null}
+          {deleteError ? <Banner tone="danger">{t(deleteError)}</Banner> : null}
+          {hasFiles ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="danger"
+                disabled={!online || deleting}
+                onClick={() => setConfirming(true)}
+              >
+                {t('runPage.delete.open')}
+              </Button>
+              {online ? null : (
+                <span className="text-sm text-ink-2">
+                  {t('runPage.delete.offlineHint')}
+                </span>
+              )}
+            </div>
+          ) : null}
+          {deleteRun}
+        </section>
+      </Card>
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}

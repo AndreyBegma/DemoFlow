@@ -22,7 +22,13 @@ done
 
 echo
 echo "── public"
-for path in / /api/health; do
-  printf '%-14s %s\n' "$path" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$HOST$path")"
+# The poster stands for apps/web/public: a 404 there means the web image was
+# built without it.
+failed=0
+for path in / /api/health /demo/landing-poster.png; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$HOST$path")"
+  printf '%-26s %s\n' "$path" "$code"
+  [ "$code" = 200 ] || failed=1
 done
 echo "(530 / error 1033: the hostname exists but no tunnel connector is running)"
+exit "$failed"

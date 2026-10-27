@@ -74,7 +74,8 @@ whole string instead of a part of it.
 ## Steps
 
 Every step has an `action`. Every step may also carry a `caption`, a
-`timeoutMs` and `"record": false` (see [Off-camera steps](#off-camera-steps)).
+`timeoutMs`, a [`hold`](#hold) and `"record": false` (see
+[Off-camera steps](#off-camera-steps)).
 
 | Action | What it does | Fields |
 |---|---|---|
@@ -127,6 +128,39 @@ steps that have a target, `waitFor` for a hidden element excepted, and on
   "zoom": 1.8
 }
 ```
+
+### hold
+
+`hold` keeps the page on screen after the step, for 100 to 10000 ms. The run
+waits that long once the step is done, and the video plays the whole hold at
+real speed: the [idle trim](/docs/config#render) never shortens it. A step that
+fails does not hold. `hold` is refused on an off-camera step
+(`"record": false`).
+
+Use `hold`, not `wait`, to show something. A `wait` on a still page is idle
+time, and the render shortens it to `render.idle.compressToMs` (400 ms by
+default).
+
+#### Show the result
+
+Assert the result, zoom in on it and hold it. An assertion with `zoom` keeps the
+camera on the element it found through its hold, and outlines it:
+
+```json
+{
+  "action": "assertVisible",
+  "target": { "text": "My first post" },
+  "zoom": true,
+  "hold": 2000
+}
+```
+
+The outline is drawn where the element was when the assertion passed, so hold
+an element that has stopped moving.
+
+Every successful video also ends on its last frame for
+[`render.endHoldMs`](/docs/config#render) (2500 ms by default), after the last
+step's own `hold`.
 
 ### Scene markers
 

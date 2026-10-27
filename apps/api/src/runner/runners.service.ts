@@ -3,7 +3,7 @@ import type { Runner } from '@prisma/client';
 import { Clock } from '../common/clock';
 import { PrismaService } from '../database/prisma.service';
 import { RunnerConnections } from './runner-connections.service';
-import { CLOSE_REVOKED } from './runner-socket';
+import { CLOSE_REVOKED, type Feature } from './runner-socket';
 
 /** A machine as the API returns it: never its token hash. */
 export interface RunnerView {
@@ -15,11 +15,17 @@ export interface RunnerView {
   lastUsedAt: Date | null;
   /** Has an open socket on this API right now (spec #151). */
   online: boolean;
+  /** What its current socket can do (spec #378: `projects`); none offline. */
+  features: Feature[];
   lastSeenAt: Date | null;
   lastSeenIp: string | null;
 }
 
-export function toRunnerView(runner: Runner, online: boolean): RunnerView {
+export function toRunnerView(
+  runner: Runner,
+  online: boolean,
+  features: readonly Feature[],
+): RunnerView {
   return {
     id: runner.id,
     name: runner.name,
@@ -28,6 +34,7 @@ export function toRunnerView(runner: Runner, online: boolean): RunnerView {
     createdAt: runner.createdAt,
     lastUsedAt: runner.lastUsedAt,
     online,
+    features: [...features],
     lastSeenAt: runner.lastSeenAt,
     lastSeenIp: runner.lastSeenIp,
   };
@@ -95,6 +102,10 @@ export class RunnersService {
   }
 
   private view(runner: Runner): RunnerView {
-    return toRunnerView(runner, this.connections.isOnline(runner.id));
+    return toRunnerView(
+      runner,
+      this.connections.isOnline(runner.id),
+      this.connections.features(runner.id),
+    );
   }
 }

@@ -1,5 +1,10 @@
 import path from 'node:path';
-import { type Renderer, recordRender, renderPath } from '../renderer.ts';
+import {
+  planChapters,
+  type Renderer,
+  recordRender,
+  renderPath,
+} from '../renderer.ts';
 import { drawPlan } from './pipeline.ts';
 
 /**
@@ -15,12 +20,17 @@ export const ffmpegRenderer: Renderer = {
       format,
       file: renderPath(runDir, 'ffmpeg', format),
     }));
-    return recordRender(runDir, 'ffmpeg', files, () =>
-      drawPlan(
-        path.resolve(runDir, plan.source.file),
-        plan,
-        files.map(({ file }) => file),
-      ),
+    return recordRender(
+      runDir,
+      'ffmpeg',
+      files,
+      () =>
+        drawPlan(
+          path.resolve(runDir, plan.source.file),
+          plan,
+          files.map(({ file }) => file),
+        ),
+      planChapters(plan),
     );
   },
 };

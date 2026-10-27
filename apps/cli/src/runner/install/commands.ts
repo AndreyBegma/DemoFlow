@@ -2,6 +2,8 @@ import { readCredentials } from '../../auth/credentials.ts';
 import type { Io } from '../../commands/io.ts';
 import type { ControlDeps } from '../control.ts';
 import { redact } from '../log.ts';
+import { runnerPaths } from '../paths.ts';
+import { hasScheduledRoot } from '../schedule/roots.ts';
 
 /**
  * `demoflow runner install`: registers login autostart for this user. The
@@ -9,7 +11,11 @@ import { redact } from '../log.ts';
  * and carries no token — the daemon reads `credentials.json` itself.
  */
 export function installCommand(io: Io, deps: ControlDeps): number {
-  if (readCredentials(deps.host) === null) {
+  // Spec 361, Decision 5: a scheduled root runs without an account.
+  if (
+    readCredentials(deps.host) === null &&
+    !hasScheduledRoot(runnerPaths(deps.host), deps.host.env)
+  ) {
     io.stderr('Not logged in; run demoflow login first\n');
     return 1;
   }

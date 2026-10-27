@@ -28,7 +28,7 @@ import { exitCodeFor } from './exit.ts';
 import type { Io } from './io.ts';
 import { formatJson, formatSummary } from './output.ts';
 import { assertSafeRunId } from './run-id.ts';
-import { loadScenario } from './scenario-file.ts';
+import { scenarioDescription } from './scenario-file.ts';
 import { readResult, settleRun } from './settle.ts';
 
 export interface RenderFlags {
@@ -78,22 +78,7 @@ export async function renderCommand(
   io: Io,
   deps: RenderDeps = defaultRenderDeps(),
 ): Promise<number> {
-  const { host } = deps;
-  assertSafeRunId(runId);
-  const root =
-    flags.project === undefined
-      ? projectRootAbove(deps.cwd)
-      : projectRootAt(path.resolve(deps.cwd, flags.project));
-  const config = loadProjectConfig(root);
-  const { home } = resolveHome({
-    ...host,
-    out: flags.out,
-    cwd: deps.cwd,
-    projectRoot: root,
-    projectConfig: config,
-    globalConfig: loadGlobalConfig(host),
-  });
-  const runDir = runDirFor(home, runId, host.platform);
+  const { root, config, runDir } = locateRun(runId, flags, deps);
   const result = await readRenderable(runDir);
 
   io.stderr('Rendering\n');
@@ -126,6 +111,34 @@ export async function renderCommand(
   const code = exitCodeFor(settled);
   // A failure before the renderer recorded the stage must not read as success.
   return code === 0 && renderError !== undefined ? EXIT_STAGE_FAILED : code;
+}
+
+/**
+ * Where `<runId>` lives (spec 255, Decisions 1–2): under the home of the
+ * project above the cwd, or of `--project`. Throws for an unsafe id or a
+ * missing project; the run directory itself may not exist.
+ */
+export function locateRun(
+  runId: string,
+  flags: { out?: string; project?: string },
+  deps: { host: HostEnvironment; cwd: string },
+): { root: string; config: ProjectConfig; runDir: string } {
+  const { host } = deps;
+  assertSafeRunId(runId);
+  const root =
+    flags.project === undefined
+      ? projectRootAbove(deps.cwd)
+      : projectRootAt(path.resolve(deps.cwd, flags.project));
+  const config = loadProjectConfig(root);
+  const { home } = resolveHome({
+    ...host,
+    out: flags.out,
+    cwd: deps.cwd,
+    projectRoot: root,
+    projectConfig: config,
+    globalConfig: loadGlobalConfig(host),
+  });
+  return { root, config, runDir: runDirFor(home, runId, host.platform) };
 }
 
 /**
@@ -175,24 +188,6 @@ async function readRenderable(runDir: string): Promise<RunResult> {
 }
 
 /**
- * The intro card's subtitle: the scenario's `description`, read from the
- * project when its file is still there and loads. An inline scenario of
- * `demoflow mcp` is gone after its run, so its card has no subtitle.
- */
-function scenarioDescription(
-  root: string,
-  scenarioId: string,
-): string | undefined {
-  const file = path.join(root, scenarioId);
-  if (!existsSync(file)) return undefined;
-  try {
-    return loadScenario(file).scenario.description;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * What `buildRenderPlan` gets from the project's `render.*`, for `run` and
  * `render` alike: a re-render is styled exactly like a first render would be
  * today (spec 255, Decision 3).
@@ -204,6 +199,7 @@ export function renderPlanOptions(
 ): RenderPlanOptions {
   return {
     idle: config.render.idle,
+    endHoldMs: config.render.endHoldMs,
     output: {
       width: config.render.width,
       height: config.render.height,

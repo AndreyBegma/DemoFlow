@@ -1,4 +1,9 @@
-import type { Annotation, CardsConfig, TimelineEvent } from '@demoflow/core';
+import type {
+  Annotation,
+  CardsConfig,
+  RunEdits,
+  TimelineEvent,
+} from '@demoflow/core';
 import { cameraStateAt, cursorAt, followAt, maskBoxAt } from './frame.ts';
 import { type CardSlot, shiftPastCards } from './time-map.ts';
 import type {
@@ -8,6 +13,7 @@ import type {
   ClickRing,
   CursorMove,
   FollowKey,
+  Highlight,
   KeyBadge,
   MaskSpan,
 } from './types.ts';
@@ -19,6 +25,8 @@ export type PlacedCard = CardSpec & CardSlot;
  * The cards of a run, in page order (spec 108): the intro at the start, a
  * card on every `scene` marker before the page ends, and — on a successful
  * run with a title — the outro after it. `out` maps timeline ms to page ms.
+ * `edits` (spec 353) switch cards and replace their text; without a config
+ * there are no cards, edited or not.
  */
 export function placeCards(input: {
   config?: CardsConfig;
@@ -30,22 +38,27 @@ export function placeCards(input: {
   scenarioName: string;
   description?: string;
   failed: boolean;
+  edits?: RunEdits['cards'];
 }): PlacedCard[] {
-  const { config, events, out, pageEndMs } = input;
+  const { config, events, out, pageEndMs, edits } = input;
   const annotations = input.annotations ?? [];
   if (config === undefined) return [];
   const cards: Omit<PlacedCard, 'startMs'>[] = [];
-  if (config.intro.enabled) {
-    const subtitle = input.description?.trim();
+  if (edits?.intro?.enabled ?? config.intro.enabled) {
+    // `null` removes the description; absent keeps it.
+    const subtitle =
+      edits?.intro?.subtitle === null
+        ? undefined
+        : (edits?.intro?.subtitle ?? input.description)?.trim();
     cards.push({
       kind: 'intro',
       atMs: 0,
       durationMs: config.intro.durationMs,
-      title: input.scenarioName,
+      title: edits?.intro?.title ?? input.scenarioName,
       ...(subtitle === undefined || subtitle === '' ? {} : { subtitle }),
     });
   }
-  if (config.scenes.enabled) {
+  if (edits?.scenes?.enabled ?? config.scenes.enabled) {
     // Scenario markers, then the page's own scenes (#201); stable, so at an
     // equal time a marker comes first. Both give the same card.
     const scenes = [
@@ -72,8 +85,14 @@ export function placeCards(input: {
       });
     }
   }
-  const { outro } = config;
-  if (!input.failed && outro.title !== undefined) {
+  // An edited outro is the outro whatever the config says; `null` removes it.
+  const outro =
+    edits?.outro === undefined
+      ? config.outro
+      : edits.outro === null
+        ? undefined
+        : { ...edits.outro, durationMs: config.outro.durationMs };
+  if (!input.failed && outro?.title !== undefined) {
     cards.push({
       kind: 'outro',
       atMs: pageEndMs,
@@ -96,6 +115,7 @@ export function placeCards(input: {
 export interface Overlays {
   cursor: CursorMove[];
   clicks: ClickRing[];
+  highlights: Highlight[];
   camera: CameraKeyframe[];
   /** The vertical output's follow camera (spec 176). */
   follow: FollowKey[];
@@ -133,6 +153,7 @@ export function shiftOverlays(
   return {
     cursor: splitMoves(overlays.cursor, cards).map(span),
     clicks: overlays.clicks.map((ring) => ({ ...ring, atMs: at(ring.atMs) })),
+    highlights: overlays.highlights.map(span),
     camera: holdAcross(overlays.camera, cards, at, (pageMs, atMs) => ({
       atMs,
       ...cameraStateAt(overlays.camera, pageMs),

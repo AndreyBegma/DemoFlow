@@ -49,3 +49,27 @@ export function progressObserver(io: Io): EngineObserver {
     },
   };
 }
+
+/**
+ * `demoflow run --check --progress` (spec 360): one line as each scenario of
+ * a check pass starts, `run` 1-based. The daemon restarts its per-scenario
+ * time limit on it.
+ */
+export interface CheckProgress {
+  run: number;
+  runs: number;
+}
+
+/** The check line as printed on stdout, newline included. */
+export function formatCheckProgress(progress: CheckProgress): string {
+  return `${JSON.stringify({ type: 'progress', phase: 'check', ...progress })}\n`;
+}
+
+/** Writes a check line; best effort, like {@link emitProgress}. */
+export function emitCheckProgress(io: Io, progress: CheckProgress): void {
+  try {
+    io.stdout(formatCheckProgress(progress));
+  } catch {
+    // Progress is best effort.
+  }
+}

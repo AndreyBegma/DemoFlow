@@ -47,6 +47,8 @@ export const LOOK = {
   mask: { sigma: 12, wash: hex('#808080'), washAlpha: 0.35 },
   cursor: { fill: WHITE, outline: hex('#111111'), outlineWidth: 2 },
   ring: { colour: WHITE, width: 4, fromRadius: 12, toRadius: 36 },
+  /** Around an asserted element (spec 365): `padding` outside its box. */
+  highlight: { width: 2, radius: 8, padding: 4 },
   caption: {
     panel: BLACK,
     panelAlpha: 0.6,
@@ -270,6 +272,9 @@ export function createCompositor(
           blurBox(target, box, LOOK.mask.sigma);
           fillBox(target, box, LOOK.mask.wash, LOOK.mask.washAlpha);
         }
+        for (const highlight of state.highlights ?? []) {
+          drawHighlight(target, highlight, state.scale);
+        }
         for (const ring of state.rings) {
           drawRing(target, ring.point, ring.progress, state.scale);
         }
@@ -358,6 +363,40 @@ function drawRing(
     1 - progress,
     (x, y) =>
       edge(half - Math.abs(Math.hypot(x - point.x, y - point.y) - radius)),
+  );
+}
+
+function drawHighlight(
+  target: Picture,
+  { box, colour, opacity }: NonNullable<FrameState['highlights']>[number],
+  scale: number,
+): void {
+  const { width, radius, padding } = LOOK.highlight;
+  const pad = padding * scale;
+  const outline: Box = {
+    x: box.x - pad,
+    y: box.y - pad,
+    width: box.width + 2 * pad,
+    height: box.height + 2 * pad,
+  };
+  const corner = Math.min(
+    radius * scale,
+    outline.width / 2,
+    outline.height / 2,
+  );
+  const half = (width * scale) / 2;
+  const reach = half + 1;
+  paint(
+    target,
+    {
+      x: outline.x - reach,
+      y: outline.y - reach,
+      width: outline.width + 2 * reach,
+      height: outline.height + 2 * reach,
+    },
+    hex(colour),
+    opacity,
+    (x, y) => edge(half - Math.abs(roundRectDistance(outline, corner, x, y))),
   );
 }
 

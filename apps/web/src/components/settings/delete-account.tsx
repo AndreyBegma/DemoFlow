@@ -65,7 +65,8 @@ export function DeleteAccount({ email }: { email: string }) {
 
   return (
     <Card pad="lg">
-      <h2 className="text-lg font-semibold">{t('accountDeletion.title')}</h2>
+      {/* Under the page's "Danger zone" section heading. */}
+      <h3 className="font-semibold">{t('accountDeletion.title')}</h3>
       <p className="mt-2 text-sm text-ink-2">{t('accountDeletion.body')}</p>
       <div className="mt-4">
         <Button type="button" variant="danger" onClick={() => setOpen(true)}>

@@ -16,6 +16,7 @@ describe('parseProjectConfig', () => {
           height: 1080,
           fps: 30,
           idle: { thresholdMs: 1000, compressToMs: 400 },
+          endHoldMs: 2500,
           frame: { enabled: true, marginRatio: 0.06, radius: 12, shadow: true },
           background: { preset: 'ocean' },
           cards: {
@@ -31,6 +32,23 @@ describe('parseProjectConfig', () => {
         },
       },
     });
+  });
+
+  it('keeps share.allowMcp, off unless set, and rejects unknown keys (spec 349)', () => {
+    const baseUrl = 'https://a.example';
+    expect(parseProjectConfig({ baseUrl, share: {} })).toMatchObject({
+      ok: true,
+      value: { share: { allowMcp: false } },
+    });
+    expect(
+      parseProjectConfig({ baseUrl, share: { allowMcp: true } }),
+    ).toMatchObject({ ok: true, value: { share: { allowMcp: true } } });
+    expect(parseProjectConfig({ baseUrl, share: { allowMcp: 'yes' } }).ok).toBe(
+      false,
+    );
+    expect(parseProjectConfig({ baseUrl, share: { public: true } }).ok).toBe(
+      false,
+    );
   });
 
   it('keeps the square formats and their own settings (spec 304)', () => {
@@ -293,6 +311,34 @@ describe('parseProjectConfig', () => {
         },
       },
     });
+  });
+
+  it.each([
+    0, 2500, 10_000,
+  ])('accepts the end hold %d (spec 365)', (endHoldMs) => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: { endHoldMs },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { render: { endHoldMs } },
+    });
+  });
+
+  it.each([
+    -1, 10_001, 1.5,
+  ])('rejects the end hold %d (spec 365)', (endHoldMs) => {
+    const result = parseProjectConfig({
+      baseUrl: 'https://a.example',
+      render: { endHoldMs },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({ path: 'render.endHoldMs' }),
+      );
+    }
   });
 
   it.each([

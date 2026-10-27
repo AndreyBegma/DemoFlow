@@ -2,11 +2,20 @@
 // same-origin `/api/…`; a server component passes the API's internal origin
 // and the request's cookie header instead.
 
+import type { FolderInspection } from './add-project';
+
 export type ApiError = 'invalid' | 'rate_limited' | 'unknown';
 
 export type ApiResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: ApiError; status?: number; code?: string };
+  | {
+      ok: false;
+      error: ApiError;
+      status?: number;
+      code?: string;
+      /** With `project-exists`: the project that holds the folder (spec #378). */
+      projectId?: string;
+    };
 
 /** A pending device code, as the signed-in user sees it (spec #135). */
 export interface DeviceRequest {
@@ -31,6 +40,8 @@ export interface Runner {
   lastSeenAt: string | null;
   /** The client IP at connect; shown only to the owner. */
   lastSeenIp: string | null;
+  /** What its current socket can do (`projects`, spec #378); absent on an older API. */
+  features?: string[];
 }
 
 export interface PublicUser {
@@ -58,7 +69,7 @@ export function githubStartUrl(intent: 'sign-in' | 'link'): string {
   return `/api/auth/github/start?intent=${intent}`;
 }
 
-interface Target {
+export interface Target {
   /** Origin to call instead of the same-origin `/api` prefix. */
   baseUrl?: string;
   /** The incoming request's `cookie` header, for server-side calls. */
@@ -71,22 +82,35 @@ function errorFor(status: number): ApiError {
   return 'unknown';
 }
 
-/** The `{ error }` code of a failed response, when its body has one. */
-async function errorCode(response: Response): Promise<string | undefined> {
+/** The `{ error, projectId }` of a failed response, when its body has them. */
+async function errorBody(
+  response: Response,
+): Promise<{ code?: string; projectId?: string }> {
   try {
     const body: unknown = await response.json();
-    if (typeof body === 'object' && body !== null && 'error' in body) {
-      return typeof body.error === 'string' ? body.error : undefined;
+    if (typeof body === 'object' && body !== null) {
+      const code =
+        'error' in body && typeof body.error === 'string'
+          ? body.error
+          : undefined;
+      const projectId =
+        'projectId' in body && typeof body.projectId === 'string'
+          ? body.projectId
+          : undefined;
+      return { code, projectId };
     }
   } catch {
     // No JSON body: the status alone has to do.
   }
-  return undefined;
+  return {};
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
-  init: { method: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown },
+  init: {
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    body?: unknown;
+  },
   target: Target = {},
 ): Promise<ApiResult<T>> {
   const headers: Record<string, string> = {};
@@ -105,7 +129,7 @@ async function request<T>(
         ok: false,
         error: errorFor(response.status),
         status: response.status,
-        code: await errorCode(response),
+        ...(await errorBody(response)),
       };
     }
     const text = await response.text();
@@ -230,6 +254,8 @@ export interface ProjectRun {
   cliVersion: string;
   /** When the machine deleted the run's files (spec #233); null while present. */
   artifactsDeletedAt: string | null;
+  /** `check` for a check run, which records no video (spec 360); absent or null otherwise. */
+  kind?: 'check' | null;
 }
 
 export interface Project {
@@ -238,7 +264,11 @@ export interface Project {
   rootPath: string | null;
   /** Null for a project never bound, or whose machine was revoked. */
   runner: { id: string; name: string } | null;
+  /** `https://github.com/<owner>/<repo>`; absent on an API older than #378. */
+  githubUrl?: string | null;
   runCount: number;
+  /** Scenarios whose latest run failed (spec #362); absent on an older API. */
+  staleCount?: number;
   lastRun: ProjectRun | null;
   createdAt: string;
   updatedAt: string;
@@ -257,17 +287,10 @@ export function listProjects(target?: Target) {
   );
 }
 
-export function createProject(name: string) {
-  return request<{ project: Project }>('/projects', {
-    method: 'POST',
-    body: { name },
-  });
-}
-
-/** Renames and binds; `runnerId` and `rootPath` come together or not at all. */
+/** Renames, and sets or clears (`null`) the GitHub link (spec #378). */
 export function updateProject(
   id: string,
-  changes: { name?: string; runnerId?: string; rootPath?: string },
+  changes: { name?: string; githubUrl?: string | null },
 ) {
   return request<{ project: Project }>(`/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH',
@@ -278,6 +301,45 @@ export function updateProject(
 export function deleteProject(id: string) {
   return request<void>(`/projects/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+  });
+}
+
+// Adding a project from a folder on a machine (spec #379, API from #378).
+
+export interface FolderInit {
+  /** Files the machine wrote, relative to the folder. */
+  created: string[];
+  /** Files that were there already and stayed as they were. */
+  kept: string[];
+  inspection: FolderInspection;
+}
+
+/** What the machine finds in the folder; nothing is stored. */
+export function inspectFolder(runnerId: string, path: string) {
+  return request<FolderInspection>('/projects/folders/inspect', {
+    method: 'POST',
+    body: { runnerId, path },
+  });
+}
+
+/** Writes the config template into a folder without one. */
+export function initFolder(runnerId: string, path: string) {
+  return request<FolderInit>('/projects/folders/init', {
+    method: 'POST',
+    body: { runnerId, path },
+  });
+}
+
+/** Adds the folder as a project; `githubUrl: null` stores no link. */
+export function registerFolder(folder: {
+  runnerId: string;
+  path: string;
+  name: string;
+  githubUrl: string | null;
+}) {
+  return request<{ project: Project }>('/projects/folders/register', {
+    method: 'POST',
+    body: folder,
   });
 }
 
@@ -324,6 +386,8 @@ export interface RunDetail {
     online: boolean;
     /** What the machine accepts on a start; absent on an older API. */
     runOptions?: string[];
+    /** What its daemon announced, as `share` (spec #347); absent on an older API. */
+    features?: string[];
   } | null;
 }
 
@@ -445,6 +509,99 @@ export function cancelLaunch(projectId: string) {
     `/projects/${encodeURIComponent(projectId)}/launch`,
     { method: 'DELETE' },
   );
+}
+
+// Check schedules and the stale state (spec #363, contract from spec #362).
+
+export type ScheduleCadence = 'daily' | 'weekdays' | 'weekly';
+
+/** A project's schedule, set on the website (`site`) or in its config. */
+export interface CheckSchedule {
+  source: 'site' | 'config';
+  cadence: ScheduleCadence;
+  /** `mon`…`sun`; set only for `weekly`. */
+  weekday: string | null;
+  /** `HH:MM`, 24-hour, in `timeZone`. */
+  at: string;
+  timeZone: string;
+  exclude: string[];
+  /** `config-schedule`, `no-machine` or `cli-too-old`; null while it runs. */
+  pausedReason: string | null;
+  /** Null while paused. */
+  nextDueAt: string | null;
+  lastPassAt: string | null;
+}
+
+export interface ProjectSchedules {
+  site: CheckSchedule | null;
+  config: CheckSchedule | null;
+  machine: {
+    id: string;
+    name: string;
+    online: boolean;
+    /** The machine's own zone, once it has reported one. */
+    zone: string | null;
+  } | null;
+}
+
+/** What `PUT /projects/:id/schedule` takes. */
+export interface ScheduleBody {
+  cadence: ScheduleCadence;
+  weekday?: string;
+  at: string;
+  timeZone: string;
+  exclude: string[];
+}
+
+/** One scenario's state: `failed` is stale. */
+export interface ScenarioHealth {
+  scenarioPath: string;
+  scenarioName: string;
+  state: 'passed' | 'failed';
+  since: string;
+  lastRunId: string;
+}
+
+export interface StaleScenario {
+  projectId: string;
+  projectName: string;
+  scenarioPath: string;
+  scenarioName: string;
+  since: string;
+  lastRunId: string;
+}
+
+export function getSchedule(projectId: string, target?: Target) {
+  return request<ProjectSchedules>(
+    `/projects/${encodeURIComponent(projectId)}/schedule`,
+    { method: 'GET' },
+    target,
+  );
+}
+
+export function putSchedule(projectId: string, body: ScheduleBody) {
+  return request<CheckSchedule>(
+    `/projects/${encodeURIComponent(projectId)}/schedule`,
+    { method: 'PUT', body },
+  );
+}
+
+export function deleteSchedule(projectId: string) {
+  return request<void>(`/projects/${encodeURIComponent(projectId)}/schedule`, {
+    method: 'DELETE',
+  });
+}
+
+export function getHealth(projectId: string, target?: Target) {
+  return request<ScenarioHealth[]>(
+    `/projects/${encodeURIComponent(projectId)}/health`,
+    { method: 'GET' },
+    target,
+  );
+}
+
+export function listStale(target?: Target) {
+  return request<StaleScenario[]>('/checks/stale', { method: 'GET' }, target);
 }
 
 export type RunStatusFilter = ProjectRun['status'];

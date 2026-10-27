@@ -12,7 +12,7 @@ export function DocsSidebar() {
       aria-label={t('docs.nav.label')}
       className="glass rounded-surface p-3 lg:sticky lg:top-24"
     >
-      <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">
+      <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-ink-2">
         {t('docs.nav.title')}
       </p>
       <ul className="flex flex-wrap gap-1 lg:flex-col">

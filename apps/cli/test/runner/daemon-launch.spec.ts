@@ -191,6 +191,8 @@ describe('the daemon with a website-started run', () => {
         type: 'launches.sync',
         running: [],
         runOptions: ['formats'],
+        features: ['projects', 'share'],
+        checks: true,
       });
       first.receive({
         type: 'run.start',
@@ -230,6 +232,8 @@ describe('the daemon with a website-started run', () => {
         type: 'launches.sync',
         running: [REQUEST],
         runOptions: ['formats'],
+        features: ['projects', 'share'],
+        checks: true,
       });
       await stop(next);
     });
@@ -240,8 +244,17 @@ describe('the daemon with a website-started run', () => {
       // Let the launcher settle: the run.finished has no socket and is dropped.
       await new Promise((r) => setTimeout(r, 50));
       const next = await reconnect();
-      expect(next.sent).toEqual([
-        { type: 'launches.sync', running: [], runOptions: ['formats'] },
+      // Spec 361: `schedules.sync` follows; it is not about this run.
+      expect(
+        next.sent.filter((frame) => frame.type !== 'schedules.sync'),
+      ).toEqual([
+        {
+          type: 'launches.sync',
+          running: [],
+          runOptions: ['formats'],
+          features: ['projects', 'share'],
+          checks: true,
+        },
       ]);
     });
   });

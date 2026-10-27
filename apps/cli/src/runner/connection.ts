@@ -7,6 +7,8 @@ import {
 } from './launch/index.ts';
 import type { Logger } from './log.ts';
 import type { RelaySender, VideoRelayPort } from './relay/index.ts';
+import type { ProjectsPort } from './roots/index.ts';
+import type { SharePort } from './share/prepare.ts';
 import type { ConnectionState } from './state.ts';
 
 /** Decision 6: each side pings every 25 s and gives up after 60 s of silence. */
@@ -77,6 +79,18 @@ export interface ConnectionDeps {
   artifacts?: ArtifactsPort;
   /** Answers `scenarios.list` and `run.*` (spec 248); without it, logged as unknown. */
   launches?: LaunchPort;
+  /**
+   * Spec 361, Decision 6: the current `schedules.sync`, sent after
+   * `launches.sync`; `null` while the scheduler has not looked yet.
+   */
+  schedules?: () => Record<string, unknown> | null;
+  /** Answers `project.*` (spec 377); without it, logged as unknown. */
+  projects?: ProjectsPort;
+  /**
+   * Answers `share.prepare` (spec 349); without it, logged as unknown. Its
+   * poster goes out through `relay`, so it is announced only with one.
+   */
+  share?: SharePort;
 }
 
 export type ConnectionOutcome = 'stopped' | 'revoked';
@@ -149,6 +163,13 @@ export class RunnerConnection {
     return this.done;
   }
 
+  /** Spec 361, Decision 6: a watched schedule changed; tell an open socket. */
+  syncSchedules(): void {
+    if (!this.opened || this.stopping) return;
+    const frame = this.deps.schedules?.() ?? null;
+    if (frame !== null) this.send(frame);
+  }
+
   private connect(): void {
     if (this.stopping) return;
     this.opened = false;
@@ -183,11 +204,26 @@ export class RunnerConnection {
     // Spec 326, Decision 1: a connection without a launcher ignores run.start,
     // so it claims no options.
     const runOptions = this.deps.launches !== undefined ? [...RUN_OPTIONS] : [];
-    this.send({ type: 'launches.sync', running, runOptions });
+    // Spec 377, Decision 9: what else this daemon answers.
+    const features: string[] = [];
+    if (this.deps.projects !== undefined) features.push('projects');
+    // Spec 349, Decision 5: a share needs `share.prepare` and the poster's stream.
+    if (this.deps.share !== undefined && this.deps.relay !== undefined) {
+      features.push('share');
+    }
+    this.send({
+      type: 'launches.sync',
+      running,
+      runOptions,
+      features,
+      // Spec 360, Decision 6: a daemon that handles launches runs check passes.
+      ...(this.deps.launches !== undefined ? { checks: true } : {}),
+    });
     this.deps.logger.log(
       'info',
       `announced ${running.length} running launch${running.length === 1 ? '' : 'es'}`,
     );
+    this.syncSchedules();
     this.resetIdle();
     this.schedulePing();
   }
@@ -251,6 +287,20 @@ export class RunnerConnection {
             this.relaySender(),
             this.currentSender(),
           );
+          return;
+        }
+        break;
+      case 'project.inspect':
+      case 'project.init':
+      case 'project.register':
+        if (this.deps.projects !== undefined) {
+          this.deps.projects.handle(fields, this.relaySender());
+          return;
+        }
+        break;
+      case 'share.prepare':
+        if (this.deps.share !== undefined) {
+          this.deps.share.handle(fields, this.relaySender());
           return;
         }
         break;
