@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -18,6 +18,9 @@ import {
   type RunFlags,
   runCommand,
 } from '../../src/commands/run.ts';
+import type { HostEnvironment } from '../../src/config/platform.ts';
+import { runnerPaths } from '../../src/runner/paths.ts';
+import { readLocalRoots } from '../../src/runner/schedule/local-roots.ts';
 
 const REPO = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -61,18 +64,19 @@ async function harness(start?: RunDeps['startApp']) {
   let starts = 0;
   let stops = 0;
   let runs = 0;
+  const host: HostEnvironment = {
+    platform: process.platform,
+    env: {
+      DEMOFLOW_HOME: home,
+      DEMOFLOW_NO_REPORT: '1',
+      // landing, login and phone sign in; any password does.
+      FIXTURE_PASSWORD: 'correct horse',
+    },
+    homedir: path.join(home, 'user'),
+  };
   const run = (file: string | undefined, flags: RunFlags) =>
     runCommand(file, flags, io, {
-      host: {
-        platform: process.platform,
-        env: {
-          DEMOFLOW_HOME: home,
-          DEMOFLOW_NO_REPORT: '1',
-          // landing, login and phone sign in; any password does.
-          FIXTURE_PASSWORD: 'correct horse',
-        },
-        homedir: path.join(home, 'user'),
-      },
+      host,
       cwd: project,
       runId: () => `check-${++runs}`,
       startApp: async (...args) => {
@@ -90,6 +94,7 @@ async function harness(start?: RunDeps['startApp']) {
     io,
     run,
     home,
+    host,
     runsDir: path.join(home, 'runs'),
     counts: () => ({ starts, stops }),
   };
@@ -135,6 +140,15 @@ describe('demoflow run --check', () => {
     expect(io.out).toBe(
       'passed  demoflow/customers.demo.json\n1 passed, 0 failed\n',
     );
+  });
+
+  it('records the project root for the runner to watch, once (spec 361)', async () => {
+    const { run, host } = await harness();
+    await run(scenario('customers'), { check: true });
+    await run(scenario('customers'), { check: true });
+    expect(readLocalRoots(runnerPaths(host).localRoots)).toEqual([
+      realpathSync.native(project),
+    ]);
   });
 
   it('fails the check of a failing scenario: exit 1, verification failed', async () => {

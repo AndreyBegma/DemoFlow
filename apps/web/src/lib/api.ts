@@ -69,7 +69,7 @@ export function githubStartUrl(intent: 'sign-in' | 'link'): string {
   return `/api/auth/github/start?intent=${intent}`;
 }
 
-interface Target {
+export interface Target {
   /** Origin to call instead of the same-origin `/api` prefix. */
   baseUrl?: string;
   /** The incoming request's `cookie` header, for server-side calls. */
@@ -105,7 +105,7 @@ async function errorBody(
   return {};
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
   init: { method: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown },
   target: Target = {},
@@ -379,6 +379,8 @@ export interface RunDetail {
     online: boolean;
     /** What the machine accepts on a start; absent on an older API. */
     runOptions?: string[];
+    /** What its daemon announced, as `share` (spec #347); absent on an older API. */
+    features?: string[];
   } | null;
 }
 

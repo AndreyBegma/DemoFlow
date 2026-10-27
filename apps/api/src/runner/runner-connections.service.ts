@@ -140,8 +140,8 @@ export class RunnerConnections
   private artifactsSink: ArtifactsSink | undefined;
   private launchSink: LaunchSink | undefined;
   private shareSink: ShareSink | undefined;
-  private schedulesSink: SchedulesSink | undefined;
   private projectSink: ProjectSink | undefined;
+  private schedulesSink: SchedulesSink | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -238,14 +238,14 @@ export class RunnerConnections
     this.shareSink = sink;
   }
 
-  /** Check schedules' hook (spec #362). One sink per instance. */
-  setSchedulesSink(sink: SchedulesSink): void {
-    this.schedulesSink = sink;
-  }
-
   /** Folder requests' hook (spec #378). One sink per instance. */
   setProjectSink(sink: ProjectSink): void {
     this.projectSink = sink;
+  }
+
+  /** Check schedules' hook (spec #362). One sink per instance. */
+  setSchedulesSink(sink: SchedulesSink): void {
+    this.schedulesSink = sink;
   }
 
   /** An authenticated socket, straight after the upgrade. */

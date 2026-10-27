@@ -13,6 +13,7 @@ import {
   RunStages,
 } from '@/components/projects/run-details';
 import { RunStatus } from '@/components/projects/run-status';
+import { ShareButton } from '@/components/shares/share-button';
 import { CrumbName } from '@/components/shell/crumb-names';
 import { t } from '@/i18n';
 import { formatDate } from '@/lib/format-date';
@@ -127,6 +128,17 @@ export default async function RunPage({
           </span>
         }
         description={project.name}
+        actions={
+          <ShareButton
+            run={{
+              id: run.id,
+              formats: run.formats,
+              renders: run.renders,
+              artifactsDeletedAt: run.artifactsDeletedAt,
+            }}
+            machine={machine}
+          />
+        }
       />
       <RunPlayback
         runId={run.id}
