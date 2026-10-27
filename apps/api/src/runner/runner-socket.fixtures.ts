@@ -32,6 +32,12 @@ export interface SharePrepare extends Received {
   format: string;
 }
 
+/** `project.inspect`, `project.init` or `project.register` (spec #378). */
+export interface ProjectRequest extends Received {
+  requestId: string;
+  path: string;
+}
+
 export interface Closed {
   code: number;
   reason: string;
@@ -153,6 +159,17 @@ export class TestSocket {
       throw new Error('share.prepare carries no requestId');
     }
     return ask as SharePrepare;
+  }
+
+  /** The next `project.*` request (spec #378), with its request id and path. */
+  async nextProject(
+    type: 'project.inspect' | 'project.init' | 'project.register',
+  ): Promise<ProjectRequest> {
+    const ask = await this.next(type);
+    if (typeof ask.requestId !== 'string' || typeof ask.path !== 'string') {
+      throw new Error(`${type} carries no requestId or path`);
+    }
+    return ask as ProjectRequest;
   }
 
   /**

@@ -1,11 +1,19 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type Run, type Runner, type RunStatus } from '@prisma/client';
+import {
+  Prisma,
+  type ProjectSource,
+  type Run,
+  type Runner,
+  type RunStatus,
+} from '@prisma/client';
 import { rebuildHealth, recordHealth } from '../checks/health/health';
 import { PrismaService } from '../database/prisma.service';
 import { ShareStorage } from '../shares/share-storage';
@@ -47,6 +55,10 @@ export interface ProjectView {
   rootPath: string | null;
   /** Null for a project never bound, or whose machine was revoked. */
   runner: { id: string; name: string } | null;
+  /** `https://github.com/<owner>/<repo>`, display only (ADR-0022 §5). */
+  githubUrl: string | null;
+  /** `website` when added through the folder dialog (spec #378). */
+  source: ProjectSource;
   runCount: number;
   /** Scenarios whose latest run failed (spec #362, Decision 6). */
   staleCount: number;
@@ -198,6 +210,8 @@ function toProjectView(project: ProjectWithSummary): ProjectView {
     name: project.name,
     rootPath: project.rootPath,
     runner: project.runner,
+    githubUrl: project.githubUrl,
+    source: project.source,
     runCount: project._count.runs,
     staleCount: project._count.health,
     lastRun: lastRun ? toRunView(lastRun) : null,
@@ -294,6 +308,50 @@ export class ProjectsService {
   }
 
   /**
+   * The project of a folder the machine registered (spec #378, Decision 5):
+   * `rootPath` is the machine's canonical answer, never the browser's path.
+   * A folder another project already holds answers `409 project-exists`
+   * with that project's id.
+   */
+  async createFromFolder(
+    userId: string,
+    folder: {
+      runnerId: string;
+      rootPath: string;
+      name: string;
+      githubUrl: string | null;
+    },
+  ): Promise<ProjectView> {
+    try {
+      const project = await this.prisma.project.create({
+        data: { userId, ...folder, source: 'website' },
+        include: PROJECT_INCLUDE,
+      });
+      return toProjectView(project);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const holder = await this.prisma.project.findUnique({
+          where: {
+            runnerId_rootPath: {
+              runnerId: folder.runnerId,
+              rootPath: folder.rootPath,
+            },
+          },
+          select: { id: true },
+        });
+        throw new HttpException(
+          { error: 'project-exists', projectId: holder?.id ?? null },
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Renames and binds. Binding to a folder another project already holds
    * merges it into this one, in one transaction: its runs move here, it is
    * deleted, and this project keeps its name (Decision 4).
@@ -315,6 +373,9 @@ export class ProjectsService {
         const data: Prisma.ProjectUpdateInput = {};
         if (body.name !== undefined) {
           data.name = body.name;
+        }
+        if (body.githubUrl !== undefined) {
+          data.githubUrl = body.githubUrl;
         }
         if (body.runnerId !== undefined && body.rootPath !== undefined) {
           const runner = await tx.runner.findFirst({

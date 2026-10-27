@@ -7,6 +7,7 @@ import {
   type LucideIcon,
   Server,
   Settings,
+  Share2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Logo } from '@/components/brand/logo';
@@ -19,6 +20,7 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   overview: LayoutDashboard,
   projects: FolderKanban,
   machines: Server,
+  shares: Share2,
   settings: Settings,
 };
 

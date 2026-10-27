@@ -4,20 +4,24 @@ export type ConnectionState =
   | 'connecting'
   | 'connected'
   | 'reconnecting'
-  | 'revoked';
+  | 'revoked'
+  /** Spec 361, Decision 5: no account, scheduled checks only. */
+  | 'local';
 
 const STATES: readonly ConnectionState[] = [
   'connecting',
   'connected',
   'reconnecting',
   'revoked',
+  'local',
 ];
 
 /** `runner.state.json`: what the daemon tells `status`. Never the token. */
 export interface RunnerState {
   pid: number;
   startedAt: string;
-  server: string;
+  /** Absent in local mode: there is no server (spec 361, Decision 5). */
+  server?: string;
   state: ConnectionState;
   /** When the next attempt starts, while `reconnecting`. */
   retryAt?: string;
@@ -54,7 +58,7 @@ export function readState(file: string): RunnerState | null {
   if (
     typeof pid !== 'number' ||
     typeof startedAt !== 'string' ||
-    typeof server !== 'string' ||
+    (server !== undefined && typeof server !== 'string') ||
     typeof updatedAt !== 'string' ||
     known === undefined
   ) {
@@ -63,7 +67,7 @@ export function readState(file: string): RunnerState | null {
   return {
     pid,
     startedAt,
-    server,
+    ...(typeof server === 'string' ? { server } : {}),
     state: known,
     ...(typeof retryAt === 'string' ? { retryAt } : {}),
     updatedAt,

@@ -63,15 +63,28 @@ export async function readReportedRunsByDir(
  * throws: a missing or unreadable index registers nothing.
  */
 export async function knownRoots(file: string): Promise<Set<string>> {
-  const roots = new Set<string>();
   try {
-    const text = await readFile(file, 'utf8');
-    for (const line of text.split('\n')) {
-      const root = parseLine(line)?.root;
-      if (root !== undefined) roots.add(root);
-    }
+    return rootsIn(await readFile(file, 'utf8'));
   } catch {
     // An unreadable index is an empty one.
+    return new Set();
+  }
+}
+
+/** `knownRoots` for a caller that cannot wait: the scheduler's tick, `runner status`. */
+export function knownRootsSync(file: string): Set<string> {
+  try {
+    return rootsIn(readFileSync(file, 'utf8'));
+  } catch {
+    return new Set();
+  }
+}
+
+function rootsIn(text: string): Set<string> {
+  const roots = new Set<string>();
+  for (const line of text.split('\n')) {
+    const root = parseLine(line)?.root;
+    if (root !== undefined) roots.add(root);
   }
   return roots;
 }
