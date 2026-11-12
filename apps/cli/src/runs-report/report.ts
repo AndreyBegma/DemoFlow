@@ -118,7 +118,9 @@ export function buildReport(input: {
 }
 
 /** Decision 2: the first render of each format, in `result.renders` order. */
-function reportedRenders(result: RunResult): ReportedRender[] {
+export function reportedRenders(
+  result: Pick<RunResult, 'renders'>,
+): ReportedRender[] {
   const seen = new Set<RenderFormat>();
   const renders: ReportedRender[] = [];
   for (const render of result.renders) {
